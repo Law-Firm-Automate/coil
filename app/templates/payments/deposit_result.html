@@ -1,0 +1,7 @@
+{% extends "public.html" %}{% block title %}Trust deposit{% endblock %}{% block content %}
+<div class="card">
+  {% if ok %}<h1>Thank you</h1><p>Your trust deposit has been submitted. Card deposits post right away; bank transfers take a few business days to settle. The money is held in the firm's client trust account and belongs to you until it is applied to an invoice for completed work.</p>
+  {% else %}<h1>No deposit was made</h1><p>You left before finishing, so nothing was charged. If you still want to make a deposit, use the link in your email again or get in touch with us.</p>{% endif %}
+  {% if firm().phone %}<p class="muted small">Questions? Call {{ firm().phone }}.</p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}Expenses{% endblock %}{% block content %}
+<div class="topbar"><h1>Expenses</h1>
+<div class="actions" style="margin:0"><a class="btn small" href="{{ url_for('time.expense_new', matter_id=matter_id) }}">New expense</a></div></div>
+<div class="tabs"><a href="{{ url_for('time.index') }}">Time entries</a><a class="active" href="{{ url_for('time.expenses') }}">Expenses</a><a href="{{ url_for('time.timer') }}">Timer</a></div>
+<div class="card">
+<form method="get" action="{{ url_for('time.expenses') }}" class="row">
+  <div><label>Matter</label><select name="matter_id"><option value="">All matters</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if matter_id == m.id }}>{{ m.label }}</option>{% endfor %}</select></div>
+  <div><label>&nbsp;</label><button class="btn secondary">Filter</button> <a class="btn secondary" href="{{ url_for('time.expenses') }}">Clear</a></div>
+</form>
+</div>
+<div class="card">
+{% if expenses %}
+<table>
+<tr><th>Date</th><th>Matter</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Receipt</th><th>Status</th><th></th></tr>
+{% for e in expenses %}
+<tr>
+  <td class="nowrap">{{ e.date|d }}</td>
+  <td><a href="/matters/{{ e.matter_id }}">{{ e.matter.number }}</a> <span class="small muted">{{ e.matter.name }}</span></td>
+  <td>{{ e.category }}</td>
+  <td>{{ e.description }}</td>
+  <td class="num">{{ e.amount_cents|money }}</td>
+  <td>{% if e.receipt_path %}<a href="{{ url_for('time.expense_receipt', id=e.id) }}">receipt</a>{% else %}<span class="muted small">none</span>{% endif %}</td>
+  <td>{% if e.invoice_id %}<a href="/invoices/{{ e.invoice_id }}">&#128274; {{ e.invoice.number }}</a>{% elif not e.billable %}<span class="badge">non-billable</span>{% else %}<span class="badge draft">unbilled</span>{% endif %}</td>
+  <td class="nowrap"><a href="{{ url_for('time.expense_edit', id=e.id) }}">{{ 'view' if e.invoice_id else 'edit' }}</a></td>
+</tr>
+{% endfor %}
+<tr><th colspan="4">Totals ({{ expenses|length }})</th><th class="num">{{ total|money }}</th><th colspan="3">Unbilled: {{ unbilled|money }}</th></tr>
+</table>
+{% else %}<div class="empty">No expenses yet. <a href="{{ url_for('time.expense_new') }}">Add one</a>.</div>{% endif %}
+</div>
+{% endblock %}

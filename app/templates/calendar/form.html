@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}{{ 'New event' if is_new else 'Edit event' }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New event' if is_new else 'Edit event' }}</h1></div>
+<form method="post" class="card" style="max-width:720px">{{ csrf() }}
+  <div><label>Title</label><input type="text" name="title" value="{{ e.title or '' }}" required></div>
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="all_day" value="1" id="all_day" {{ 'checked' if e.all_day }}> All day</label>
+  <div class="row" data-timed>
+    <div><label>Starts</label><input type="datetime-local" name="starts_at" value="{{ e.starts_at.strftime('%Y-%m-%dT%H:%M') if e.starts_at else '' }}"></div>
+    <div><label>Ends</label><input type="datetime-local" name="ends_at" value="{{ e.ends_at.strftime('%Y-%m-%dT%H:%M') if e.ends_at else '' }}"></div>
+  </div>
+  <div data-allday><label>Date</label><input type="date" name="date" value="{{ e.starts_at.date()|iso if e.starts_at else '' }}"></div>
+  <div class="row">
+    <div><label>Matter</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == e.matter_id }}>{{ m.label }}</option>{% endfor %}{% if e.matter and e.matter.status == 'closed' %}<option value="{{ e.matter_id }}" selected>{{ e.matter.label }} (closed)</option>{% endif %}</select></div>
+    <div><label>Location</label><input type="text" name="location" value="{{ e.location or '' }}"></div>
+  </div>
+  <div><label>Notes</label><textarea name="notes">{{ e.notes or '' }}</textarea></div>
+  <div class="actions"><button class="btn">{{ 'Add event' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/calendar' if is_new else '/calendar/' ~ e.id }}">Cancel</a></div>
+</form>
+<script>
+(function(){var cb=document.getElementById('all_day'),t=document.querySelector('[data-timed]'),a=document.querySelector('[data-allday]');
+function sync(){t.style.display=cb.checked?'none':'';a.style.display=cb.checked?'':'none';}cb.addEventListener('change',sync);sync();})();
+</script>
+{% endblock %}

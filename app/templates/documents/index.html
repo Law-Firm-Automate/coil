@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Documents{% endblock %}{% block content %}
+<div class="topbar"><h1>Documents{% if matter %} <span style="font-weight:500">for <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></span>{% endif %}</h1></div>
+<div class="grid c2">
+  <div class="card">
+    <form method="get" class="searchbar">
+      <select name="matter_id" style="width:auto;max-width:100%"><option value="">All matters</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}{% if m.status == 'closed' %} (closed){% endif %}</option>{% endfor %}</select>
+      <button class="btn secondary">Filter</button>{% if matter_id %}<a class="small" href="/documents">Clear</a>{% endif %}
+    </form>
+  </div>
+  <div class="card">
+    <form method="post" action="/documents/upload" enctype="multipart/form-data">{{ csrf() }}
+      <div class="row">
+        <div><label>Matter</label><select name="matter_id" required><option value="">Choose</option>{% for m in matters if m.status != 'closed' %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}</option>{% endfor %}</select></div>
+        <div><label>File (25 MB max, no executables)</label><input type="file" name="file" required></div>
+      </div>
+      <div class="actions" style="margin-top:8px"><label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="shared_to_portal" value="1"> Share to client portal</label><button class="btn small">Upload</button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+{% if docs %}<table><tr><th>Name</th><th>Matter</th><th>Uploaded</th><th>By</th><th class="num">Size</th><th>Portal</th><th></th></tr>
+{% for d in docs %}<tr>
+  <td><a href="/documents/{{ d.id }}/download">{{ d.name }}</a><br><span class="small muted">{{ d.mime }}</span></td>
+  <td><a href="/matters/{{ d.matter_id }}">{{ d.matter.label }}</a></td>
+  <td class="nowrap">{{ d.created_at|dt }}</td>
+  <td>{% if d.uploaded_by_client %}<span class="badge pending">client</span>{% else %}{{ d.uploaded_by.name if d.uploaded_by else '' }}{% endif %}</td>
+  <td class="num">{% if d.size >= 1048576 %}{{ (d.size / 1048576)|round(1) }} MB{% else %}{{ (d.size / 1024)|round(1) }} KB{% endif %}</td>
+  <td><form method="post" action="/documents/{{ d.id }}/share" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small {{ 'ok' if d.shared_to_portal else 'secondary' }}">{{ 'Shared' if d.shared_to_portal else 'Not shared' }}</button></form></td>
+  <td class="right nowrap"><a class="btn small secondary" href="/documents/{{ d.id }}/download">Download</a> <form method="post" action="/documents/{{ d.id }}/delete" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small secondary" data-confirm="Delete {{ d.name }}? The file is removed from disk.">Delete</button></form></td>
+</tr>{% endfor %}</table>
+<p class="small muted">{{ docs|length }} files, {{ (total / 1048576)|round(2) }} MB.</p>
+{% else %}<div class="empty">No documents{% if matter %} on this matter{% endif %} yet.</div>{% endif %}
+</div>
+{% endblock %}

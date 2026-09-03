@@ -1,0 +1,120 @@
+{% extends "base.html" %}{% block title %}New invoice: {{ matter.number }}{% endblock %}{% block content %}
+<div class="topbar"><h1>New invoice for {{ matter.label }}</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="/matters/{{ matter.id }}">Back to matter</a></div></div>
+<p class="muted">Client: <a href="/contacts/{{ matter.client_id }}">{{ matter.client.display_name }}</a> · Billing: <strong>{{ matter.billing_type }}</strong>{% if matter.billing_type in ('flat','hybrid') and matter.flat_fee_cents %} · Flat fee {{ matter.flat_fee_cents|money }}{% endif %}{% if matter.billing_type == 'contingency' %} · {{ matter.contingency_pct }}%{% endif %}</p>
+<form method="post" action="{{ url_for('invoices.new') }}" id="builder">{{ csrf() }}
+<input type="hidden" name="matter_id" value="{{ matter.id }}">
+<div class="grid c2">
+<div>
+{% if show_flat %}
+<div class="card"><h2>Flat fee</h2>
+  {% if milestones %}
+  <p class="small muted">Pick the milestones to bill now. Each one can only be invoiced once.</p>
+  <table>
+  <tr><th></th><th>Milestone</th><th>Due</th><th class="num">Amount</th></tr>
+  {% for m in milestones %}
+  <tr><td><input type="checkbox" name="milestone_ids" value="{{ m.id }}" data-amt="{{ m.amount_cents }}" class="pick" {{ 'checked' if m.id == first_milestone_id }}></td>
+      <td>{{ m.description }}</td><td class="nowrap">{{ m.due_on|d }}</td><td class="num">{{ m.amount_cents|money }}</td></tr>
+  {% endfor %}
+  </table>
+  {% set invoiced = matter.milestones|selectattr('invoice_id')|list %}
+  {% if invoiced %}<p class="small muted" style="margin-top:8px">Already invoiced: {% for m in invoiced %}{{ m.description }} ({{ m.amount_cents|money }}, <a href="/invoices/{{ m.invoice_id }}">{{ m.invoice.number }}</a>){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+  {% else %}
+  {% if matter.milestones %}<p class="small muted">All milestones on this matter have been invoiced. Enter an additional flat amount below if needed.</p>{% else %}<p class="small muted">This matter has no milestones. Enter the flat fee amount to bill now (you can bill the rest later).</p>{% endif %}
+  <div class="row">
+    <div><label>Description</label><input type="text" name="flat_description" value="Flat fee: {{ matter.name }}"></div>
+    <div><label>Amount</label><input type="text" name="flat_amount" id="flat_amount" class="free" value="{{ '%.2f' % (default_flat_cents / 100) if default_flat_cents else '' }}" inputmode="decimal" placeholder="0.00"></div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if show_contingency %}
+<div class="card"><h2>Contingency fee</h2>
+  <div class="row">
+    <div><label>Settlement or award amount</label><input type="text" id="settlement" inputmode="decimal" placeholder="0.00"></div>
+    <div><label>Fee percentage</label><input type="text" id="pct" inputmode="decimal" value="{{ matter.contingency_pct or '' }}"></div>
+    <div><label>&nbsp;</label><button type="button" class="btn secondary" id="calc">Calculate fee</button></div>
+  </div>
+  <div class="row">
+    <div><label>Description</label><input type="text" name="fee_description" id="fee_description" value="Contingency fee: {{ matter.name }}"></div>
+    <div><label>Fee amount</label><input type="text" name="fee_amount" id="fee_amount" class="free" inputmode="decimal" placeholder="0.00"></div>
+  </div>
+</div>
+{% endif %}
+
+{% if show_hourly or show_contingency %}
+<div class="card"><h2>Unbilled time</h2>
+  {% if time_entries %}
+  <table>
+  <tr><th><input type="checkbox" checked data-toggle="time_ids"></th><th>Date</th><th>Description</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th></tr>
+  {% for t in time_entries %}
+  <tr><td><input type="checkbox" name="time_ids" value="{{ t.id }}" data-amt="{{ t.amount_cents }}" class="pick" checked></td>
+      <td class="nowrap">{{ t.date|d }}</td><td>{{ t.description }} <span class="small muted">{{ t.user.initials }}</span></td>
+      <td class="num">{{ t.minutes|hours }}</td><td class="num">{{ t.rate_cents|money }}</td><td class="num">{{ t.amount_cents|money }}</td></tr>
+  {% endfor %}
+  <tr><th colspan="5">Unbilled time</th><th class="num">{{ time_total|money }}</th></tr>
+  </table>
+  {% else %}<div class="empty">No unbilled billable time. <a href="{{ url_for('time.new', matter_id=matter.id) }}">Log time</a>.</div>{% endif %}
+</div>
+{% endif %}
+
+<div class="card"><h2>Unbilled expenses</h2>
+  {% if expenses %}
+  <table>
+  <tr><th><input type="checkbox" checked data-toggle="expense_ids"></th><th>Date</th><th>Category</th><th>Description</th><th class="num">Amount</th></tr>
+  {% for e in expenses %}
+  <tr><td><input type="checkbox" name="expense_ids" value="{{ e.id }}" data-amt="{{ e.amount_cents }}" class="pick" checked></td>
+      <td class="nowrap">{{ e.date|d }}</td><td>{{ e.category }}</td><td>{{ e.description }}</td><td class="num">{{ e.amount_cents|money }}</td></tr>
+  {% endfor %}
+  <tr><th colspan="4">Unbilled expenses</th><th class="num">{{ expense_total|money }}</th></tr>
+  </table>
+  {% else %}<div class="empty">No unbilled expenses.</div>{% endif %}
+</div>
+</div>
+
+<div>
+<div class="card"><h2>Invoice details</h2>
+  <div class="row">
+    <div><label>Issue date</label><input type="date" name="issued_on" value="{{ issued_on|iso }}" required></div>
+    <div><label>Due date</label><input type="date" name="due_on" value="{{ due_on|iso }}" required><div class="small muted">Default: {{ firm_settings.invoice_terms_days }} days</div></div>
+  </div>
+  <h3 style="margin-top:14px">Adjustment or discount</h3>
+  <div class="row">
+    <div><label>Description</label><input type="text" name="adjustment_description" placeholder="e.g. Courtesy discount"></div>
+    <div><label>Amount (negative for a discount)</label><input type="text" name="adjustment_amount" id="adjustment_amount" class="free" inputmode="decimal" placeholder="-100.00"></div>
+  </div>
+  <label>Notes to client (shown on the invoice)</label><textarea name="notes" placeholder="Optional"></textarea>
+</div>
+<div class="card stat">
+  <div class="label">Invoice total</div>
+  <div class="value" id="total">$0.00</div>
+  <div class="small muted">Updates as you pick items.</div>
+  <div class="actions"><button class="btn">Create draft invoice</button> <a class="btn secondary" href="/matters/{{ matter.id }}">Cancel</a></div>
+  <p class="small muted">The invoice is saved as a draft. You can edit lines, then send it from the invoice page.</p>
+</div>
+</div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  function cents(v){v=(v||'').toString().replace(/[$,\s]/g,'');if(!v)return 0;var n=parseFloat(v);return isNaN(n)?0:Math.round(n*100);}
+  function fmt(c){var neg=c<0;c=Math.abs(c);var s='$'+Math.floor(c/100).toLocaleString()+'.'+('0'+(c%100)).slice(-2);return neg?'('+s+')':s;}
+  function total(){var t=0;
+    document.querySelectorAll('.pick:checked').forEach(function(b){t+=parseInt(b.getAttribute('data-amt'),10)||0;});
+    document.querySelectorAll('.free').forEach(function(i){t+=cents(i.value);});
+    document.getElementById('total').textContent=fmt(t);}
+  document.getElementById('builder').addEventListener('change',total);
+  document.getElementById('builder').addEventListener('input',total);
+  document.querySelectorAll('[data-toggle]').forEach(function(m){m.addEventListener('change',function(){
+    document.querySelectorAll('input[name="'+m.getAttribute('data-toggle')+'"]').forEach(function(b){b.checked=m.checked;});total();});});
+  var calc=document.getElementById('calc');
+  if(calc){calc.addEventListener('click',function(){var s=cents(document.getElementById('settlement').value),p=parseFloat(document.getElementById('pct').value)||0;
+    var fee=Math.round(s*p/100);document.getElementById('fee_amount').value=(fee/100).toFixed(2);
+    document.getElementById('fee_description').value='Contingency fee: '+p+'% of '+fmt(s);total();});}
+  total();
+})();
+</script>
+{% endblock %}

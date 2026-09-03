@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block title %}Conflict check #{{ chk.id }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Conflict check #{{ chk.id }} <span class="badge {{ chk.outcome }}">{{ chk.outcome }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/conflicts">All checks</a>{% if chk.matter %}<a class="btn small secondary" href="/matters/{{ chk.matter_id }}">{{ chk.matter.label }}</a>{% endif %}</div></div>
+<div class="grid c2">
+  <div class="card"><h2>Searched</h2>
+    <dl class="kv">
+      <dt>Names</dt><dd style="white-space:pre-line">{{ chk.query }}</dd>
+      <dt>Run</dt><dd>{{ chk.created_at|dt }}{% if chk.run_by %} by {{ chk.run_by.name }}{% endif %}</dd>
+      {% if chk.matter %}<dt>Matter</dt><dd><a href="/matters/{{ chk.matter_id }}">{{ chk.matter.label }}</a></dd>{% endif %}
+      {% if contact %}<dt>Contact</dt><dd><a href="/contacts/{{ contact.id }}">{{ contact.display_name }}</a></dd>{% endif %}
+      <dt>Hits</dt><dd>{{ results|length }}</dd>
+    </dl>
+  </div>
+  <div class="card"><h2>Resolve</h2>
+    <form method="post" action="/conflicts/{{ chk.id }}/resolve">{{ csrf() }}
+      <label>Outcome</label>
+      <select name="outcome">{% for o in outcomes %}<option value="{{ o }}" {{ 'selected' if o == chk.outcome }}>{{ o }}</option>{% endfor %}</select>
+      <label>Notes (who reviewed, what was waived, why it is clear)</label>
+      <textarea name="notes">{{ chk.notes }}</textarea>
+      <div class="actions"><button class="btn">Save outcome</button></div>
+    </form>
+  </div>
+</div>
+<div class="card"><h2>Results</h2>
+{% if results %}<table><tr><th>Searched for</th><th>Match</th><th>Where</th><th>Role</th><th class="num">Score</th></tr>
+{% for r in results %}<tr><td>{{ r.query }}</td><td>{% if r.url %}<a href="{{ r.url }}">{{ r.label }}</a>{% else %}{{ r.label }}{% endif %}</td><td>{{ r.source }}</td><td>{{ r.role }}</td><td class="num">{% if r.score >= 100 %}<span class="badge conflict">exact</span>{% else %}<span class="badge waived">{{ r.score }}%</span>{% endif %}</td></tr>{% endfor %}</table>
+{% else %}<div class="empty">No matches found. Nothing in contacts, parties, matters, notes or intake leads resembles these names.</div>{% endif %}
+</div>
+{% endblock %}

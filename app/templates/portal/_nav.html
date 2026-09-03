@@ -1,0 +1,4 @@
+<div class="actions" style="margin:0 0 16px;justify-content:space-between">
+  <div><a href="{{ url_for('portal.home') }}">Home</a></div>
+  {% if portal_contact() %}<form method="post" action="{{ url_for('portal.logout') }}" class="inline">{{ csrf() }}<button class="btn small secondary">Log out</button></form>{% endif %}
+</div>

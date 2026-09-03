@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Payments{% endblock %}{% block content %}
+<div class="topbar"><h1>Payments</h1>
+<form method="get" class="searchbar">
+  <input type="month" name="month" value="{{ month if month != 'all' else '' }}"> <button class="btn small secondary">Show</button>
+  <a class="small" href="{{ url_for('payments.index', month='all') }}">All time</a>
+</form></div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Received, {{ label }}</div><div class="value">{{ totals.amount|money }}</div><div class="small muted">Applied to invoices, before surcharges</div></div>
+  <div class="card stat"><div class="label">Surcharges collected</div><div class="value">{{ totals.surcharge|money }}</div></div>
+  <div class="card stat"><div class="label">Processor fees</div><div class="value">{{ totals.fee|money }}</div><div class="small muted">As reported by Stripe</div></div>
+</div>
+<div class="card">
+{% if payments %}<table><tr><th>Date</th><th>Client</th><th>Invoice</th><th>Method</th><th>Account</th><th class="num">Amount</th><th class="num">Surcharge</th><th class="num">Fee</th></tr>
+{% for p in payments %}<tr>
+<td class="nowrap"><a href="{{ url_for('payments.detail', payment_id=p.id) }}">{{ p.received_on|d }}</a></td>
+<td>{% if p.client %}<a href="/contacts/{{ p.client.id }}">{{ p.client.display_name }}</a>{% endif %}</td>
+<td>{% if p.invoice %}<a href="/invoices/{{ p.invoice.id }}">{{ p.invoice.number }}</a>{% else %}<span class="muted">trust deposit</span>{% endif %}</td>
+<td><span class="badge">{{ p.method }}</span></td><td>{{ p.account }}</td>
+<td class="num">{{ p.amount_cents|money }}</td><td class="num">{{ p.surcharge_cents|money if p.surcharge_cents else '' }}</td><td class="num">{{ p.stripe_fee_cents|money if p.stripe_fee_cents else '' }}</td>
+</tr>{% endfor %}
+<tr><td colspan="5"><strong>Total</strong></td><td class="num"><strong>{{ totals.amount|money }}</strong></td><td class="num"><strong>{{ totals.surcharge|money }}</strong></td><td class="num"><strong>{{ totals.fee|money }}</strong></td></tr>
+</table>{% else %}<div class="empty">No payments for {{ label|lower }}.</div>{% endif %}
+</div>
+{% endblock %}

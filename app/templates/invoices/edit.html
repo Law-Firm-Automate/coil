@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block title %}Edit invoice {{ inv.number }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Edit invoice {{ inv.number }} <span class="badge draft">draft</span></h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('invoices.detail', id=inv.id) }}">Back to invoice</a></div></div>
+<form method="post">{{ csrf() }}
+<div class="card">
+  <div class="row">
+    <div><label>Issue date</label><input type="date" name="issued_on" value="{{ inv.issued_on|iso }}"></div>
+    <div><label>Due date</label><input type="date" name="due_on" value="{{ inv.due_on|iso }}"></div>
+  </div>
+</div>
+<div class="card"><h2>Lines</h2>
+<p class="small muted">Removing a time, expense, or milestone line releases it so it can be billed on a later invoice.</p>
+<table>
+<tr><th>Date</th><th>Kind</th><th>Description</th><th class="num">Qty</th><th class="num">Amount</th><th>Remove</th></tr>
+{% for l in inv.lines %}
+<tr>
+  <td class="nowrap">{{ l.date|d }}</td>
+  <td>{{ l.kind }}</td>
+  <td><input type="text" name="desc_{{ l.id }}" value="{{ l.description }}"></td>
+  <td class="num">{% if l.kind == 'time' %}{{ '%.2f' % l.quantity }} h{% endif %}</td>
+  <td class="num"><input type="text" name="amount_{{ l.id }}" value="{{ dollars(l.amount_cents) }}" inputmode="decimal" style="width:110px;text-align:right"></td>
+  <td><input type="checkbox" name="remove_{{ l.id }}" value="1"></td>
+</tr>
+{% endfor %}
+</table>
+<h3 style="margin-top:14px">Add an adjustment or discount</h3>
+<div class="row">
+  <div><label>Description</label><input type="text" name="adj_description" placeholder="e.g. Courtesy discount"></div>
+  <div><label>Amount (negative for a discount)</label><input type="text" name="adj_amount" inputmode="decimal" placeholder="-100.00"></div>
+</div>
+<label>Notes to client</label><textarea name="notes">{{ inv.notes }}</textarea>
+<div class="actions"><button class="btn">Save changes</button> <a class="btn secondary" href="{{ url_for('invoices.detail', id=inv.id) }}">Cancel</a></div>
+</div>
+</form>
+{% endblock %}

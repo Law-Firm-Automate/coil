@@ -1,0 +1,76 @@
+{% extends "base.html" %}{% block title %}{{ 'New matter' if is_new else 'Edit ' ~ m.number }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New matter' if is_new else 'Edit ' ~ m.label }}</h1></div>
+<form method="post" class="card" style="max-width:900px">
+  {{ csrf() }}
+  <div class="row">
+    <div><label>Client</label>
+      <select name="client_id" required><option value="">Choose a contact</option>{% for c in clients %}<option value="{{ c.id }}" {{ 'selected' if c.id == m.client_id }}>{{ c.display_name }}{% if not c.is_client %} (not yet a client){% endif %}</option>{% endfor %}</select>
+      <div class="small muted">Not listed? <a href="/contacts/new?is_client=1" target="_blank">Add a contact</a>, then reload this page.</div>
+    </div>
+    <div><label>Matter name</label><input type="text" name="name" value="{{ m.name or '' }}" required placeholder="Smith v. Jones, or Estate plan"></div>
+  </div>
+  <div class="row">
+    <div><label>Practice area</label><input type="text" name="practice_area" list="areas" value="{{ m.practice_area or '' }}"><datalist id="areas">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist></div>
+    <div><label>Status</label><select name="status">{% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == m.status }}>{{ s }}</option>{% endfor %}</select></div>
+    <div><label>Responsible attorney</label><select name="responsible_user_id"><option value="">Unassigned</option>{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == m.responsible_user_id }}>{{ u.name }}</option>{% endfor %}</select></div>
+    <div><label>Opened on</label><input type="date" name="opened_on" value="{{ m.opened_on|iso }}"></div>
+  </div>
+
+  <h3 style="margin-top:18px">Billing</h3>
+  <div class="row">
+    <div><label>Billing type</label><select name="billing_type" id="billing_type">{% for b in billing_types %}<option value="{{ b }}" {{ 'selected' if b == m.billing_type }}>{{ b }}</option>{% endfor %}</select></div>
+    <div data-fee="flat hybrid"><label>Flat fee (total)</label><input type="text" name="flat_fee" value="{{ (m.flat_fee_cents / 100)|round(2) if m.flat_fee_cents else '' }}" placeholder="2,500.00"></div>
+    <div data-fee="hourly hybrid"><label>Hourly rate (blank = attorney or firm default)</label><input type="text" name="hourly_rate" value="{{ (m.hourly_rate_cents / 100)|round(2) if m.hourly_rate_cents else '' }}" placeholder="{{ (firm().default_rate_cents / 100)|round(2) }}"></div>
+    <div data-fee="contingency hybrid"><label>Contingency %</label><input type="number" name="contingency_pct" step="0.5" min="0" max="100" value="{{ m.contingency_pct or '' }}"></div>
+  </div>
+  <div data-fee="flat hybrid" style="margin-top:10px">
+    <label>Flat fee milestones (what gets invoiced when)</label>
+    <table id="ms_table"><tr><th>Description</th><th style="width:140px">Amount</th><th style="width:160px">Due</th><th style="width:70px"></th></tr>
+    {% for ms in m.milestones %}<tr>
+      <td><input type="hidden" name="ms_id" value="{{ ms.id }}">{% if ms.invoiced %}<input type="text" name="ms_description" value="{{ ms.description }}" readonly> <span class="badge paid">invoiced</span>{% else %}<input type="text" name="ms_description" value="{{ ms.description }}">{% endif %}</td>
+      <td><input type="text" name="ms_amount" value="{{ (ms.amount_cents / 100)|round(2) }}" {{ 'readonly' if ms.invoiced }}></td>
+      <td><input type="date" name="ms_due" value="{{ ms.due_on|iso }}" {{ 'readonly' if ms.invoiced }}></td>
+      <td>{% if not ms.invoiced %}<button type="button" class="btn small secondary" data-remove-row>Remove</button>{% endif %}</td>
+    </tr>{% endfor %}
+    {% for _ in range(2 if is_new else 1) %}<tr>
+      <td><input type="hidden" name="ms_id" value=""><input type="text" name="ms_description" placeholder="Retainer on signing"></td>
+      <td><input type="text" name="ms_amount" placeholder="0.00"></td>
+      <td><input type="date" name="ms_due"></td>
+      <td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td>
+    </tr>{% endfor %}
+    </table>
+    <div class="actions" style="margin-top:6px"><button type="button" class="btn small secondary" data-add-row="ms_table">Add milestone</button><span class="small muted">Blank rows are ignored. Clear a description to remove a milestone.</span></div>
+  </div>
+
+  <h3 style="margin-top:18px">Deadlines and court</h3>
+  <div class="row">
+    <div><label>Statute of limitations date</label><input type="date" name="sol_date" value="{{ m.sol_date|iso }}"></div>
+    <div><label>SOL basis</label><input type="text" name="sol_basis" value="{{ m.sol_basis or '' }}" placeholder="2-year PI, TX CPRC 16.003"></div>
+    <div><label>Court</label><input type="text" name="court" value="{{ m.court or '' }}"></div>
+    <div><label>Case number</label><input type="text" name="case_number" value="{{ m.case_number or '' }}"></div>
+  </div>
+  <div><label>Description / scope</label><textarea name="description">{{ m.description or '' }}</textarea></div>
+
+  <h3 style="margin-top:18px">Custom fields</h3>
+  <table id="cf_table"><tr><th style="width:35%">Field</th><th>Value</th><th style="width:70px"></th></tr>
+  {% for k, v in m.custom_fields.items() %}<tr><td><input type="text" name="cf_key" value="{{ k }}"></td><td><input type="text" name="cf_value" value="{{ v }}"></td><td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td></tr>{% endfor %}
+  <tr><td><input type="text" name="cf_key" placeholder="Policy number"></td><td><input type="text" name="cf_value"></td><td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td></tr>
+  </table>
+  <div class="actions" style="margin-top:6px"><button type="button" class="btn small secondary" data-add-row="cf_table">Add field</button></div>
+
+  <div class="actions" style="margin-top:20px"><button class="btn">{{ 'Open matter' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/matters' if is_new else '/matters/' ~ m.id }}">Cancel</a></div>
+</form>
+<script>
+(function(){
+  var sel=document.getElementById('billing_type');
+  function sync(){var v=sel.value;document.querySelectorAll('[data-fee]').forEach(function(el){el.style.display=el.getAttribute('data-fee').split(' ').indexOf(v)>=0?'':'none';});}
+  sel.addEventListener('change',sync);sync();
+  document.addEventListener('click',function(e){
+    var add=e.target.closest('[data-add-row]');
+    if(add){var t=document.getElementById(add.getAttribute('data-add-row'));var rows=t.querySelectorAll('tr');var last=rows[rows.length-1];var clone=last.cloneNode(true);clone.querySelectorAll('input').forEach(function(i){i.value='';i.removeAttribute('readonly');});clone.querySelectorAll('.badge').forEach(function(b){b.remove();});t.appendChild(clone);}
+    var rm=e.target.closest('[data-remove-row]');
+    if(rm){var tr=rm.closest('tr');tr.querySelectorAll('input[type=text],input[type=date]').forEach(function(i){i.value='';});tr.style.display='none';}
+  });
+})();
+</script>
+{% endblock %}

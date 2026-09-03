@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block title %}{{ 'New task' if is_new else 'Edit task' }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New task' if is_new else 'Edit task' }}</h1></div>
+<form method="post" class="card" style="max-width:720px">{{ csrf() }}
+  <div><label>Title</label><input type="text" name="title" value="{{ t.title or '' }}" required></div>
+  <div class="row">
+    <div><label>Kind</label><select name="kind">{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == t.kind }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select></div>
+    <div><label>Due</label><input type="date" name="due_on" value="{{ t.due_on|iso }}"></div>
+    <div><label>Priority</label><select name="priority">{% for p in priorities %}<option value="{{ p }}" {{ 'selected' if p == t.priority }}>{{ p }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="row">
+    <div><label>Matter</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == t.matter_id }}>{{ m.label }}</option>{% endfor %}{% if t.matter and t.matter.status == 'closed' %}<option value="{{ t.matter_id }}" selected>{{ t.matter.label }} (closed)</option>{% endif %}</select></div>
+    <div><label>Assignee</label><select name="assignee_id"><option value="">Unassigned</option>{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == t.assignee_id }}>{{ u.name }}</option>{% endfor %}</select></div>
+  </div>
+  <div><label>Notes</label><textarea name="notes">{{ t.notes or '' }}</textarea></div>
+  {% if request.args.get('next') %}<input type="hidden" name="next" value="{{ request.args.get('next') }}">{% endif %}
+  <div class="actions"><button class="btn">{{ 'Add task' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/tasks' if is_new else '/tasks/' ~ t.id }}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "public.html" %}{% block title %}Pay invoice {{ inv.number }}{% endblock %}{% block content %}
+<div class="card">
+  <h1>Pay invoice {{ inv.number }}</h1>
+  <p class="muted">{{ inv.client.display_name }}{% if inv.matter %} · {{ inv.matter.name }}{% endif %}</p>
+  <table style="max-width:460px">
+    <tr><td>Invoice balance</td><td class="num">{{ inv.balance_cents|money }}</td></tr>
+    {% if surcharge > 0 %}<tr><td>Card processing surcharge {{ pct }}%</td><td class="num">{{ surcharge|money }}</td></tr>{% endif %}
+    <tr><td><strong>Total to pay</strong></td><td class="num"><strong>{{ total|money }}</strong></td></tr>
+  </table>
+  {% if method == 'card' %}
+    <p class="small muted" style="margin-top:12px">{% if surcharge > 0 %}The surcharge covers the card processor's fee and is not charged for bank payments. <a href="{{ url_for('payments.pay', token=inv.public_token, method='ach') }}">Pay by bank transfer instead</a> to avoid it.{% else %}You will be taken to a secure Stripe page to enter your card.{% endif %}</p>
+  {% else %}
+    <p class="small muted" style="margin-top:12px">Bank transfer (ACH). You will be taken to a secure Stripe page to connect or enter your bank account. Bank payments usually settle in a few business days; no surcharge applies.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('payments.pay', token=inv.public_token, method=method) }}">{{ csrf() }}
+    <div class="actions"><button class="btn">Continue to secure payment</button> <a class="btn secondary" href="/p/{{ inv.public_token }}">Back to invoice</a></div>
+  </form>
+</div>
+{% endblock %}

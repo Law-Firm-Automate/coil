@@ -1,0 +1,10 @@
+{% extends "public.html" %}{% block title %}Client portal{% endblock %}{% block content %}
+<div class="card" style="max-width:480px">
+  <h1>Client portal</h1>
+  <p class="muted">Enter the email address we have on file and we will send you a sign-in link. No password needed.</p>
+  <form method="post">{{ csrf() }}
+    <label>Email</label><input type="email" name="email" required autofocus>
+    <div class="actions"><button class="btn">Send me a sign-in link</button></div>
+  </form>
+</div>
+{% endblock %}

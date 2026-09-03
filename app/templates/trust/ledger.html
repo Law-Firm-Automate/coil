@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block title %}Trust ledger: {{ client.display_name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Trust ledger: <a href="/contacts/{{ client.id }}">{{ client.display_name }}</a></h1>
+<div class="actions" style="margin:0">
+  <a class="btn small" href="{{ url_for('trust.new', client_id=client.id, type='deposit') }}">Deposit</a>
+  <a class="btn small secondary" href="{{ url_for('trust.new', client_id=client.id, type='disbursement') }}">Disburse</a>
+  <a class="btn small secondary" href="{{ url_for('trust.index') }}">All clients</a>
+</div></div>
+{% if balance < 0 %}<div class="flash error">This client's trust balance is negative ({{ balance|money }}). That should not be possible. Review the entries below.</div>{% endif %}
+<div class="grid c3">
+  <div class="card stat"><div class="label">Client balance</div><div class="value">{{ balance|money }}</div></div>
+  <div class="card stat"><div class="label">Per matter</div>
+    {% if matters %}<table>{% for m, v in matters %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td class="num">{{ v|money }}</td></tr>{% endfor %}
+    {% if unallocated %}<tr><td class="muted">Not tied to a matter</td><td class="num">{{ unallocated|money }}</td></tr>{% endif %}</table>{% else %}<div class="muted small">No matter-level entries.</div>{% endif %}
+  </div>
+  <div class="card stat"><div class="label">Uncleared</div><div class="value">{{ rows|selectattr('0.cleared', 'equalto', false)|list|length }}</div><div class="small muted">Tick the box once an item shows on the bank statement.</div></div>
+</div>
+<div class="card">
+{% if rows %}<table><tr><th>Date</th><th>Type</th><th>Matter</th><th>Description</th><th>Payee</th><th>Ref</th><th class="num">Amount</th><th class="num">Balance</th><th>Cleared</th></tr>
+{% for t, run in rows %}<tr>
+<td class="nowrap">{{ t.date|d }}</td>
+<td><span class="badge {{ 'paid' if t.amount_cents > 0 else 'sent' }}">{{ labels.get(t.type, t.type) }}</span></td>
+<td>{% if t.matter %}<a href="/matters/{{ t.matter.id }}">{{ t.matter.number }}</a>{% else %}<span class="muted">·</span>{% endif %}</td>
+<td>{{ t.description }}{% if t.invoice %} <a class="small" href="/invoices/{{ t.invoice.id }}">{{ t.invoice.number }}</a>{% endif %}</td>
+<td>{{ t.payee }}</td><td class="small muted">{{ t.reference }}</td>
+<td class="num">{{ t.amount_cents|money }}</td><td class="num"><strong>{{ run|money }}</strong></td>
+<td><form method="post" action="{{ url_for('trust.clear', txn_id=t.id) }}" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.path }}"><input type="checkbox" onchange="this.form.submit()" {% if t.cleared %}checked{% endif %} title="{% if t.cleared %}Cleared {{ t.cleared_on|d }}{% else %}Not yet cleared{% endif %}"></form></td>
+</tr>{% endfor %}
+</table>{% else %}<div class="empty">No trust activity for this client.</div>{% endif %}
+</div>
+{% endblock %}

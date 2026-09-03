@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Reports{% endblock %}{% block content %}
+<div class="topbar"><h1>Reports</h1></div>
+<div class="grid c2">
+  <div class="card"><h2><a href="{{ url_for('reports.ar_aging') }}">A/R aging</a></h2><p class="muted small">Open invoice balances by client in current, 1-30, 31-60, 61-90 and 90+ day buckets.</p><a class="small" href="{{ url_for('reports.ar_aging', format='csv') }}">Download CSV</a></div>
+  <div class="card"><h2><a href="{{ url_for('reports.wip') }}">Work in progress</a></h2><p class="muted small">Unbilled time and expenses by matter. What you could invoice today.</p><a class="small" href="{{ url_for('reports.wip', format='csv') }}">Download CSV</a></div>
+  <div class="card"><h2><a href="{{ url_for('reports.revenue') }}">Revenue</a></h2><p class="muted small">Payments received into operating, by month and by matter, for a date range.</p><a class="small" href="{{ url_for('reports.revenue', format='csv') }}">Download CSV</a></div>
+  <div class="card"><h2><a href="{{ url_for('reports.trust_balances') }}">Trust balances</a></h2><p class="muted small">Client and matter balances in the trust account, with the bank total.</p><a class="small" href="{{ url_for('reports.trust_balances', format='csv') }}">Download CSV</a></div>
+  <div class="card"><h2><a href="{{ url_for('reports.productivity') }}">Productivity</a></h2><p class="muted small">Hours by user by month, billable against non-billable.</p><a class="small" href="{{ url_for('reports.productivity', format='csv') }}">Download CSV</a></div>
+  <div class="card"><h2><a href="/exports">Exports</a></h2><p class="muted small">QuickBooks and full-ledger CSV exports live on the Exports page.</p></div>
+</div>
+{% endblock %}

@@ -1,0 +1,6 @@
+{% extends "public.html" %}{% block title %}Link expired{% endblock %}{% block content %}
+<div class="card" style="max-width:480px">
+  <h1>That link has expired</h1>
+  <p>Sign-in links work once and expire after 30 minutes. <a href="{{ url_for('portal.login') }}">Request a new one</a>.</p>
+</div>
+{% endblock %}

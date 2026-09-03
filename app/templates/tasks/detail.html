@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}{{ t.title }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ t.title }} {% if t.done %}<span class="badge paid">done</span>{% elif t.is_overdue %}<span class="badge overdue">overdue</span>{% endif %}</h1>
+<div class="actions" style="margin:0">
+  <form method="post" action="/tasks/{{ t.id }}/done" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/tasks/{{ t.id }}"><button class="btn small {{ 'secondary' if t.done else 'ok' }}">{{ 'Mark not done' if t.done else 'Mark done' }}</button></form>
+  <a class="btn small secondary" href="/tasks/{{ t.id }}/edit">Edit</a>
+  <form method="post" action="/tasks/{{ t.id }}/delete" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Delete this task?">Delete</button></form>
+</div></div>
+<div class="card" style="max-width:720px">
+  <dl class="kv">
+    <dt>Kind</dt><dd>{{ t.kind.replace('_', ' ') }}</dd>
+    <dt>Due</dt><dd>{{ t.due_on|d or 'no date' }}</dd>
+    <dt>Priority</dt><dd>{{ t.priority }}</dd>
+    <dt>Matter</dt><dd>{% if t.matter %}<a href="/matters/{{ t.matter_id }}">{{ t.matter.label }}</a>{% else %}<span class="muted">none</span>{% endif %}</dd>
+    <dt>Assignee</dt><dd>{{ t.assignee.name if t.assignee else 'Unassigned' }}</dd>
+    {% if t.done %}<dt>Completed</dt><dd>{{ t.done_at|dt }}</dd>{% endif %}
+    <dt>Created</dt><dd>{{ t.created_at|dt }}</dd>
+  </dl>
+  {% if t.notes %}<h3 style="margin-top:12px">Notes</h3><p style="white-space:pre-line">{{ t.notes }}</p>{% endif %}
+</div>
+<p><a href="/tasks">Back to tasks</a></p>
+{% endblock %}

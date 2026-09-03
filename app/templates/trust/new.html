@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}New trust transaction{% endblock %}{% block content %}
+<div class="topbar"><h1>New trust transaction</h1><a class="btn small secondary" href="{{ url_for('trust.index') }}">Back</a></div>
+<div class="card" style="max-width:760px">
+<form method="post">{{ csrf() }}
+  <div class="row">
+    <div><label>Type</label><select name="type">{% for t in types %}<option value="{{ t }}" {% if form.type == t %}selected{% endif %}>{{ labels[t] }}</option>{% endfor %}</select></div>
+    <div><label>Date</label><input type="date" name="date" value="{{ form.date }}" required></div>
+    <div><label>Amount</label><input type="text" name="amount" value="{{ form.amount }}" placeholder="1,000.00" required></div>
+  </div>
+  <div class="row">
+    <div><label>Client</label><select name="client_id" id="t-client" required><option value="">Choose</option>{% for c in clients %}<option value="{{ c.id }}" {% if form.client_id|string == c.id|string %}selected{% endif %}>{{ c.display_name }}</option>{% endfor %}</select></div>
+    <div><label>Matter (optional)</label><select name="matter_id" id="t-matter"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" data-client="{{ m.client_id }}" {% if form.matter_id|string == m.id|string %}selected{% endif %}>{{ m.label }}</option>{% endfor %}</select></div>
+  </div>
+  <label>Description</label><input type="text" name="description" value="{{ form.description }}" placeholder="Retainer deposit, filing fee, refund of unused funds">
+  <div class="row">
+    <div><label>Payee (for disbursements)</label><input type="text" name="payee" value="{{ form.payee }}"></div>
+    <div><label>Reference (check number, wire ref)</label><input type="text" name="reference" value="{{ form.reference }}"></div>
+  </div>
+  <p class="small muted">Enter the amount as a positive number. Deposits and interest add to the balance; disbursements, refunds and bank fees reduce it. A withdrawal that would take a client or matter below zero is refused.</p>
+  <div class="actions"><button class="btn">Save</button></div>
+</form>
+</div>
+{% endblock %}{% block scripts %}<script>
+(function(){var c=document.getElementById('t-client'),m=document.getElementById('t-matter');
+function f(){var v=c.value;Array.prototype.forEach.call(m.options,function(o){if(!o.value)return;var show=!v||o.getAttribute('data-client')===v;o.hidden=!show;if(!show&&o.selected)m.value='';});}
+c.addEventListener('change',f);f();})();
+</script>{% endblock %}

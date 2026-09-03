@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}A/R aging{% endblock %}{% block content %}
+<div class="topbar"><h1>A/R aging</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.ar_aging', format='csv') }}">Download CSV</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<p class="muted small">Open balances on sent, viewed and partially paid invoices as of {{ today|d }}, aged from the due date.</p>
+<div class="card">
+{% if rows %}
+<table>
+<tr><th>Client</th>{% for b in buckets %}<th class="num">{{ b|capitalize }}</th>{% endfor %}<th class="num">Total</th></tr>
+{% for r in rows %}
+<tr><td><a href="/contacts/{{ r.client.id }}">{{ r.client.display_name }}</a>
+  <details><summary class="small">{{ r.invoices|length }} invoice{{ '' if r.invoices|length == 1 else 's' }}</summary>
+  <table class="small">{% for inv, b in r.invoices %}<tr><td><a href="{{ url_for('invoices.detail', id=inv.id) }}">{{ inv.number }}</a></td><td>{{ inv.matter.number }}</td><td>due {{ inv.due_on|d }}</td><td>{{ b }}</td><td class="num">{{ inv.balance_cents|money }}</td></tr>{% endfor %}</table></details></td>
+  {% for b in buckets %}<td class="num">{{ r[b]|money if r[b] else '' }}</td>{% endfor %}<td class="num"><strong>{{ r.total|money }}</strong></td></tr>
+{% endfor %}
+<tr><th>Total</th>{% for b in buckets %}<th class="num">{{ totals[b]|money }}</th>{% endfor %}<th class="num">{{ totals.total|money }}</th></tr>
+</table>
+{% else %}<div class="empty">Nothing outstanding.</div>{% endif %}
+</div>
+{% endblock %}

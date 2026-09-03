@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}New invoice{% endblock %}{% block content %}
+<div class="topbar"><h1>New invoice</h1><div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('invoices.index') }}">Back to invoices</a></div></div>
+<div class="card" style="max-width:640px">
+<form method="get" action="{{ url_for('invoices.new') }}">
+  <label>Which matter is this invoice for?</label>
+  <select name="matter_id" required>
+    <option value="">Choose a matter</option>
+    {% for m in matters %}<option value="{{ m.id }}">{{ m.label }} ({{ m.client.display_name }}, {{ m.billing_type }})</option>{% endfor %}
+  </select>
+  <div class="actions"><button class="btn">Continue</button></div>
+</form>
+{% if not matters %}<div class="empty">No open matters. <a href="/matters/new">Create one</a> first.</div>{% endif %}
+</div>
+{% endblock %}

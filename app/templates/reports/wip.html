@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block title %}Work in progress{% endblock %}{% block content %}
+<div class="topbar"><h1>Work in progress</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.wip', format='csv') }}">Download CSV</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<p class="muted small">Billable time and expenses not yet on an invoice.</p>
+<div class="card">
+{% if rows %}
+<table>
+<tr><th>Matter</th><th>Client</th><th>Billing</th><th class="num">Hours</th><th class="num">Time</th><th class="num">Expenses</th><th class="num">Total WIP</th><th>Oldest</th><th></th></tr>
+{% for r in rows %}
+<tr><td><a href="/matters/{{ r.matter.id }}">{{ r.matter.label }}</a></td><td>{{ r.matter.client.display_name }}</td><td>{{ r.matter.billing_type }}</td>
+  <td class="num">{{ r.minutes|hours }}</td><td class="num">{{ r.time_cents|money }}</td><td class="num">{{ r.expense_cents|money }}</td><td class="num"><strong>{{ r.total|money }}</strong></td><td class="nowrap">{{ r.oldest|d }}</td>
+  <td class="nowrap"><a class="btn small" href="{{ url_for('invoices.new', matter_id=r.matter.id) }}">Invoice</a></td></tr>
+{% endfor %}
+<tr><th colspan="3">Total</th><th class="num">{{ totals.minutes|hours }}</th><th class="num">{{ totals.time_cents|money }}</th><th class="num">{{ totals.expense_cents|money }}</th><th class="num">{{ totals.total|money }}</th><th colspan="2"></th></tr>
+</table>
+{% else %}<div class="empty">No unbilled work.</div>{% endif %}
+</div>
+{% endblock %}

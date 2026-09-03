@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Trust balances{% endblock %}{% block content %}
+<div class="topbar"><h1>Trust balances</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.trust_balances', format='csv') }}">Download CSV</a> <a class="btn secondary small" href="/trust">Trust ledger</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Book balance (all clients)</div><div class="value">{{ total|money }}</div></div>
+  <div class="card stat"><div class="label">Clients with funds</div><div class="value">{{ client_rows|selectattr('cents')|list|length }}</div></div>
+  <div class="card stat"><div class="label">Negative balances</div><div class="value" {% if negatives %}style="color:var(--bad)"{% endif %}>{{ negatives|length }}</div>{% if negatives %}<div class="small muted">A client or matter ledger below zero needs attention.</div>{% endif %}</div>
+</div>
+<div class="grid c2">
+<div class="card"><h2>By client</h2>
+{% if client_rows %}<table><tr><th>Client</th><th class="num">Transactions</th><th class="num">Uncleared</th><th class="num">Balance</th></tr>
+{% for r in client_rows %}<tr><td><a href="/trust/ledger/{{ r.client.id }}">{{ r.client.display_name }}</a></td><td class="num">{{ r.count }}</td><td class="num">{{ r.uncleared or '' }}</td><td class="num" {% if r.cents < 0 %}style="color:var(--bad)"{% endif %}>{{ r.cents|money }}</td></tr>{% endfor %}
+<tr><th colspan="3">Total</th><th class="num">{{ total|money }}</th></tr></table>
+{% else %}<div class="empty">No trust activity.</div>{% endif %}
+</div>
+<div class="card"><h2>By matter</h2>
+{% if matter_rows %}<table><tr><th>Client</th><th>Matter</th><th class="num">Balance</th></tr>
+{% for r in matter_rows %}<tr><td>{{ r.client.display_name }}</td><td>{% if r.matter %}<a href="/matters/{{ r.matter.id }}">{{ r.matter.label }}</a>{% else %}<span class="muted">(general)</span>{% endif %}</td><td class="num" {% if r.cents < 0 %}style="color:var(--bad)"{% endif %}>{{ r.cents|money }}</td></tr>{% endfor %}
+</table>{% else %}<div class="empty">No trust activity.</div>{% endif %}
+</div>
+</div>
+{% endblock %}

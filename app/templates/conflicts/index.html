@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Conflict check{% endblock %}{% block content %}
+<div class="topbar"><h1>Conflict check</h1></div>
+<div class="grid c2">
+  <div class="card"><h2>Run a check</h2>
+    <form method="post" action="/conflicts/run">{{ csrf() }}
+      <label>Names to search, one per line (client, adverse parties, spouses, companies)</label>
+      <textarea name="names" style="min-height:130px" required>{{ prefill }}</textarea>
+      <div class="row">
+        <div><label>Attach to matter (optional)</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if matter and m.id == matter.id }}>{{ m.label }}</option>{% endfor %}</select></div>
+        <div><label>Contact (optional)</label><input type="text" name="contact_id" value="{{ contact.id if contact else '' }}" placeholder="Contact id">{% if contact %}<div class="small muted">{{ contact.display_name }}</div>{% endif %}</div>
+      </div>
+      <div class="actions"><button class="btn">Run check</button></div>
+    </form>
+    <p class="small muted">Searches contacts (names, other names, email), matter parties, matter names, notes and intake leads. Matches are exact substrings plus fuzzy matches at 80% or better, ignoring case and punctuation.</p>
+  </div>
+  <div class="card"><h2>History</h2>
+    {% if history %}<table><tr><th>When</th><th>Names</th><th>Matter</th><th>Hits</th><th>Outcome</th></tr>
+    {% for h in history %}<tr><td class="nowrap"><a href="/conflicts/{{ h.id }}">{{ h.created_at|dt }}</a></td><td style="white-space:pre-line">{{ h.query }}</td><td>{% if h.matter %}<a href="/matters/{{ h.matter_id }}">{{ h.matter.number }}</a>{% endif %}</td><td class="num">{{ h.results|length }}</td><td><span class="badge {{ h.outcome }}">{{ h.outcome }}</span></td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">No checks run yet.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

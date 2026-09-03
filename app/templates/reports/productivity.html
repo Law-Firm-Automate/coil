@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block title %}Productivity{% endblock %}{% block content %}
+<div class="topbar"><h1>Productivity</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.productivity', format='csv', **{'from': d_from|iso, 'to': d_to|iso}) }}">Download CSV</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<div class="card">
+<form method="get" class="row">
+  <div><label>From</label><input type="date" name="from" value="{{ d_from|iso }}"></div>
+  <div><label>To</label><input type="date" name="to" value="{{ d_to|iso }}"></div>
+  <div><label>&nbsp;</label><button class="btn secondary">Update</button></div>
+</form>
+</div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Billable hours</div><div class="value">{{ grand.billable|hours }}</div></div>
+  <div class="card stat"><div class="label">Non-billable hours</div><div class="value">{{ grand.nonbillable|hours }}</div></div>
+  <div class="card stat"><div class="label">Billable value</div><div class="value">{{ grand.amount|money }}</div></div>
+</div>
+<div class="card"><h2>Hours by user by month</h2>
+{% if user_rows %}
+<div style="overflow-x:auto">
+<table>
+<tr><th>User</th>{% for m in months %}<th class="num">{{ m }}</th>{% endfor %}<th class="num">Total</th></tr>
+{% for r in user_rows %}
+<tr><td><strong>{{ r.user.name if r.user else '?' }}</strong><div class="small muted">billable / non-billable</div></td>
+  {% for c in r.cells %}<td class="num">{{ c.billable|hours }} / {{ c.nonbillable|hours }}{% if c.billed %}<div class="small muted">{{ c.billed|hours }} billed</div>{% endif %}</td>{% endfor %}
+  <td class="num"><strong>{{ r.total.billable|hours }} / {{ r.total.nonbillable|hours }}</strong><div class="small muted">{{ r.total.amount|money }}</div></td></tr>
+{% endfor %}
+</table>
+</div>
+{% else %}<div class="empty">No time logged in this range.</div>{% endif %}
+</div>
+{% endblock %}

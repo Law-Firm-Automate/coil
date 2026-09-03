@@ -1,0 +1,7 @@
+{% extends "public.html" %}{% block title %}Invoice {{ inv.number }}{% endblock %}{% block content %}
+<div class="card">
+  {% if reason == 'paid' %}<h1>Invoice {{ inv.number }} is paid</h1><p>Nothing is owed on this invoice. Thank you.</p>
+  {% else %}<h1>Invoice {{ inv.number }} is no longer open</h1><p>This invoice was cancelled. If you were expecting to pay something, please get in touch{% if firm().phone %} at {{ firm().phone }}{% endif %}.</p>{% endif %}
+  <p><a href="/p/{{ inv.public_token }}">View the invoice</a></p>
+</div>
+{% endblock %}

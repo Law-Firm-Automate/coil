@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block title %}Invoices{% endblock %}{% block content %}
+<div class="topbar"><h1>Invoices</h1>
+<div class="actions" style="margin:0"><a class="btn small" href="{{ url_for('invoices.new') }}">New invoice</a></div></div>
+<div class="tabs">
+{% for t in tabs %}<a class="{{ 'active' if t.key == status }}" href="{{ url_for('invoices.index', status=t.key) }}">{{ t.key|capitalize }} <span class="muted small">{{ t.count }}{% if t.key != 'void' and t.key != 'draft' and t.balance %} / {{ t.balance|money }}{% elif t.key == 'draft' and t.total %} / {{ t.total|money }}{% endif %}</span></a>{% endfor %}
+</div>
+<div class="card">
+{% if invoices %}
+<table>
+<tr><th>Number</th><th>Client</th><th>Matter</th><th>Kind</th><th>Issued</th><th>Due</th><th>Status</th><th class="num">Total</th><th class="num">Paid</th><th class="num">Balance</th></tr>
+{% for i in invoices %}
+<tr>
+  <td><a href="{{ url_for('invoices.detail', id=i.id) }}">{{ i.number }}</a></td>
+  <td><a href="/contacts/{{ i.client_id }}">{{ i.client.display_name }}</a></td>
+  <td><a href="/matters/{{ i.matter_id }}">{{ i.matter.number }}</a> <span class="small muted">{{ i.matter.name }}</span></td>
+  <td>{{ i.kind }}</td>
+  <td class="nowrap">{{ i.issued_on|d }}</td>
+  <td class="nowrap">{{ i.due_on|d }}</td>
+  <td><span class="badge {{ i.status }}">{{ i.status }}</span>{% if i.is_overdue %} <span class="badge overdue">overdue</span>{% endif %}{% if i.view_count %} <span class="small muted">viewed {{ i.view_count }}x</span>{% endif %}</td>
+  <td class="num">{{ i.total_cents|money }}</td>
+  <td class="num">{{ i.paid_cents|money }}</td>
+  <td class="num">{% if i.status == 'void' %}<span class="muted">void</span>{% else %}{{ i.balance_cents|money }}{% endif %}</td>
+</tr>
+{% endfor %}
+{% set tab = (tabs|selectattr('key','equalto',status)|list)[0] %}
+<tr><th colspan="7">{{ tab.count }} invoice{{ '' if tab.count == 1 else 's' }}</th><th class="num">{{ tab.total|money }}</th><th></th><th class="num">{{ tab.balance|money }}</th></tr>
+</table>
+{% else %}<div class="empty">No {{ '' if status == 'all' else status }} invoices. <a href="{{ url_for('invoices.new') }}">Build one</a>.</div>{% endif %}
+</div>
+{% endblock %}

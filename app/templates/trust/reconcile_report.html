@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Reconciliation {{ r.period_end|d }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Trust reconciliation as of {{ r.period_end|d }}</h1>
+<div class="actions no-print" style="margin:0"><a class="btn small secondary" href="{{ url_for('trust.reconcile') }}">All reconciliations</a> <button class="btn small secondary" onclick="window.print()">Print</button></div></div>
+{% if r.balanced %}
+<div class="flash ok" style="font-size:1.25rem;padding:18px"><strong>Balanced.</strong> Bank, book and client ledgers all agree at {{ r.book_balance_cents|money }}.</div>
+{% else %}
+<div class="flash error" style="font-size:1.25rem;padding:18px"><strong>Out of balance by {{ out_by|money }}.</strong>
+  {% if diff_bank %}Adjusted bank is {{ diff_bank|abs|money }} {{ 'above' if diff_bank > 0 else 'below' }} the book.{% endif %}
+  {% if diff_ledgers %}Client ledgers are {{ diff_ledgers|abs|money }} {{ 'above' if diff_ledgers > 0 else 'below' }} the book.{% endif %}
+</div>
+{% endif %}
+<div class="grid c3">
+  <div class="card"><h2>Bank</h2>
+    <dl class="kv">
+      <dt>Statement balance</dt><dd>{{ r.bank_statement_cents|money }}</dd>
+      <dt>+ Deposits in transit</dt><dd>{{ r.outstanding_deposits_cents|money }}</dd>
+      <dt>- Outstanding disbursements</dt><dd>{{ r.outstanding_disbursements_cents|abs|money }}</dd>
+      <dt><strong>Adjusted bank</strong></dt><dd><strong>{{ r.adjusted_bank_cents|money }}</strong></dd>
+    </dl>
+  </div>
+  <div class="card"><h2>Book</h2>
+    <dl class="kv"><dt>All entries dated on or before {{ r.period_end|d }}</dt><dd></dd><dt><strong>Book balance</strong></dt><dd><strong>{{ r.book_balance_cents|money }}</strong></dd></dl>
+  </div>
+  <div class="card"><h2>Client ledgers</h2>
+    {% if detail.clients %}<table>{% for c in detail.clients %}<tr><td><a href="{{ url_for('trust.ledger', client_id=c.client_id) }}">{{ c.name }}</a></td><td class="num {% if c.balance_cents < 0 %}muted{% endif %}">{{ c.balance_cents|money }}</td></tr>{% endfor %}
+    <tr><td><strong>Total</strong></td><td class="num"><strong>{{ r.client_ledgers_cents|money }}</strong></td></tr></table>{% else %}<div class="muted small">No client balances.</div>{% endif %}
+  </div>
+</div>
+<div class="grid c2">
+  <div class="card"><h2>Deposits in transit ({{ deposits|length }})</h2>
+    {% if deposits %}<table><tr><th>Date</th><th>Client</th><th>Description</th><th class="num">Amount</th></tr>{% for t in deposits %}<tr><td class="nowrap">{{ t.date|d }}</td><td>{{ t.client.display_name }}</td><td>{{ labels.get(t.type, t.type) }}: {{ t.description }} <span class="muted small">{{ t.reference }}</span></td><td class="num">{{ t.amount_cents|money }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">None</div>{% endif %}
+  </div>
+  <div class="card"><h2>Outstanding disbursements ({{ disbursements|length }})</h2>
+    {% if disbursements %}<table><tr><th>Date</th><th>Client</th><th>Description</th><th class="num">Amount</th></tr>{% for t in disbursements %}<tr><td class="nowrap">{{ t.date|d }}</td><td>{{ t.client.display_name }}</td><td>{{ labels.get(t.type, t.type) }}: {{ t.description }} <span class="muted small">{{ t.payee }} {{ t.reference }}</span></td><td class="num">{{ t.amount_cents|money }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">None</div>{% endif %}
+  </div>
+</div>
+{% if r.notes %}<div class="card"><h2>Notes</h2><p>{{ r.notes }}</p></div>{% endif %}
+<p class="small muted">Prepared by {{ r.created_by.name if r.created_by else 'unknown' }} on {{ r.created_at|dt }}.</p>
+{% endblock %}

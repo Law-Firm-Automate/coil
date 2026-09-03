@@ -1,0 +1,62 @@
+{% extends "base.html" %}{% block title %}{{ 'Edit time entry' if entry.id else 'Log time' }}{% endblock %}{% block content %}
+{% set v = form or {} %}
+<div class="topbar"><h1>{{ 'Time entry' if entry.id else 'Log time' }}</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('time.index', matter_id=entry.matter_id) }}">Back to time</a></div></div>
+{% if locked %}
+<div class="card">
+  <div class="flash">&#128274; This entry is on invoice <a href="/invoices/{{ entry.invoice_id }}">{{ entry.invoice.number }}</a> and is read-only. Void the invoice to unlock it.</div>
+  <dl class="kv">
+    <dt>Matter</dt><dd><a href="/matters/{{ entry.matter_id }}">{{ entry.matter.label }}</a></dd>
+    <dt>Date</dt><dd>{{ entry.date|d }}</dd>
+    <dt>Duration</dt><dd>{{ entry.minutes|hours }} hours ({{ entry.minutes }} minutes)</dd>
+    <dt>Description</dt><dd>{{ entry.description }}</dd>
+    <dt>Rate</dt><dd>{{ entry.rate_cents|money }}/hr</dd>
+    <dt>Amount</dt><dd>{{ entry.amount_cents|money }}</dd>
+    <dt>Billable</dt><dd>{{ 'Yes' if entry.billable else 'No' }}</dd>
+    <dt>Activity code</dt><dd>{{ entry.activity_code or '' }}</dd>
+    <dt>User</dt><dd>{{ entry.user.name }}</dd>
+  </dl>
+</div>
+{% else %}
+<div class="card" style="max-width:760px">
+<form method="post">{{ csrf() }}
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  <div class="row">
+    <div style="grid-column:1/-1"><label>Matter</label>
+      <select name="matter_id" id="matter_id" required>
+        <option value="">Choose a matter</option>
+        {% for m in matters %}<option value="{{ m.id }}" data-rate="{{ '%.2f' % (rates[m.id] / 100) }}" {{ 'selected' if (v.get('matter_id')|int if v.get('matter_id') else entry.matter_id) == m.id }}>{{ m.label }} ({{ m.client.display_name }})</option>{% endfor %}
+      </select></div>
+    <div><label>Date</label><input type="date" name="date" value="{{ v.get('date') or entry.date|iso }}" required></div>
+    <div><label>Duration</label><input type="text" name="duration" id="duration" value="{{ v.get('duration') if v.get('duration') is not none else (entry.minutes|hours if entry.id else '') }}" placeholder="1.5, 1:30, or 90m" required autofocus>
+      <div class="small muted">Accepts hours (1.5), h:mm (1:30), or minutes (90m).</div></div>
+    <div><label>Rate per hour</label><input type="text" name="rate" id="rate" value="{{ v.get('rate') if v.get('rate') is not none else '%.2f' % ((entry.rate_cents or 0) / 100) }}" inputmode="decimal"></div>
+    <div><label>Activity code</label><select name="activity_code">{% set cur = v.get('activity_code') if v.get('activity_code') is not none else entry.activity_code %}{% for c in activity_codes %}<option value="{{ c[:20] }}" {{ 'selected' if cur == c[:20] }}>{{ c or '(none)' }}</option>{% endfor %}</select></div>
+  </div>
+  <label>Description</label><textarea name="description" placeholder="What did you do?">{{ v.get('description') if v.get('description') is not none else entry.description }}</textarea>
+  <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" name="billable" value="1" {{ 'checked' if (v.get('billable') if form else entry.billable) }}> Billable</label>
+  <div class="actions">
+    <button class="btn">{{ 'Save changes' if entry.id else 'Log time' }}</button>
+    <a class="btn secondary" href="{{ url_for('time.index', matter_id=entry.matter_id) }}">Cancel</a>
+  </div>
+</form>
+{% if entry.id %}
+<form method="post" action="{{ url_for('time.delete', id=entry.id) }}" class="inline" style="margin-top:8px">{{ csrf() }}<button class="btn danger small" data-confirm="Delete this time entry?">Delete entry</button></form>
+{% endif %}
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  var sel=document.getElementById('matter_id'),rate=document.getElementById('rate');
+  if(!sel||!rate)return;
+  var last=sel.selectedIndex>=0?(sel.options[sel.selectedIndex].getAttribute('data-rate')||''):'';
+  sel.addEventListener('change',function(){
+    var r=sel.options[sel.selectedIndex].getAttribute('data-rate')||'';
+    if(!rate.value||rate.value===last||rate.value==='0.00'){rate.value=r;}
+    last=r;
+  });
+})();
+</script>
+{% endblock %}

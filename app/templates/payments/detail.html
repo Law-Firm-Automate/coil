@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Payment #{{ pay.id }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Payment of {{ pay.amount_cents|money }}</h1><a class="btn small secondary" href="{{ url_for('payments.index') }}">All payments</a></div>
+<div class="card" style="max-width:720px">
+<dl class="kv">
+  <dt>Received</dt><dd>{{ pay.received_on|d }}</dd>
+  <dt>Client</dt><dd>{% if pay.client %}<a href="/contacts/{{ pay.client.id }}">{{ pay.client.display_name }}</a>{% endif %}</dd>
+  <dt>Matter</dt><dd>{% if pay.matter %}<a href="/matters/{{ pay.matter.id }}">{{ pay.matter.label }}</a>{% endif %}</dd>
+  <dt>Invoice</dt><dd>{% if pay.invoice %}<a href="/invoices/{{ pay.invoice.id }}">{{ pay.invoice.number }}</a> <span class="badge {{ pay.invoice.status }}">{{ pay.invoice.status }}</span>{% else %}<span class="muted">None (trust deposit)</span>{% endif %}</dd>
+  <dt>Method</dt><dd>{{ pay.method }}</dd>
+  <dt>Account</dt><dd>{{ pay.account }}</dd>
+  <dt>Amount</dt><dd>{{ pay.amount_cents|money }}</dd>
+  {% if pay.surcharge_cents %}<dt>Surcharge</dt><dd>{{ pay.surcharge_cents|money }}</dd>{% endif %}
+  {% if pay.stripe_fee_cents %}<dt>Processor fee</dt><dd>{{ pay.stripe_fee_cents|money }}</dd>{% endif %}
+  {% if pay.reference %}<dt>Reference</dt><dd>{{ pay.reference }}</dd>{% endif %}
+  {% if pay.stripe_checkout_session %}<dt>Stripe session</dt><dd class="small">{{ pay.stripe_checkout_session }}</dd>{% endif %}
+  {% if pay.stripe_payment_intent %}<dt>Payment intent</dt><dd class="small">{{ pay.stripe_payment_intent }}</dd>{% endif %}
+  {% if pay.note %}<dt>Note</dt><dd>{{ pay.note }}</dd>{% endif %}
+  {% if txn %}<dt>Trust entry</dt><dd><a href="{{ url_for('trust.ledger', client_id=txn.client_id) }}">{{ txn.description }} ({{ txn.amount_cents|money }})</a></dd>{% endif %}
+  <dt>Recorded</dt><dd>{{ pay.created_at|dt }}</dd>
+</dl>
+</div>
+{% endblock %}

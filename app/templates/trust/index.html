@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% block title %}Trust accounting{% endblock %}{% block content %}
+<div class="topbar"><h1>Trust accounting</h1>
+<div class="actions" style="margin:0">
+  <a class="btn small" href="{{ url_for('trust.new') }}">New transaction</a>
+  <a class="btn small secondary" href="{{ url_for('trust.reconcile') }}">Reconcile</a>
+</div></div>
+{% if negatives %}<div class="flash error"><strong>Negative trust balance.</strong> This should not be possible and needs attention now: {{ negatives|join('; ') }}</div>{% endif %}
+<div class="grid c4">
+  <div class="card stat"><div class="label">{{ firm().trust_bank_name or 'Trust account' }} book balance</div><div class="value">{{ bank_total|money }}</div><div class="small muted">Sum of every ledger entry</div></div>
+  <div class="card stat"><div class="label">Clients with funds</div><div class="value">{{ rows|length }}</div></div>
+  <div class="card stat"><div class="label">Uncleared items</div><div class="value">{{ uncleared }}</div><div class="small muted">Not yet matched to the bank statement</div></div>
+  <div class="card stat"><div class="label">Last reconciliation</div>
+    {% if last_recon %}<div class="value"><a href="{{ url_for('trust.reconcile_report', recon_id=last_recon.id) }}">{{ last_recon.period_end|d }}</a></div>
+      <div class="small">{% if last_recon.balanced %}<span class="badge paid">balanced</span>{% else %}<span class="badge overdue">out of balance</span>{% endif %}</div>
+    {% else %}<div class="value muted">None yet</div><div class="small"><a href="{{ url_for('trust.reconcile') }}">Run one</a></div>{% endif %}
+  </div>
+</div>
+<div class="card"><h2>Client balances</h2>
+{% if rows %}<table><tr><th>Client</th><th>Matter</th><th class="num">Balance</th><th></th></tr>
+{% for r in rows %}
+<tr><td><strong><a href="{{ url_for('trust.ledger', client_id=r.client.id) }}">{{ r.client.display_name }}</a></strong></td><td class="muted">All matters</td><td class="num"><strong>{{ r.balance|money }}</strong></td><td class="nowrap"><a class="small" href="{{ url_for('trust.ledger', client_id=r.client.id) }}">Ledger</a> · <a class="small" href="{{ url_for('trust.new', client_id=r.client.id, type='disbursement') }}">Disburse</a></td></tr>
+{% for m, v in r.matters %}<tr><td></td><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td class="num">{{ v|money }}</td><td></td></tr>{% endfor %}
+{% if r.unallocated %}<tr><td></td><td class="muted">Not tied to a matter</td><td class="num">{{ r.unallocated|money }}</td><td></td></tr>{% endif %}
+{% endfor %}
+<tr><td colspan="2"><strong>Total held in trust</strong></td><td class="num"><strong>{{ bank_total|money }}</strong></td><td></td></tr>
+</table>{% else %}<div class="empty">No client funds in trust. <a href="{{ url_for('trust.new') }}">Record a deposit</a>.</div>{% endif %}
+</div>
+<div class="grid c2">
+  <div class="card"><h2>Request a deposit</h2>
+    <p class="small muted">{% if stripe_on %}Emails the client a secure Stripe link (bank transfer or card). The deposit posts to their ledger automatically when it settles.{% else %}Stripe is not configured, so this emails the client check and mailing instructions for the trust account.{% endif %}</p>
+    <form method="post" action="{{ url_for('trust.request_deposit') }}">{{ csrf() }}
+      <div class="row">
+        <div><label>Client</label><select name="client_id" id="rd-client" required><option value="">Choose</option>{% for c in all_clients %}<option value="{{ c.id }}">{{ c.display_name }}{% if not c.email %} (no email){% endif %}</option>{% endfor %}</select></div>
+        <div><label>Matter (optional)</label><select name="matter_id" id="rd-matter"><option value="">None</option>{% for m in open_matters %}<option value="{{ m.id }}" data-client="{{ m.client_id }}">{{ m.label }}</option>{% endfor %}</select></div>
+        <div><label>Amount</label><input type="text" name="amount" placeholder="2,500.00" required></div>
+      </div>
+      <div class="actions"><button class="btn">Send request</button></div>
+    </form>
+  </div>
+  <div class="card"><h2>Card fees owed to trust</h2>
+    <div class="stat" style="padding:0"><div class="value">{{ card_fees|money }}</div></div>
+    <p class="small muted">Processor fees on online trust deposits must be paid from the operating account so the client is credited the gross amount they sent; this is the running total of those fees.</p>
+  </div>
+</div>
+{% endblock %}{% block scripts %}<script>
+(function(){var c=document.getElementById('rd-client'),m=document.getElementById('rd-matter');if(!c||!m)return;
+function f(){var v=c.value;Array.prototype.forEach.call(m.options,function(o){if(!o.value)return;var show=!v||o.getAttribute('data-client')===v;o.hidden=!show;if(!show&&o.selected)m.value='';});}
+c.addEventListener('change',f);f();})();
+</script>{% endblock %}

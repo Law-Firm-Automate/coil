@@ -1,0 +1,9 @@
+{% extends "public.html" %}{% block title %}Thank you{% endblock %}{% block content %}
+<div class="card">
+  <h1>Thank you</h1>
+  {% if recorded %}<p>Your payment of <strong>{{ recorded.amount_cents|money }}</strong> on invoice {{ inv.number }} has been received.{% if recorded.surcharge_cents %} A card surcharge of {{ recorded.surcharge_cents|money }} was added.{% endif %}</p>
+  {% elif inv.status == 'paid' %}<p>Invoice {{ inv.number }} is paid in full.</p>
+  {% else %}<p>Your payment on invoice {{ inv.number }} is on its way. Bank transfers can take a few business days to settle; the invoice will show as paid once the funds arrive. You do not need to do anything else.</p>{% endif %}
+  <p><a href="/p/{{ inv.public_token }}">View the invoice</a></p>
+</div>
+{% endblock %}

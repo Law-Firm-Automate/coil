@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Time{% endblock %}{% block content %}
+<div class="topbar"><h1>Time &amp; expenses</h1>
+<div class="actions" style="margin:0">
+  {% if timer %}<span class="timerbar">Timer: <strong data-timer-seconds="{{ timer.elapsed_seconds() }}" data-timer-running="{{ 0 if timer.paused else 1 }}"></strong> {{ timer.matter.number if timer.matter else '' }} <a href="{{ url_for('time.timer') }}">manage</a></span>{% else %}<a class="btn secondary small" href="{{ url_for('time.timer') }}">Start timer</a>{% endif %}
+  <a class="btn small" href="{{ url_for('time.new') }}">Log time</a>
+  <a class="btn small secondary" href="{{ url_for('time.expenses') }}">Expenses</a>
+</div></div>
+<div class="tabs"><a class="active" href="{{ url_for('time.index') }}">Time entries</a><a href="{{ url_for('time.expenses') }}">Expenses</a><a href="{{ url_for('time.timer') }}">Timer</a></div>
+<div class="card">
+<form method="get" action="{{ url_for('time.index') }}" class="row">
+  <div><label>Matter</label><select name="matter_id"><option value="">All matters</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if f.matter_id == m.id }}>{{ m.label }}</option>{% endfor %}</select></div>
+  <div><label>User</label><select name="user_id"><option value="">Everyone</option>{% for x in users %}<option value="{{ x.id }}" {{ 'selected' if f.user_id == x.id }}>{{ x.name }}</option>{% endfor %}</select></div>
+  <div><label>From</label><input type="date" name="from" value="{{ f.from }}"></div>
+  <div><label>To</label><input type="date" name="to" value="{{ f.to }}"></div>
+  <div><label>&nbsp;</label><button class="btn secondary">Filter</button> <a class="btn secondary" href="{{ url_for('time.index') }}">Clear</a></div>
+</form>
+</div>
+<div class="card">
+{% if entries %}
+<table>
+<tr><th>Date</th><th>Matter</th><th>Description</th><th>User</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th><th>Status</th><th></th></tr>
+{% for e in entries %}
+<tr>
+  <td class="nowrap">{{ e.date|d }}</td>
+  <td><a href="/matters/{{ e.matter_id }}">{{ e.matter.number }}</a> <span class="small muted">{{ e.matter.name }}</span></td>
+  <td>{{ e.description }}{% if e.activity_code %} <span class="small muted">{{ e.activity_code }}</span>{% endif %}</td>
+  <td>{{ e.user.initials or e.user.name }}</td>
+  <td class="num">{{ e.minutes|hours }}</td>
+  <td class="num">{{ e.rate_cents|money }}</td>
+  <td class="num">{% if e.billable %}{{ e.amount_cents|money }}{% else %}<span class="muted">n/c</span>{% endif %}</td>
+  <td>{% if e.invoice_id %}<a href="/invoices/{{ e.invoice_id }}" title="On invoice {{ e.invoice.number }}">&#128274; {{ e.invoice.number }}</a>{% elif not e.billable %}<span class="badge">non-billable</span>{% else %}<span class="badge draft">unbilled</span>{% endif %}</td>
+  <td class="nowrap"><a href="{{ url_for('time.edit', id=e.id) }}">{{ 'view' if e.invoice_id else 'edit' }}</a></td>
+</tr>
+{% endfor %}
+<tr><th colspan="4">Totals ({{ entries|length }} entries)</th><th class="num">{{ total_minutes|hours }}</th><th></th><th class="num">{{ total_amount|money }}</th><th colspan="2">Unbilled: {{ unbilled_amount|money }}</th></tr>
+</table>
+{% else %}<div class="empty">No time entries match. <a href="{{ url_for('time.new') }}">Log time</a>.</div>{% endif %}
+</div>
+{% endblock %}

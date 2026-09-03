@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% block title %}Tasks and deadlines{% endblock %}{% block content %}
+<div class="topbar"><h1>Tasks and deadlines</h1><div class="actions" style="margin:0"><a class="btn small" href="/tasks/new">New task</a><a class="btn small secondary" href="/tasks/new?kind=deadline">New deadline</a><a class="btn small secondary" href="/tasks/new?kind=court_date">New court date</a></div></div>
+<div class="card">
+  <form method="get" class="searchbar" style="flex-wrap:wrap">
+    <select name="assignee_id" style="width:auto"><option value="">Anyone</option>{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == assignee_id }}>{{ u.name }}</option>{% endfor %}</select>
+    <select name="matter_id" style="width:auto"><option value="">Any matter</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}</option>{% endfor %}</select>
+    <select name="kind" style="width:auto"><option value="">Any kind</option>{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select>
+    <select name="priority" style="width:auto"><option value="">Any priority</option>{% for p in priorities %}<option value="{{ p }}" {{ 'selected' if p == priority }}>{{ p }}</option>{% endfor %}</select>
+    <button class="btn secondary">Filter</button>
+    {% if assignee_id or matter_id or kind or priority %}<a class="small" href="/tasks">Clear</a>{% endif %}
+  </form>
+</div>
+{% macro rows(items) %}
+<table>{% for t in items %}<tr>
+  <td style="width:1%"><form method="post" action="/tasks/{{ t.id }}/done" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small {{ 'ok' if t.done else 'secondary' }}" title="Toggle done">{{ 'Undo' if t.done else 'Done' }}</button></form></td>
+  <td><a href="/tasks/{{ t.id }}" {% if t.done %}class="muted"{% endif %}>{{ t.title }}</a>{% if t.kind != 'task' %} <span class="badge {{ 'overdue' if t.kind == 'court_date' else 'pending' }}">{{ t.kind.replace('_', ' ') }}</span>{% endif %}{% if t.priority == 'high' %} <span class="badge conflict">high</span>{% elif t.priority == 'low' %} <span class="badge">low</span>{% endif %}{% if t.matter %}<br><a class="small muted" href="/matters/{{ t.matter_id }}">{{ t.matter.label }}</a>{% endif %}</td>
+  <td class="nowrap">{{ t.due_on|d }}</td>
+  <td class="nowrap small muted">{{ t.assignee.name if t.assignee else '' }}</td>
+</tr>{% endfor %}</table>
+{% endmacro %}
+<div class="grid c2">
+  <div>
+    {% for name, items in groups.items() %}
+    <div class="card"><h2>{{ name }} <span class="muted small">{{ items|length }}</span></h2>
+      {% if items %}{{ rows(items) }}{% else %}<div class="empty">Nothing here.</div>{% endif %}</div>
+    {% endfor %}
+    <div class="card"><h2>Done <span class="muted small">last {{ done_tasks|length }}</span></h2>
+      {% if done_tasks %}{{ rows(done_tasks) }}{% else %}<div class="empty">Nothing completed yet.</div>{% endif %}</div>
+  </div>
+  <div>
+    <div class="card"><h2>Limitations deadlines <span class="muted small">next {{ sol_window }} days</span></h2>
+      {% if sol_matters %}<table><tr><th>Matter</th><th>SOL date</th><th class="num">Days</th></tr>
+      {% for m in sol_matters %}{% set days = (m.sol_date - today).days %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a>{% if m.sol_basis %}<br><span class="small muted">{{ m.sol_basis }}</span>{% endif %}</td><td class="nowrap"><strong>{{ m.sol_date|d }}</strong></td><td class="num">{% if days < 0 %}<span class="badge overdue">passed</span>{% elif days <= 30 %}<span class="badge conflict">{{ days }}</span>{% else %}{{ days }}{% endif %}</td></tr>{% endfor %}</table>
+      {% else %}<div class="empty">No open matters with a limitations date in the next {{ sol_window }} days.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

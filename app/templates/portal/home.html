@@ -1,0 +1,52 @@
+{% extends "public.html" %}{% block title %}Your portal{% endblock %}{% block content %}
+{% include "portal/_nav.html" %}
+<h1>Welcome, {{ c.first_name or c.display_name }}</h1>
+<p class="muted">Here is where things stand with your matters at {{ firm().name }}.</p>
+
+{% if letters %}
+<div class="card">
+  <h2>Engagement letters awaiting your signature</h2>
+  <table>{% for e in letters %}<tr><td>{{ e.subject or e.matter.name }}<br><span class="small muted">Sent {{ e.sent_at|d }}</span></td><td class="right nowrap"><a class="btn small" href="/sign/{{ e.token }}">Review and sign</a></td></tr>{% endfor %}</table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Invoices due</h2>
+  {% if invoices %}<table><tr><th>Invoice</th><th>Matter</th><th>Due</th><th class="num">Balance</th><th></th></tr>
+  {% for i in invoices %}<tr><td>{{ i.number }}</td><td>{{ i.matter.name if i.matter else '' }}</td><td class="nowrap">{{ i.due_on|d }}{% if i.is_overdue %} <span class="badge overdue">past due</span>{% endif %}</td><td class="num">{{ i.balance_cents|money }}</td><td class="right nowrap"><a href="/p/{{ i.public_token }}">View and pay</a></td></tr>{% endfor %}</table>
+  {% else %}<p class="muted">Nothing is due right now.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Your matters</h2>
+  {% if matters %}<table><tr><th>Number</th><th>Matter</th><th>Status</th><th>Attorney</th></tr>
+  {% for m in matters %}<tr><td class="nowrap">{{ m.number }}</td><td>{{ m.name }}</td><td><span class="badge {{ m.status }}">{{ m.status }}</span></td><td>{{ m.responsible.name if m.responsible else '' }}</td></tr>{% endfor %}</table>
+  {% else %}<p class="muted">No open matters.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Documents shared with you</h2>
+  {% if docs %}<table>{% for d in docs %}<tr><td>{{ d.name }}<br><span class="small muted">{{ d.matter.name }} · {{ d.created_at|d }}{% if d.uploaded_by_client %} · uploaded by you{% endif %}</span></td><td class="right nowrap"><a href="{{ url_for('portal.download', doc_id=d.id) }}">Download</a></td></tr>{% endfor %}</table>
+  {% else %}<p class="muted">No documents have been shared yet.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Send us a document</h2>
+  {% if all_matters %}
+  <form method="post" action="{{ url_for('portal.upload') }}" enctype="multipart/form-data">{{ csrf() }}
+    <div class="row">
+      <div><label>Matter</label><select name="matter_id" required>{% for m in all_matters %}<option value="{{ m.id }}">{{ m.number }} {{ m.name }}</option>{% endfor %}</select></div>
+      <div><label>File</label><input type="file" name="file" required></div>
+    </div>
+    <div class="actions"><button class="btn">Upload</button></div>
+  </form>
+  {% else %}<p class="muted">Once you have a matter with us you can upload documents here.</p>{% endif %}
+</div>
+
+{% if trust > 0 %}
+<div class="card">
+  <h2>Trust balance</h2>
+  <p><strong>{{ trust|money }}</strong> of your money is held in our client trust account. It stays yours until it is applied to an invoice for work already done, and anything unused is returned to you.</p>
+</div>
+{% endif %}
+{% endblock %}

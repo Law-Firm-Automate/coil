@@ -1,0 +1,7 @@
+{% extends "public.html" %}{% block title %}Payment not completed{% endblock %}{% block content %}
+<div class="card">
+  <h1>No payment was made</h1>
+  <p>You left the payment page before finishing, so nothing was charged. Invoice {{ inv.number }} still shows {{ inv.balance_cents|money }} due. You can come back any time.</p>
+  <p><a class="btn" href="/p/{{ inv.public_token }}">Back to the invoice</a></p>
+</div>
+{% endblock %}

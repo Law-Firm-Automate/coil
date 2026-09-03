@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Trust reconciliation{% endblock %}{% block content %}
+<div class="topbar"><h1>Three-way trust reconciliation</h1><a class="btn small secondary" href="{{ url_for('trust.index') }}">Back</a></div>
+<div class="grid c2">
+  <div class="card"><h2>Reconcile a statement</h2>
+    <p class="small muted">Enter the period end date and the ending balance printed on the bank statement. The report compares the bank (adjusted for uncleared items), the book balance ({{ book|money }} today), and the sum of every client ledger.</p>
+    <form method="post">{{ csrf() }}
+      <div class="row">
+        <div><label>Statement period end</label><input type="date" name="period_end" value="{{ today|iso }}" required></div>
+        <div><label>Bank statement ending balance</label><input type="text" name="bank_statement" placeholder="12,345.67" required></div>
+      </div>
+      <label>Notes (optional)</label><textarea name="notes"></textarea>
+      <div class="actions"><button class="btn">Run reconciliation</button></div>
+    </form>
+  </div>
+  <div class="card"><h2>Past reconciliations</h2>
+    {% if past %}<table><tr><th>Period end</th><th class="num">Bank</th><th class="num">Book</th><th>Result</th><th>By</th></tr>
+    {% for r in past %}<tr><td><a href="{{ url_for('trust.reconcile_report', recon_id=r.id) }}">{{ r.period_end|d }}</a></td><td class="num">{{ r.bank_statement_cents|money }}</td><td class="num">{{ r.book_balance_cents|money }}</td><td>{% if r.balanced %}<span class="badge paid">balanced</span>{% else %}<span class="badge overdue">out by {{ (r.adjusted_bank_cents - r.book_balance_cents)|abs|money }}</span>{% endif %}</td><td class="small muted">{{ r.created_by.name if r.created_by else '' }} {{ r.created_at|d }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">No reconciliations yet. Most bars expect one every month.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

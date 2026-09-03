@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}{{ e.title }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ e.title }}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/calendar/{{ e.id }}/edit">Edit</a>
+<form method="post" action="/calendar/{{ e.id }}/delete" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Delete this event?">Delete</button></form></div></div>
+<div class="card" style="max-width:720px">
+  <dl class="kv">
+    <dt>When</dt><dd>{% if e.all_day %}{{ e.starts_at|d }} (all day){% else %}{{ e.starts_at|dt }}{% if e.ends_at %} to {{ e.ends_at|dt }}{% endif %}{% endif %}</dd>
+    <dt>Location</dt><dd>{{ e.location or '' }}</dd>
+    <dt>Matter</dt><dd>{% if e.matter %}<a href="/matters/{{ e.matter_id }}">{{ e.matter.label }}</a>{% else %}<span class="muted">none</span>{% endif %}</dd>
+  </dl>
+  {% if e.notes %}<h3 style="margin-top:12px">Notes</h3><p style="white-space:pre-line">{{ e.notes }}</p>{% endif %}
+</div>
+<p><a href="/calendar?month={{ e.starts_at.strftime('%Y-%m') }}">Back to {{ e.starts_at.strftime('%B %Y') }}</a></p>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block title %}Revenue{% endblock %}{% block content %}
+<div class="topbar"><h1>Revenue</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.revenue', format='csv', **{'from': d_from|iso, 'to': d_to|iso}) }}">Download CSV</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<div class="card">
+<form method="get" class="row">
+  <div><label>From</label><input type="date" name="from" value="{{ d_from|iso }}"></div>
+  <div><label>To</label><input type="date" name="to" value="{{ d_to|iso }}"></div>
+  <div><label>&nbsp;</label><button class="btn secondary">Update</button></div>
+</form>
+</div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Received into operating</div><div class="value">{{ total|money }}</div><div class="small muted">{{ count }} payment{{ '' if count == 1 else 's' }}, {{ d_from|d }} to {{ d_to|d }}</div></div>
+  <div class="card stat"><div class="label">By method</div>{% if by_method %}<table class="small">{% for k, v in by_method.items() %}<tr><td>{{ k }}</td><td class="num">{{ v|money }}</td></tr>{% endfor %}</table>{% else %}<div class="muted small">none</div>{% endif %}</div>
+  <div class="card stat"><div class="label">Note</div><div class="small muted">Payments applied from trust are counted here because they move money into operating. Card surcharges and processor fees are shown separately in the CSV.</div></div>
+</div>
+<div class="grid c2">
+<div class="card"><h2>By month</h2>
+{% if months %}<table><tr><th>Month</th><th class="num">Payments</th><th class="num">Amount</th></tr>
+{% for m in months %}<tr><td>{{ m.month }}</td><td class="num">{{ m.count }}</td><td class="num">{{ m.cents|money }}</td></tr>{% endfor %}
+<tr><th>Total</th><th class="num">{{ count }}</th><th class="num">{{ total|money }}</th></tr></table>
+{% else %}<div class="empty">No payments in this range.</div>{% endif %}
+</div>
+<div class="card"><h2>By matter</h2>
+{% if matter_rows %}<table><tr><th>Matter</th><th class="num">Payments</th><th class="num">Amount</th></tr>
+{% for r in matter_rows %}<tr><td>{% if r.matter %}<a href="/matters/{{ r.matter.id }}">{{ r.matter.label }}</a>{% else %}<span class="muted">(no matter)</span>{% endif %}</td><td class="num">{{ r.count }}</td><td class="num">{{ r.cents|money }}</td></tr>{% endfor %}
+</table>{% else %}<div class="empty">No payments in this range.</div>{% endif %}
+</div>
+</div>
+{% endblock %}

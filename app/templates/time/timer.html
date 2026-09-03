@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Timer{% endblock %}{% block content %}
+<div class="topbar"><h1>Timer</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('time.index') }}">Back to time</a></div></div>
+<div class="tabs"><a href="{{ url_for('time.index') }}">Time entries</a><a href="{{ url_for('time.expenses') }}">Expenses</a><a class="active" href="{{ url_for('time.timer') }}">Timer</a></div>
+<div class="card" style="max-width:640px">
+{% if timer %}
+  <div style="font-size:2.4rem;font-weight:600;font-variant-numeric:tabular-nums" data-timer-seconds="{{ timer.elapsed_seconds() }}" data-timer-running="{{ 0 if timer.paused else 1 }}"></div>
+  <p class="muted">{{ 'Paused' if timer.paused else 'Running' }} on <a href="/matters/{{ timer.matter_id }}">{{ timer.matter.label if timer.matter else '(no matter)' }}</a>{% if timer.description %}: {{ timer.description }}{% endif %}</p>
+  <p class="small muted">When you stop, the time is rounded up to the next 6-minute increment (minimum 6 minutes) and saved as a time entry you can edit.</p>
+  <div class="actions">
+    {% if timer.paused %}
+      <form method="post" action="{{ url_for('time.timer_resume') }}" class="inline">{{ csrf() }}<button class="btn">Resume</button></form>
+    {% else %}
+      <form method="post" action="{{ url_for('time.timer_pause') }}" class="inline">{{ csrf() }}<button class="btn secondary">Pause</button></form>
+    {% endif %}
+  </div>
+  <form method="post" action="{{ url_for('time.timer_stop') }}" style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">{{ csrf() }}
+    <div class="row">
+      <div><label>Matter</label><select name="matter_id">{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if timer.matter_id == m.id }}>{{ m.label }}</option>{% endfor %}</select></div>
+    </div>
+    <label>Description</label><input type="text" name="description" value="{{ timer.description }}" placeholder="What are you working on?">
+    <div class="actions"><button class="btn ok">Stop and log time</button></div>
+  </form>
+{% else %}
+  <form method="post" action="{{ url_for('time.timer_start') }}">{{ csrf() }}
+    <label>Matter</label>
+    <select name="matter_id" required><option value="">Choose a matter</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if matter_id == m.id }}>{{ m.label }} ({{ m.client.display_name }})</option>{% endfor %}</select>
+    <label>Description</label><input type="text" name="description" placeholder="What are you working on?" autofocus>
+    <div class="actions"><button class="btn">Start timer</button></div>
+  </form>
+  <p class="small muted" style="margin-top:12px">One timer per user. It keeps running while you move around the app.</p>
+{% endif %}
+</div>
+{% endblock %}

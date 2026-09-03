@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}Matters{% endblock %}{% block content %}
+<div class="topbar"><h1>Matters</h1><div class="actions" style="margin:0"><a class="btn small" href="/matters/new">New matter</a></div></div>
+<div class="card">
+  <form method="get" class="searchbar" style="flex-wrap:wrap">
+    <select name="status" style="width:auto"><option value="">Any status</option>{% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}</select>
+    <select name="practice_area" style="width:auto"><option value="">Any practice area</option>{% for a in areas %}<option value="{{ a }}" {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select>
+    <select name="billing_type" style="width:auto"><option value="">Any billing</option>{% for b in billing_types %}<option value="{{ b }}" {{ 'selected' if b == bt }}>{{ b }}</option>{% endfor %}</select>
+    <button class="btn secondary">Filter</button>
+    {% if status or area or bt %}<a class="small" href="/matters">Clear</a>{% endif %}
+  </form>
+</div>
+<div class="card">
+{% if matters %}
+<table><tr><th>Number</th><th>Name</th><th>Client</th><th>Billing</th><th class="num">Unbilled</th><th class="num">Trust</th><th>Status</th></tr>
+{% for m in matters %}<tr>
+  <td class="nowrap"><a href="/matters/{{ m.id }}">{{ m.number }}</a></td>
+  <td><a href="/matters/{{ m.id }}">{{ m.name }}</a>{% if m.practice_area %}<br><span class="muted small">{{ m.practice_area }}</span>{% endif %}</td>
+  <td><a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a></td>
+  <td>{{ m.billing_type }}</td>
+  <td class="num">{{ (m.unbilled_time_cents() + m.unbilled_expense_cents())|money }}</td>
+  <td class="num">{{ m.trust_balance_cents()|money }}</td>
+  <td><span class="badge {{ m.status }}">{{ m.status }}</span>{% if m.sol_date and m.status != 'closed' %}<br><span class="small muted nowrap">SOL {{ m.sol_date|d }}</span>{% endif %}</td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No matters match. <a href="/matters/new">Open one</a>.</div>{% endif %}
+</div>
+{% endblock %}
