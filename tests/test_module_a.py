@@ -19,7 +19,12 @@ def _id_from(location):
 
 @pytest.fixture(scope="module")
 def client():
-    subprocess.run([sys.executable, os.path.join(ROOT, "seed.py")], check=True, cwd=ROOT)
+    dbfile = os.path.join(ROOT, "data", "test_module_a.db")
+    if os.path.exists(dbfile):
+        os.remove(dbfile)
+    os.environ["DATABASE_URL"] = f"sqlite:///{dbfile}"
+    subprocess.run([sys.executable, os.path.join(ROOT, "seed.py")], check=True, cwd=ROOT,
+                   env={**os.environ, "DATABASE_URL": f"sqlite:///{dbfile}"})
     from app import create_app
     from tests.helpers import login
     app = create_app({"TESTING": True})
