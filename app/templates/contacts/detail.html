@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}{{ c.display_name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ c.display_name }} {% if c.is_client %}<span class="badge open">client</span>{% else %}<span class="badge">{{ c.kind }}</span>{% endif %}</h1>
+<div class="actions" style="margin:0">
+  <a class="btn small" href="/matters/new?contact_id={{ c.id }}">New matter</a>
+  <a class="btn small secondary" href="/messages/{{ c.id }}">Messages</a>
+  <a class="btn small secondary" href="/trust/ledger/{{ c.id }}">Trust ledger</a>
+  <a class="btn small secondary" href="/conflicts?q={{ c.display_name|urlencode }}">Conflict check</a>
+  <a class="btn small secondary" href="/contacts/{{ c.id }}/edit">Edit</a>
+</div></div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Trust balance</div><div class="value">{{ trust|money }}</div></div>
+  <div class="card stat"><div class="label">Open invoices</div><div class="value">{{ outstanding|money }}</div><div class="small muted">{{ invoices|length }} unpaid</div></div>
+  <div class="card stat"><div class="label">Matters</div><div class="value">{{ matters|length }}</div></div>
+</div>
+<div class="grid c2">
+  <div class="card"><h2>Details</h2>
+    <dl class="kv">
+      {% if c.kind == 'person' and c.company_name %}<dt>Company</dt><dd>{{ c.company_name }}</dd>{% endif %}
+      <dt>Email</dt><dd>{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% else %}<span class="muted">none</span>{% endif %}</dd>
+      <dt>Phone</dt><dd>{{ c.phone or '' }}</dd>
+      <dt>Address</dt><dd style="white-space:pre-line">{{ c.address }}</dd>
+      {% if c.tags %}<dt>Tags</dt><dd>{{ c.tags }}</dd>{% endif %}
+      {% if c.aliases %}<dt>Other names</dt><dd style="white-space:pre-line">{{ c.aliases }}</dd>{% endif %}
+      <dt>Added</dt><dd>{{ c.created_at|d }}</dd>
+    </dl>
+    {% if c.notes %}<h3 style="margin-top:12px">Notes on file</h3><p style="white-space:pre-line">{{ c.notes }}</p>{% endif %}
+  </div>
+  <div class="card"><h2>Matters</h2>
+    {% if matters %}<table><tr><th>Matter</th><th>Billing</th><th>Status</th><th class="num">Unbilled</th></tr>
+    {% for m in matters %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td>{{ m.billing_type }}</td><td><span class="badge {{ m.status }}">{{ m.status }}</span></td><td class="num">{{ (m.unbilled_time_cents() + m.unbilled_expense_cents())|money }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">No matters. <a href="/matters/new?contact_id={{ c.id }}">Open one</a>.</div>{% endif %}
+  </div>
+</div>
+<div class="grid c2">
+  <div class="card"><h2>Open invoices</h2>
+    {% if invoices %}<table><tr><th>Invoice</th><th>Due</th><th>Status</th><th class="num">Balance</th></tr>
+    {% for i in invoices %}<tr><td><a href="/invoices/{{ i.id }}">{{ i.number }}</a></td><td class="nowrap">{{ i.due_on|d }}</td><td><span class="badge {{ 'overdue' if i.is_overdue else i.status }}">{{ 'overdue' if i.is_overdue else i.status }}</span></td><td class="num">{{ i.balance_cents|money }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">Nothing outstanding.</div>{% endif %}
+  </div>
+  <div class="card"><h2>Notes</h2>
+    <form method="post" action="/contacts/{{ c.id }}/notes">{{ csrf() }}<textarea name="body" placeholder="Add a note" style="min-height:60px"></textarea><div class="actions" style="margin-top:8px"><button class="btn small">Add note</button></div></form>
+    {% if notes %}<ul class="timeline" style="margin-top:10px">{% for n in notes %}<li><span class="muted">{{ n.created_at|dt }}{% if n.user %} &middot; {{ n.user.name }}{% endif %}</span><br><span style="white-space:pre-line">{{ n.body }}</span></li>{% endfor %}</ul>{% endif %}
+  </div>
+</div>
+{% if not matters %}
+<form method="post" action="/contacts/{{ c.id }}/delete" class="no-print">{{ csrf() }}<button class="btn small danger" data-confirm="Delete this contact? This cannot be undone.">Delete contact</button></form>
+{% else %}<p class="small muted">This contact has matters, so it cannot be deleted.</p>{% endif %}
+{% endblock %}

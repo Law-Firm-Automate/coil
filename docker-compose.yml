@@ -1,0 +1,22 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    networks:
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.solopractice.rule=Host(`practice.iandolan.com`)
+      - traefik.http.routers.solopractice.entrypoints=https
+      - traefik.http.routers.solopractice.tls.certresolver=letsencrypt
+      - traefik.http.services.solopractice.loadbalancer.server.port=8000
+      - traefik.http.routers.solopractice-http.rule=Host(`practice.iandolan.com`)
+      - traefik.http.routers.solopractice-http.entrypoints=http
+      - traefik.http.routers.solopractice-http.middlewares=redirect-to-https
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+networks:
+  coolify:
+    external: true

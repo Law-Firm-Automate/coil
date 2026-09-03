@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block title %}{{ 'New contact' if is_new else 'Edit ' ~ c.display_name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New contact' if is_new else 'Edit contact' }}</h1></div>
+<form method="post" class="card" style="max-width:760px">
+  {{ csrf() }}
+  <label>Type</label>
+  <div class="actions" style="margin-top:0">
+    <label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="radio" name="kind" value="person" {{ 'checked' if c.kind != 'company' }} data-kind> Person</label>
+    <label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="radio" name="kind" value="company" {{ 'checked' if c.kind == 'company' }} data-kind> Company</label>
+  </div>
+  <div class="row" data-person-fields>
+    <div><label>First name</label><input type="text" name="first_name" value="{{ c.first_name }}"></div>
+    <div><label>Last name</label><input type="text" name="last_name" value="{{ c.last_name }}"></div>
+  </div>
+  <div><label data-company-label>Company</label><input type="text" name="company_name" value="{{ c.company_name }}"></div>
+  <div class="row">
+    <div><label>Email</label><input type="email" name="email" value="{{ c.email }}"></div>
+    <div><label>Phone</label><input type="tel" name="phone" value="{{ c.phone }}"></div>
+  </div>
+  <div><label>Address</label><textarea name="address" style="min-height:60px">{{ c.address }}</textarea></div>
+  <div class="row">
+    <div><label>Tags (comma separated)</label><input type="text" name="tags" value="{{ c.tags }}"></div>
+    <div><label>&nbsp;</label><label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_client" value="1" {{ 'checked' if c.is_client }}> This contact is a client</label></div>
+  </div>
+  <div><label>Other names, one per line (maiden name, DBA, former company name). Used by conflict checks.</label><textarea name="aliases" style="min-height:60px">{{ c.aliases }}</textarea></div>
+  <div><label>Notes</label><textarea name="notes">{{ c.notes }}</textarea></div>
+  <div class="actions"><button class="btn">{{ 'Create contact' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/contacts' if is_new else '/contacts/' ~ c.id }}">Cancel</a></div>
+</form>
+<script>
+(function(){
+  var radios=document.querySelectorAll('[data-kind]'),pf=document.querySelector('[data-person-fields]'),cl=document.querySelector('[data-company-label]');
+  function sync(){var company=document.querySelector('[data-kind]:checked').value==='company';pf.style.display=company?'none':'';cl.textContent=company?'Company name':'Company (optional, for people who work somewhere)';}
+  radios.forEach(function(r){r.addEventListener('change',sync);});sync();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Contacts{% endblock %}{% block content %}
+<div class="topbar"><h1>Contacts</h1>
+<div class="actions" style="margin:0"><a class="btn small" href="/contacts/new">New contact</a><a class="btn small secondary" href="/contacts/new?kind=company">New company</a></div></div>
+<div class="card">
+  <form method="get" class="searchbar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search name, email, phone, company">
+    <select name="only" style="width:auto"><option value="">Everyone</option><option value="clients" {{ 'selected' if only == 'clients' }}>Clients only</option></select>
+    <button class="btn secondary">Search</button>
+    {% if q or only %}<a class="small" href="/contacts">Clear</a>{% endif %}
+  </form>
+</div>
+<div class="card">
+{% if contacts %}
+<table><tr><th>Name</th><th>Type</th><th>Email</th><th>Phone</th><th class="num">Matters</th><th></th></tr>
+{% for c in contacts %}<tr>
+  <td><a href="/contacts/{{ c.id }}">{{ c.display_name }}</a>{% if c.kind == 'person' and c.company_name %} <span class="muted small">{{ c.company_name }}</span>{% endif %}</td>
+  <td>{% if c.is_client %}<span class="badge open">client</span>{% else %}<span class="badge">{{ c.kind }}</span>{% endif %}</td>
+  <td>{{ c.email }}</td><td class="nowrap">{{ c.phone }}</td>
+  <td class="num">{{ counts.get(c.id, 0) }}</td>
+  <td class="nowrap small"><a href="/contacts/{{ c.id }}/edit">Edit</a> &middot; <a href="/matters/new?contact_id={{ c.id }}">New matter</a></td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">{% if q %}No contacts match "{{ q }}".{% else %}No contacts yet. <a href="/contacts/new">Add one</a>.{% endif %}</div>{% endif %}
+</div>
+{% endblock %}
