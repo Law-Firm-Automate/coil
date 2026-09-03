@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ firm().name }}{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+{% set u = current_user() %}
+<div class="layout">
+  <nav class="sidebar">
+    <a class="brand" href="{{ url_for('dashboard.index') }}">{{ firm().name }}</a>
+    {% set p = request.path %}
+    <a class="nav {{ 'active' if p == '/' }}" href="{{ url_for('dashboard.index') }}">Dashboard</a>
+    <div class="sec">Clients</div>
+    <a class="nav {{ 'active' if p.startswith('/intake') }}" href="/intake">Intake</a>
+    <a class="nav {{ 'active' if p.startswith('/contacts') }}" href="/contacts">Contacts</a>
+    <a class="nav {{ 'active' if p.startswith('/matters') }}" href="/matters">Matters</a>
+    <a class="nav {{ 'active' if p.startswith('/conflicts') }}" href="/conflicts">Conflict check</a>
+    <a class="nav {{ 'active' if p.startswith('/engagements') }}" href="/engagements">Engagement letters</a>
+    <a class="nav {{ 'active' if p.startswith('/messages') }}" href="/messages">Messages</a>
+    <div class="sec">Work</div>
+    <a class="nav {{ 'active' if p.startswith('/time') }}" href="/time">Time &amp; expenses</a>
+    <a class="nav {{ 'active' if p.startswith('/tasks') }}" href="/tasks">Tasks &amp; deadlines</a>
+    <a class="nav {{ 'active' if p.startswith('/calendar') }}" href="/calendar">Calendar</a>
+    <a class="nav {{ 'active' if p.startswith('/documents') }}" href="/documents">Documents</a>
+    <div class="sec">Money</div>
+    <a class="nav {{ 'active' if p.startswith('/invoices') }}" href="/invoices">Invoices</a>
+    <a class="nav {{ 'active' if p.startswith('/payments') }}" href="/payments">Payments</a>
+    <a class="nav {{ 'active' if p.startswith('/trust') }}" href="/trust">Trust accounting</a>
+    <a class="nav {{ 'active' if p.startswith('/reports') }}" href="/reports">Reports</a>
+    <div class="sec">Firm</div>
+    <a class="nav {{ 'active' if p.startswith('/settings') }}" href="/settings">Settings</a>
+    <a class="nav {{ 'active' if p.startswith('/exports') }}" href="/exports">Exports</a>
+    {% if u %}
+    <div class="user">{{ u.name }}<br>
+      <form method="post" action="{{ url_for('auth.logout') }}" class="inline">{{ csrf() }}<button class="btn small secondary" style="margin-top:6px">Log out</button></form>
+    </div>
+    {% endif %}
+  </nav>
+  <main class="main">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

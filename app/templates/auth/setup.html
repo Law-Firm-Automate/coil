@@ -1,0 +1,9 @@
+{% extends "public.html" %}{% block content %}
+<div class="auth card"><h1>Set up your firm</h1><p class="muted">Creates the owner account. You can add staff later in Settings.</p>
+<form method="post">{{ csrf() }}
+<label>Firm name</label><input type="text" name="firm_name" required>
+<label>Your name</label><input type="text" name="name" required>
+<label>Email</label><input type="email" name="email" required>
+<label>Password (8+ characters)</label><input type="password" name="password" minlength="8" required>
+<div class="actions"><button class="btn">Create account</button></div>
+</form></div>{% endblock %}

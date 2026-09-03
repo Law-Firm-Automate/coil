@@ -1,0 +1,7 @@
+{% extends "public.html" %}{% block content %}
+<div class="auth card"><h1>Sign in</h1>
+<form method="post">{{ csrf() }}
+<label>Email</label><input type="email" name="email" required autofocus>
+<label>Password</label><input type="password" name="password" required>
+<div class="actions"><button class="btn">Sign in</button></div>
+</form></div>{% endblock %}
