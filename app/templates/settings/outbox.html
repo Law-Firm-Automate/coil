@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}Dev outbox{% endblock %}{% block content %}
+<div class="topbar"><h1>Dev outbox</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/integrations">Integrations</a></div></div>
+{% if smtp %}<div class="flash">SMTP is configured, so emails are delivered and this outbox stays empty.</div>{% else %}<p class="small muted">SMTP is not configured. The last 50 emails the app tried to send are listed here, newest first. They are kept in memory and cleared on restart.</p>{% endif %}
+<div class="card">
+{% if rows %}
+{% for m in rows %}
+<details style="border-bottom:1px solid var(--line);padding:8px 0">
+  <summary><strong>{{ m.subject }}</strong> <span class="muted small">to {{ m.to }}</span></summary>
+  <iframe srcdoc="{{ m.html|e }}" sandbox="" style="width:100%;min-height:360px;border:1px solid var(--line);border-radius:6px;margin-top:8px;background:#fff" title="{{ m.subject }}"></iframe>
+</details>
+{% endfor %}
+{% else %}<div class="empty">No emails logged yet.</div>{% endif %}
+</div>
+{% endblock %}

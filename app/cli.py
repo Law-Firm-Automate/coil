@@ -1,0 +1,183 @@
+"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda` or `.venv/bin/python -m app.cli reminders`.
+
+Both are idempotent per day: they write an AuditLog row and skip work that already has one today.
+"""
+import sys
+from datetime import date, datetime, timedelta
+from markupsafe import escape
+from flask import current_app
+from .extensions import db
+from .models import (Firm, User, Task, Matter, Invoice, InvoiceEvent, Engagement, IntakeLead, AuditLog, audit)
+from .helpers import cents_to_str
+from .services.mail import send_email
+
+
+def _today_start():
+    return datetime.combine(date.today(), datetime.min.time())
+
+
+def _base():
+    return current_app.config["BASE_URL"]
+
+
+def _wrap(title, sections):
+    """sections: list of (heading, [html list items]). Empty sections are skipped."""
+    body = "".join(f"<h3 style='margin:16px 0 6px;font-size:15px'>{escape(h)}</h3><ul style='margin:0;padding-left:18px'>"
+                   + "".join(f"<li>{item}</li>" for item in items) + "</ul>" for h, items in sections if items)
+    if not body:
+        body = "<p>Nothing on the list today.</p>"
+    return (f"<div style='font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1c2430'>"
+            f"<h2 style='font-size:18px'>{escape(title)}</h2>{body}</div>")
+
+
+def _link(path, text):
+    return f"<a href='{_base()}{path}'>{escape(text)}</a>"
+
+
+# ---------------------------------------------------------------------------
+# agenda
+# ---------------------------------------------------------------------------
+def build_agenda(user):
+    today = date.today()
+    soon = today + timedelta(days=14)
+    tasks = Task.query.filter(Task.done == False, Task.due_on != None, Task.due_on <= today,
+                              db.or_(Task.assignee_id == user.id, Task.assignee_id == None)).order_by(Task.due_on).all()
+    sols = Matter.query.filter(Matter.status != "closed", Matter.sol_date != None, Matter.sol_date <= soon).order_by(
+        Matter.sol_date).all()
+    overdue = Invoice.query.filter(Invoice.status.in_(["sent", "viewed", "partial"]), Invoice.due_on != None,
+                                   Invoice.due_on < today).order_by(Invoice.due_on).all()
+    stale = Engagement.query.filter(Engagement.status.in_(["sent", "viewed"]), Engagement.sent_at != None,
+                                    Engagement.sent_at <= datetime.utcnow() - timedelta(days=2)).order_by(
+        Engagement.sent_at).all()
+    leads = IntakeLead.query.filter_by(status="new").order_by(IntakeLead.created_at.desc()).all()
+
+    def task_item(t):
+        tag = "overdue" if t.due_on < today else "today"
+        m = f" ({escape(t.matter.number)})" if t.matter else ""
+        return f"[{tag}] {_link(f'/tasks/{t.id}', t.title)}{m}, due {t.due_on:%b %-d}"
+
+    sections = [
+        ("Tasks due today or overdue", [task_item(t) for t in tasks]),
+        ("Limitations deadlines within 14 days", [
+            f"{_link(f'/matters/{m.id}', m.label)}: {m.sol_date:%b %-d, %Y}" + (f" ({escape(m.sol_basis)})" if m.sol_basis else "")
+            for m in sols]),
+        ("Overdue invoices", [
+            f"{_link(f'/invoices/{i.id}', i.number or 'invoice')} {escape(i.client.display_name if i.client else '')}, "
+            f"{cents_to_str(i.balance_cents)} due {i.due_on:%b %-d}" for i in overdue]),
+        ("Engagement letters unsigned for more than 2 days", [
+            f"{_link(f'/engagements/{e.id}', e.contact.display_name)}: {escape(e.matter.name)}, sent {e.sent_at:%b %-d}, "
+            f"viewed {e.view_count or 0}x" for e in stale]),
+        ("New intake leads", [
+            f"{_link(f'/intake/{l.id}', l.name)} ({escape(l.matter_type or 'no type')}), {l.created_at:%b %-d}" for l in leads]),
+    ]
+    return sections
+
+
+def run_agenda():
+    """Email each active user their agenda once per day. Returns the number of emails sent."""
+    firm = Firm.get()
+    if not firm.daily_agenda_email:
+        return 0
+    start = _today_start()
+    sent = 0
+    for u in User.query.filter_by(is_active=True).all():
+        already = AuditLog.query.filter(AuditLog.action == "agenda_sent", AuditLog.user_id == u.id,
+                                        AuditLog.created_at >= start).first()
+        if already or not u.email:
+            continue
+        sections = build_agenda(u)
+        n = sum(len(items) for _, items in sections)
+        title = f"Agenda for {date.today():%A, %B %-d}"
+        html = _wrap(title, sections)
+        send_email(u.email, f"{title}: {n} item{'s' if n != 1 else ''}", html,
+                   text=f"Your agenda has {n} items. Open {_base()}/ to review.")
+        audit("agenda_sent", "user", u.id, f"{n} items", u.id)
+        db.session.commit()
+        sent += 1
+    return sent
+
+
+# ---------------------------------------------------------------------------
+# reminders
+# ---------------------------------------------------------------------------
+def _already_reminded(entity, entity_id, today_iso):
+    return AuditLog.query.filter_by(action="reminder_sent", entity=entity, entity_id=entity_id,
+                                    detail=today_iso).first() is not None
+
+
+def send_invoice_reminder(inv, days_past):
+    firm = Firm.get()
+    to = inv.sent_to or (inv.client.email if inv.client else "")
+    url = f"{_base()}/p/{inv.public_token}"
+    pixel = f"{_base()}/track/invoice/{inv.public_token}.gif"
+    subject = f"Reminder: invoice {inv.number} from {firm.name} is {days_past} days past due"
+    html = (f"<div style='font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#1c2430'>"
+            f"<p>Hello {escape(inv.client.first_name or inv.client.display_name if inv.client else '')},</p>"
+            f"<p>Invoice {escape(inv.number or '')} for {cents_to_str(inv.balance_cents)} was due on "
+            f"{inv.due_on:%B %-d, %Y}. You can view and pay it here:</p>"
+            f"<p><a href='{url}' style='background:#1f5f8b;color:#fff;padding:10px 18px;border-radius:6px;"
+            f"text-decoration:none;display:inline-block'>View invoice</a></p>"
+            f"<p style='font-size:12px;color:#666'>Link: {url}</p>"
+            f"<p style='font-size:13px;color:#666'>{escape(firm.name or '')}<br>{escape(firm.phone or '')}</p>"
+            f"<img src='{pixel}' width='1' height='1' alt=''></div>")
+    if to:
+        send_email(to, subject, html, text=f"Invoice {inv.number} is past due. View and pay: {url}",
+                   reply_to=firm.email or None)
+    db.session.add(InvoiceEvent(invoice_id=inv.id, event="reminder", detail=f"{days_past} days past due, to {to or 'no email'}"))
+    return to
+
+
+def run_reminders():
+    """Invoice reminders at 7 and 21 days past due, engagement reminders at 3 and 7 days after sending.
+
+    Returns (invoice_reminders, engagement_reminders) sent this run.
+    """
+    from .blueprints.engagements import send_engagement_reminder
+    today = date.today()
+    today_iso = today.isoformat()
+    inv_count = eng_count = 0
+
+    for days in (7, 21):
+        due = today - timedelta(days=days)
+        for inv in Invoice.query.filter(Invoice.status.in_(["sent", "viewed", "partial"]), Invoice.due_on == due).all():
+            if _already_reminded("invoice", inv.id, today_iso):
+                continue
+            send_invoice_reminder(inv, days)
+            audit("reminder_sent", "invoice", inv.id, today_iso)
+            db.session.commit()
+            inv_count += 1
+
+    for days in (3, 7):
+        day = today - timedelta(days=days)
+        start = datetime.combine(day, datetime.min.time())
+        end = start + timedelta(days=1)
+        for e in Engagement.query.filter(Engagement.status.in_(["sent", "viewed"]), Engagement.sent_at >= start,
+                                         Engagement.sent_at < end).all():
+            if _already_reminded("engagement", e.id, today_iso):
+                continue
+            send_engagement_reminder(e, detail=f"{days} days unsigned")
+            audit("reminder_sent", "engagement", e.id, today_iso)
+            db.session.commit()
+            eng_count += 1
+    return inv_count, eng_count
+
+
+def main(argv=None):
+    argv = argv if argv is not None else sys.argv[1:]
+    if not argv or argv[0] not in ("agenda", "reminders"):
+        print("usage: python -m app.cli agenda|reminders")
+        return 2
+    from . import create_app
+    app = create_app()
+    with app.app_context():
+        if argv[0] == "agenda":
+            n = run_agenda()
+            print(f"agenda: {n} email(s) sent")
+        else:
+            i, e = run_reminders()
+            print(f"reminders: {i} invoice, {e} engagement")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

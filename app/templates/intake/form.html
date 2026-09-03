@@ -1,0 +1,29 @@
+{% extends "public.html" %}{% block title %}Contact {{ firm().name }}{% endblock %}{% block content %}
+<style>.hp{position:absolute;left:-9999px;top:-9999px;height:0;width:0;overflow:hidden}</style>
+<div class="card">
+  <h1 style="font-size:1.3rem;margin:0 0 6px">Tell us about your matter</h1>
+  <p class="muted small">Sending this form does not create an attorney-client relationship. Please do not include confidential details until we have confirmed we can represent you.</p>
+  <form method="post" action="/intake/submit" autocomplete="on">
+    <input type="hidden" name="source" value="{{ source }}">
+    <div class="hp" aria-hidden="true"><label>Website</label><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
+    <div class="row">
+      <div><label>Your name</label><input type="text" name="name" value="{{ values.get('name','') }}" required></div>
+      <div><label>Email</label><input type="email" name="email" value="{{ values.get('email','') }}"></div>
+      <div><label>Phone</label><input type="tel" name="phone" value="{{ values.get('phone','') }}"></div>
+    </div>
+    <div class="row">
+      <div><label>What kind of matter is this?</label>
+        <select name="matter_type" id="mt">{% for t in types %}<option value="{{ t }}" {{ 'selected' if values.get('matter_type') == t }}>{{ t }}</option>{% endfor %}</select></div>
+      <div id="mt_other" style="display:none"><label>Please describe the type</label><input type="text" name="matter_type_other" value="{{ values.get('matter_type_other','') }}"></div>
+    </div>
+    <label>Briefly, what do you need help with?</label>
+    <textarea name="description">{{ values.get('description','') }}</textarea>
+    <label>Is there another person or company involved (for example the other side of a dispute or contract)?</label>
+    <input type="text" name="adverse_party" value="{{ values.get('adverse_party','') }}" placeholder="Name of the other party, if any">
+    <div class="actions"><button class="btn">Send</button></div>
+  </form>
+</div>
+<script>
+(function(){var s=document.getElementById('mt'),o=document.getElementById('mt_other');function f(){o.style.display=s.value==='Other'?'':'none';}s.addEventListener('change',f);f();})();
+</script>
+{% endblock %}

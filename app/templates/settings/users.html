@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Users{% endblock %}{% block content %}
+<div class="topbar"><h1>Users</h1><div class="actions" style="margin:0"><a class="btn small" href="/settings/users/new">Add user</a><a class="btn small secondary" href="/settings">Settings</a></div></div>
+<div class="card">
+<table><tr><th>Name</th><th>Email</th><th>Role</th><th class="num">Rate</th><th>Initials</th><th>Status</th><th></th></tr>
+{% for u in rows %}<tr>
+  <td><a href="/settings/users/{{ u.id }}/edit">{{ u.name }}</a></td><td>{{ u.email }}</td><td>{{ u.role }}</td>
+  <td class="num">{{ u.hourly_rate_cents|money }}</td><td>{{ u.initials }}</td>
+  <td>{% if u.is_active %}<span class="badge open">active</span>{% else %}<span class="badge closed">inactive</span>{% endif %}</td>
+  <td class="small"><a href="/settings/users/{{ u.id }}/edit">Edit</a></td>
+</tr>{% endfor %}</table>
+<p class="small muted">Users are deactivated rather than deleted so their time entries and audit history stay intact.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}{{ 'New template' if is_new else 'Edit template' }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New template' if is_new else 'Edit template' }}</h1></div>
+<div class="grid c2">
+<form method="post" class="card">
+  {{ csrf() }}
+  <div class="row">
+    <div><label>Name</label><input type="text" name="name" value="{{ t.name }}" required></div>
+    <div><label>Kind</label><select name="kind">{% for k in ['engagement','declination','general'] %}<option value="{{ k }}" {{ 'selected' if t.kind == k }}>{{ k }}</option>{% endfor %}</select></div>
+  </div>
+  <label>Email subject (merge fields allowed)</label><input type="text" name="subject" value="{{ t.subject }}">
+  <label>Default for this kind</label>
+  <div class="actions" style="margin-top:0">
+    <label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="radio" name="is_default" value="1" {{ 'checked' if t.is_default }}> Yes, use this one when nothing else is picked</label>
+    <label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="radio" name="is_default" value="0" {{ 'checked' if not t.is_default }}> No</label>
+  </div>
+  <label>Body (simple HTML: p, br, h1 to h3, strong, em, ul, ol, li)</label>
+  <textarea name="body_html" style="min-height:420px;font-family:monospace;font-size:.85rem">{{ t.body_html }}</textarea>
+  <div class="actions"><button class="btn">{{ 'Create template' if is_new else 'Save' }}</button><a class="btn secondary" href="/engagements/templates">Cancel</a></div>
+</form>
+<div class="card">
+  <h2>Merge fields</h2>
+  <p class="small muted">Write them as <code>{{ '{{ field_name }}' }}</code>. Values are escaped, so a client name with an ampersand renders safely. Only the template body itself is trusted HTML.</p>
+  <table>{% for name, desc in fields %}<tr><td class="nowrap"><code>{{ '{{ ' ~ name ~ ' }}' }}</code></td><td class="small">{{ desc }}</td></tr>{% endfor %}</table>
+</div>
+</div>
+{% endblock %}

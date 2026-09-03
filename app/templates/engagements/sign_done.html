@@ -1,0 +1,8 @@
+{% extends "public.html" %}{% block title %}Signed{% endblock %}{% block content %}
+<div class="card">
+  <h1 style="font-size:1.3rem;margin:0 0 12px">Thank you, {{ e.signer_name }}</h1>
+  <p>Your signature was recorded on {{ e.signed_at|dt }} UTC. A signed copy has been emailed to {{ e.signer_email or e.contact.email or 'you' }} and to {{ firm().name }}.</p>
+  <p><a class="btn" href="/sign/{{ e.token }}/pdf">Download the signed PDF</a></p>
+  <dl class="kv" style="margin-top:14px"><dt>Document hash</dt><dd class="small" style="word-break:break-all">{{ e.document_hash }}</dd><dt>Signature hash</dt><dd class="small" style="word-break:break-all">{{ e.signature_hash }}</dd></dl>
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block title %}Embed the intake form{% endblock %}{% block content %}
+<div class="topbar"><h1>Embed the intake form</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/intake">Back to leads</a></div></div>
+<div class="card">
+  <h2>Direct link</h2>
+  <div class="searchbar"><input type="text" readonly value="{{ url }}"><button type="button" class="btn small secondary" data-copy="{{ url }}">Copy</button></div>
+  <p class="small muted">Add <code>?source=something</code> to the link to record where a lead came from (for example <code>?source=google-ads</code>).</p>
+</div>
+<div class="card">
+  <h2>Iframe snippet for your website</h2>
+  <pre class="code">{{ snippet }}</pre>
+  <button type="button" class="btn small secondary" data-copy="{{ snippet }}">Copy snippet</button>
+  <p class="small muted">Set BASE_URL in the server environment to your public address before pasting this on a live site.</p>
+</div>
+<div class="card"><h2>Preview</h2><iframe src="{{ url }}?source=preview" style="width:100%;min-height:720px;border:1px solid var(--line);border-radius:6px" title="Intake form preview"></iframe></div>
+{% endblock %}

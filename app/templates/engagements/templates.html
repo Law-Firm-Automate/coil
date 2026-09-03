@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block title %}Letter templates{% endblock %}{% block content %}
+<div class="topbar"><h1>Letter templates</h1>
+<div class="actions" style="margin:0"><a class="btn small" href="/engagements/templates/new">New template</a><a class="btn small secondary" href="/engagements">Back to letters</a></div></div>
+<div class="card">
+{% if rows %}
+<table><tr><th>Name</th><th>Kind</th><th>Subject</th><th>Default</th><th></th></tr>
+{% for t in rows %}<tr>
+  <td><a href="/engagements/templates/{{ t.id }}/edit">{{ t.name }}</a></td><td>{{ t.kind }}</td><td class="small">{{ t.subject }}</td>
+  <td>{% if t.is_default %}<span class="badge open">default</span>{% endif %}</td>
+  <td class="nowrap small"><a href="/engagements/templates/{{ t.id }}/edit">Edit</a> &middot;
+    <form method="post" action="/engagements/templates/{{ t.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Delete template {{ t.name }}?">Delete</button></form></td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No templates yet. <a href="/engagements/templates/new">Create one</a>.</div>{% endif %}
+</div>
+{% endblock %}

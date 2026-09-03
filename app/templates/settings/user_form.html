@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}{{ 'Add user' if is_new else 'Edit user' }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'Add user' if is_new else 'Edit ' ~ u.name }}</h1></div>
+<form method="post" class="card" style="max-width:640px">
+  {{ csrf() }}
+  <div class="row">
+    <div><label>Name</label><input type="text" name="name" value="{{ u.name or '' }}" required></div>
+    <div><label>Email</label><input type="email" name="email" value="{{ u.email or '' }}" required></div>
+  </div>
+  <div class="row">
+    <div><label>Role</label><select name="role"><option value="staff" {{ 'selected' if u.role != 'owner' }}>Staff</option><option value="owner" {{ 'selected' if u.role == 'owner' }}>Owner</option></select></div>
+    <div><label>Hourly rate</label><input type="text" name="hourly_rate" value="{{ ((u.hourly_rate_cents or 0) / 100)|round(2) }}"></div>
+    <div><label>Initials</label><input type="text" name="initials" value="{{ u.initials or '' }}" maxlength="6"></div>
+  </div>
+  <label>{{ 'Password (at least 8 characters)' if is_new else 'New password (leave blank to keep the current one)' }}</label>
+  <input type="password" name="password" autocomplete="new-password" {{ 'required' if is_new }}>
+  {% if not is_new %}<label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if u.is_active }}> Active (untick to deactivate; users are never deleted)</label>{% endif %}
+  <div class="actions"><button class="btn">{{ 'Add user' if is_new else 'Save' }}</button><a class="btn secondary" href="/settings/users">Cancel</a></div>
+</form>
+{% endblock %}

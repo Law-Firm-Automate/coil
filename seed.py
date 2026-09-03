@@ -12,7 +12,7 @@ with app.app_context():
         db.session.add(u)
         f = Firm.get()
         f.name = "Demo Law PLLC"; f.address = "100 Main St, Suite 200\nAustin, TX 78701"; f.phone = "(512) 555-0100"
-        f.email = "billing@demolaw.test"; f.surcharge_enabled = True; f.surcharge_bps = 300
+        f.email = "billing@demolaw.test"; f.surcharge_enabled = True; f.surcharge_bps = 300; f.next_matter_number = 1003
         db.session.commit()
     u = User.query.first()
     if Contact.query.count() == 0:

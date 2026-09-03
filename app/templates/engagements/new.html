@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% block title %}New engagement letter{% endblock %}{% block content %}
+<div class="topbar"><h1>New engagement letter</h1></div>
+{% if not matter %}
+<div class="card" style="max-width:640px">
+  <form method="get">
+    <label>Matter</label>
+    <select name="matter_id" required><option value="">Pick a matter</option>{% for m in matters %}<option value="{{ m.id }}">{{ m.label }} ({{ m.client.display_name }})</option>{% endfor %}</select>
+    <div class="actions"><button class="btn">Continue</button></div>
+  </form>
+  {% if not matters %}<div class="empty">No open matters. <a href="/matters/new">Create one</a> first.</div>{% endif %}
+</div>
+{% else %}
+<form method="post" id="engform">
+  {{ csrf() }}
+  <input type="hidden" name="matter_id" value="{{ matter.id }}">
+  <div class="grid c2">
+    <div class="card">
+      <h2>Letter setup</h2>
+      <dl class="kv"><dt>Matter</dt><dd><a href="/matters/{{ matter.id }}">{{ matter.label }}</a></dd>
+        <dt>Client</dt><dd>{{ matter.client.display_name }} {% if matter.client.email %}<span class="muted small">{{ matter.client.email }}</span>{% else %}<span class="badge overdue">no email on file</span>{% endif %}</dd>
+        <dt>Billing</dt><dd>{{ matter.billing_type }}</dd></dl>
+      <label>Template</label>
+      <select name="template_id" id="template_id">{% for t in templates %}<option value="{{ t.id }}" {{ 'selected' if template and t.id == template.id }}>{{ t.name }}{% if t.is_default %} (default){% endif %}</option>{% endfor %}</select>
+      {% if not templates %}<p class="small muted">No templates yet, so the built-in letter is used. <a href="/engagements/templates/new">Add a template</a>.</p>{% endif %}
+      <label>Scope of work (merge field: scope)</label>
+      <textarea name="scope" id="scope">{{ scope }}</textarea>
+      <label>Subject</label>
+      <input type="text" name="subject" value="{{ subject }}">
+      <div class="actions">
+        <button class="btn secondary" name="action" value="preview">Refresh preview</button>
+      </div>
+      <p class="small muted">Refreshing the preview rebuilds the body from the template and discards edits made in the body box.</p>
+    </div>
+    <div class="card">
+      <h2>Body (editable before sending)</h2>
+      <textarea name="body_html" style="min-height:420px;font-family:monospace;font-size:.85rem">{{ body }}</textarea>
+      <div class="actions">
+        <button class="btn secondary" name="action" value="draft">Save draft</button>
+        <button class="btn" name="action" value="send" {% if not matter.client.email %}data-confirm="This client has no email on file. The letter will be marked sent but not emailed. Continue?"{% endif %}>Save and send</button>
+        <a class="btn secondary" href="/matters/{{ matter.id }}">Cancel</a>
+      </div>
+    </div>
+  </div>
+</form>
+<div class="card"><h2>Preview</h2><div class="letter">{{ body|safe }}</div></div>
+<script>
+document.getElementById('template_id').addEventListener('change',function(){var f=document.getElementById('engform');var i=document.createElement('input');i.type='hidden';i.name='action';i.value='preview';f.appendChild(i);f.submit();});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Messages{% endblock %}{% block content %}
+<div class="topbar"><h1>Messages</h1>
+<form method="get" action="/messages" class="actions" style="margin:0" id="newthread">
+  <select name="to" style="width:auto" onchange="if(this.value)location.href='/messages/'+this.value"><option value="">Start a thread with...</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }} {{ c.phone }}</option>{% endfor %}</select>
+</form></div>
+<div class="card">
+{% if threads %}
+<table><tr><th></th><th>Contact</th><th>Latest</th><th>When</th></tr>
+{% for t in threads %}<tr>
+  <td class="nowrap">{% if t.recent_in %}<span class="badge new" title="Inbound in the last 24 hours">{{ t.recent_in }} new</span>{% endif %}</td>
+  <td><a href="/messages/{{ t.contact.id }}">{{ t.contact.display_name }}</a><br><span class="small muted">{{ t.contact.phone }}</span></td>
+  <td class="small"><span class="muted">{{ 'They:' if t.latest.direction == 'in' else 'You:' }}</span> {{ t.latest.body[:120] }}{% if t.latest.body|length > 120 %}...{% endif %}</td>
+  <td class="nowrap small muted">{{ t.latest.created_at|dt }}</td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No conversations yet. Pick a contact above to send the first text.</div>{% endif %}
+</div>
+{% if unmatched %}
+<div class="card"><h2>Inbound from unknown numbers</h2>
+<table><tr><th>From</th><th>Message</th><th>When</th></tr>
+{% for m in unmatched %}<tr><td class="nowrap">{{ m.from_addr }}</td><td class="small">{{ m.body }}</td><td class="nowrap small muted">{{ m.created_at|dt }}</td></tr>{% endfor %}</table>
+<p class="small muted">Add the number to a contact and future texts will land in their thread.</p></div>
+{% endif %}
+{% endblock %}

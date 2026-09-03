@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Integrations{% endblock %}{% block content %}
+<div class="topbar"><h1>Integrations</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/settings">Settings</a></div></div>
+<p class="small muted">These are read from the server environment (.env). Change them there and restart the app.</p>
+<div class="grid c3">
+{% for c in cards %}
+<div class="card">
+  <h2>{{ c.name }} {% if c.ok %}<span class="badge open">configured</span>{% else %}<span class="badge draft">not configured</span>{% endif %}</h2>
+  <p class="small">{{ c.detail }}</p>
+  <p class="small muted">Env: {{ c.env }}</p>
+  {% if c.webhook %}<label>Webhook URL</label><div class="searchbar"><input type="text" readonly value="{{ c.webhook }}"><button type="button" class="btn small secondary" data-copy="{{ c.webhook }}">Copy</button></div><p class="small muted">{{ c.webhook_note }}</p>{% endif %}
+  {% if c.link %}<a class="btn small secondary" href="{{ c.link[0] }}">{{ c.link[1] }}</a>{% endif %}
+</div>
+{% endfor %}
+</div>
+<div class="grid c2">
+<div class="card"><h2>Public intake form</h2>
+  <div class="searchbar"><input type="text" readonly value="{{ intake_url }}"><button type="button" class="btn small secondary" data-copy="{{ intake_url }}">Copy</button></div>
+  <p class="small muted">Embed it with the snippet at <a href="/intake/embed">Intake > Embed form</a>. Set BASE_URL to your public address (currently {{ base }}).</p>
+</div>
+<div class="card"><h2>Calendar feed</h2>
+  <p class="small">The calendar publishes an iCal feed you can subscribe to from Google Calendar, Outlook, or Apple Calendar. The subscribe URL, which carries a secret, is shown on the <a href="/calendar">Calendar</a> page.</p>
+</div>
+</div>
+{% endblock %}

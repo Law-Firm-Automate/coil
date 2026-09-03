@@ -1,0 +1,126 @@
+{% extends "base.html" %}{% block title %}Lead: {{ lead.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ lead.name }} <span class="badge {{ lead.status }}">{{ lead.status }}</span></h1>
+<div class="actions" style="margin:0">
+  {% if lead.status != 'converted' %}
+  <form method="post" action="/intake/{{ lead.id }}/status" class="inline">{{ csrf() }}<input type="hidden" name="status" value="{{ 'new' if lead.status == 'contacted' else 'contacted' }}"><button class="btn small secondary">Mark {{ 'new' if lead.status == 'contacted' else 'contacted' }}</button></form>
+  <form method="post" action="/intake/{{ lead.id }}/decline" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Decline this lead?">Decline</button></form>
+  {% endif %}
+  <a class="btn small secondary" href="/intake">Back</a>
+</div></div>
+<div class="grid c2">
+  <div class="card">
+    <h2>Lead</h2>
+    <dl class="kv">
+      <dt>Email</dt><dd>{{ lead.email or '' }}</dd>
+      <dt>Phone</dt><dd>{{ lead.phone or '' }}</dd>
+      <dt>Matter type</dt><dd>{{ lead.matter_type }}</dd>
+      <dt>Other party</dt><dd>{{ lead.adverse_party or 'none given' }}</dd>
+      <dt>Source</dt><dd>{{ lead.source }}</dd>
+      <dt>Received</dt><dd>{{ lead.created_at|dt }} ({{ age(lead.created_at) }} ago)</dd>
+      {% if lead.contact_id %}<dt>Contact</dt><dd><a href="/contacts/{{ lead.contact_id }}">{{ lead.contact.display_name }}</a></dd>{% endif %}
+      {% if lead.matter_id %}<dt>Matter</dt><dd><a href="/matters/{{ lead.matter_id }}">{{ lead.matter.label }}</a></dd>{% endif %}
+      {% if lead.conflict_check_id %}<dt>Conflict check</dt><dd><a href="/conflicts/{{ lead.conflict_check_id }}">#{{ lead.conflict_check_id }}</a> <span class="badge {{ lead.conflict_check.outcome }}">{{ lead.conflict_check.outcome }}</span></dd>{% endif %}
+    </dl>
+    <h3 style="margin-top:12px">Description</h3>
+    <p style="white-space:pre-wrap">{{ lead.description or 'No description given.' }}</p>
+  </div>
+  <div class="card">
+    <h2>Conflict preview</h2>
+    <p class="small muted">Fuzzy match (80 or better) of the lead name and the other party against contacts, aliases, matter parties, and matter names. The full check is recorded when you convert.</p>
+    {% if hits %}
+    <table><tr><th>Searched</th><th>Matched</th><th>Where</th><th class="num">Score</th></tr>
+    {% for h in hits %}<tr><td>{{ h.query }}</td><td><a href="{{ h.url }}">{{ h.match }}</a></td><td class="small">{{ h.kind }}: {{ h.label }}</td><td class="num">{{ h.score }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty"><span class="badge clear">clear</span> No possible conflicts found.</div>{% endif %}
+  </div>
+</div>
+
+{% if lead.status != 'converted' %}
+<form method="post" action="/intake/{{ lead.id }}/convert" class="card" id="convert">
+  {{ csrf() }}
+  <h2>Convert to client and matter</h2>
+  <div class="grid c2">
+    <div>
+      <h3>Client</h3>
+      <div class="actions" style="margin-top:0">
+        <label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="radio" name="contact_mode" value="new" {{ 'checked' if not email_match }} data-mode> Create new contact</label>
+        <label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="radio" name="contact_mode" value="existing" {{ 'checked' if email_match }} data-mode> Link existing contact</label>
+      </div>
+      {% if email_match %}<p class="small muted">A contact with this email already exists: <a href="/contacts/{{ email_match.id }}">{{ email_match.display_name }}</a>.</p>{% endif %}
+      <div data-new-fields>
+        <div class="row">
+          <div><label>First name</label><input type="text" name="first_name" value="{{ defaults.first_name }}"></div>
+          <div><label>Last name</label><input type="text" name="last_name" value="{{ defaults.last_name }}"></div>
+        </div>
+        <div class="row">
+          <div><label>Email</label><input type="email" name="email" value="{{ lead.email }}"></div>
+          <div><label>Phone</label><input type="tel" name="phone" value="{{ lead.phone }}"></div>
+        </div>
+        <label>Address (for the engagement letter)</label><textarea name="address" style="min-height:56px"></textarea>
+      </div>
+      <div data-existing-fields style="display:none">
+        <label>Search contacts</label><input type="text" id="contact_q" value="{{ lead.name }}" placeholder="Type a name or email">
+        <label>Contact</label><select name="contact_id" id="contact_sel"><option value="">Select a contact</option>{% if email_match %}<option value="{{ email_match.id }}" selected>{{ email_match.display_name }} ({{ email_match.email }})</option>{% endif %}</select>
+      </div>
+      <h3 style="margin-top:16px">Other party</h3>
+      <input type="text" name="adverse_party" value="{{ lead.adverse_party }}" placeholder="Added to the matter as an adverse party and included in the conflict check">
+    </div>
+    <div>
+      <h3>Matter</h3>
+      <label>Matter name</label><input type="text" name="matter_name" value="{{ defaults.matter_name }}" required>
+      <div class="row">
+        <div><label>Practice area</label><input type="text" name="practice_area" value="{{ defaults.practice_area }}" list="pa"><datalist id="pa">{% for t in types if t != 'Other' %}<option value="{{ t }}">{% endfor %}</datalist></div>
+        <div><label>Responsible attorney</label><select name="responsible_user_id">{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == defaults.responsible_user_id }}>{{ u.name }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="row">
+        <div><label>Billing type</label><select name="billing_type" id="billing_type">{% for b in ['flat','hourly','contingency','hybrid'] %}<option value="{{ b }}">{{ b }}</option>{% endfor %}</select></div>
+        <div><label>Statute of limitations date (optional)</label><input type="date" name="sol_date"></div>
+      </div>
+      <div data-fee="flat hybrid">
+        <label>Flat fee</label><input type="text" name="flat_fee" id="flat_fee" placeholder="3,000.00">
+        <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="split_milestones" value="1" id="split"> Split into two milestones</label>
+        <div id="split_fields" style="display:none">
+          <div class="row">
+            <div><label>Milestone 1</label><input type="text" name="milestone1_desc" value="Retainer on signing"></div>
+            <div><label>Amount</label><input type="text" name="milestone1_amount" id="m1" placeholder="half by default"></div>
+          </div>
+          <div class="row">
+            <div><label>Milestone 2</label><input type="text" name="milestone2_desc" value="Balance"></div>
+            <div><label>Amount</label><input type="text" name="milestone2_amount" id="m2" placeholder="remainder by default"></div>
+          </div>
+        </div>
+      </div>
+      <div data-fee="hourly hybrid" style="display:none"><label>Hourly rate</label><input type="text" name="hourly_rate" value="{{ defaults.hourly_rate }}"></div>
+      <div data-fee="contingency hybrid" style="display:none"><label>Contingency percent</label><input type="number" name="contingency_pct" step="0.5" min="0" max="100" placeholder="33.3"></div>
+      <label>Matter description</label><textarea name="description" style="min-height:60px">{{ lead.description }}</textarea>
+    </div>
+  </div>
+  <h3 style="margin-top:16px">Engagement letter</h3>
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="send_engagement" value="1" id="send_eng" {{ 'checked' if lead.email }}> Create and send the engagement letter now</label>
+  <div id="eng_fields" class="row">
+    <div><label>Template</label><select name="template_id">{% for t in templates %}<option value="{{ t.id }}" {{ 'selected' if t.is_default }}>{{ t.name }}</option>{% endfor %}</select>{% if not templates %}<span class="small muted">No templates, the built-in letter is used.</span>{% endif %}</div>
+    <div><label>Scope of work (merge field: scope)</label><textarea name="scope" style="min-height:60px">{{ defaults.scope }}</textarea></div>
+  </div>
+  {% if not lead.email %}<p class="small muted">This lead has no email, so a letter would be created but not emailed. You can copy the sign link from the letter page.</p>{% endif %}
+  <div class="actions"><button class="btn">Convert{% if hits %} (conflict check will be recorded as unresolved){% endif %}</button></div>
+</form>
+<script>
+(function(){
+  var modes=document.querySelectorAll('[data-mode]'),nf=document.querySelector('[data-new-fields]'),ef=document.querySelector('[data-existing-fields]');
+  function mode(){var ex=document.querySelector('[data-mode]:checked').value==='existing';nf.style.display=ex?'none':'';ef.style.display=ex?'':'none';if(ex&&!loaded)search();}
+  modes.forEach(function(r){r.addEventListener('change',mode);});
+  var q=document.getElementById('contact_q'),sel=document.getElementById('contact_sel'),loaded=false,tmr;
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function search(){loaded=true;fetch('/contacts/search.json?q='+encodeURIComponent(q.value)).then(function(r){return r.json();}).then(function(rows){var cur=sel.value;sel.innerHTML='<option value="">Select a contact</option>'+rows.map(function(r){return '<option value="'+r.id+'"'+(String(r.id)===cur?' selected':'')+'>'+esc(r.name)+(r.email?' ('+esc(r.email)+')':'')+'</option>';}).join('');}).catch(function(){});}
+  q.addEventListener('input',function(){clearTimeout(tmr);tmr=setTimeout(search,250);});
+  mode();
+  var bt=document.getElementById('billing_type');
+  function fee(){document.querySelectorAll('[data-fee]').forEach(function(el){el.style.display=el.getAttribute('data-fee').split(' ').indexOf(bt.value)>=0?'':'none';});}
+  bt.addEventListener('change',fee);fee();
+  var split=document.getElementById('split'),sf=document.getElementById('split_fields');
+  function sp(){sf.style.display=split.checked?'':'none';}split.addEventListener('change',sp);sp();
+  var se=document.getElementById('send_eng'),egf=document.getElementById('eng_fields');
+  function eg(){egf.style.display=se.checked?'':'none';}se.addEventListener('change',eg);eg();
+})();
+</script>
+{% endif %}
+{% endblock %}

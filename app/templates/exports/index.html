@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Exports{% endblock %}{% block content %}
+<div class="topbar"><h1>Exports</h1></div>
+<div class="grid c2">
+<div class="card"><h2>QuickBooks Online</h2>
+  <table>
+    <tr><td><a href="/exports/quickbooks/invoices.csv">Invoices</a></td><td class="small muted">One row per invoice line. Drafts and voided invoices are left out.</td></tr>
+    <tr><td><a href="/exports/quickbooks/payments.csv">Payments</a></td><td class="small muted">Every payment with its invoice number, method, and reference.</td></tr>
+    <tr><td><a href="/exports/quickbooks/customers.csv">Customers</a></td><td class="small muted">Clients only, with billing address on one line.</td></tr>
+  </table>
+  <h3 style="margin-top:14px">Importing invoices</h3>
+  <p class="small">In QuickBooks Online go to Settings (the gear) > Import data > Invoices and upload the invoices CSV. Each row is one invoice line, and rows sharing an InvoiceNo are combined into one invoice. On the mapping step match InvoiceNo, Customer, InvoiceDate, DueDate, Item(Product/Service), ItemDescription, ItemQuantity, ItemRate, and ItemAmount to the QuickBooks fields of the same name, and pick MM/DD/YYYY as the date format.</p>
+  <p class="small">Import customers first so the Customer names match, then invoices, then payments through Settings > Import data > Bank data or by entering them as Receive payment. Items are named Legal Services (time and flat fees), Reimbursable Expenses, and Adjustment; tick "add new products/services" the first time or create those three items in QuickBooks before importing.</p>
+</div>
+<div class="card"><h2>Full data dumps</h2>
+  <table>
+    <tr><td><a href="/exports/time.csv">Time entries</a></td><td class="small muted">Every time entry with matter, client, user, hours, rate, amount, and invoice.</td></tr>
+    <tr><td><a href="/exports/trust.csv">Trust ledger</a></td><td class="small muted">Every trust transaction. Use it for your bar's record-keeping requirements or an accountant review.</td></tr>
+    <tr><td><a href="/exports/contacts.csv">Contacts</a></td><td class="small muted">Everyone in the address book, with aliases and client flag.</td></tr>
+  </table>
+  <p class="small muted" style="margin-top:12px">Amounts are in dollars with two decimals. Dates in the dumps are YYYY-MM-DD; the QuickBooks files use MM/DD/YYYY. Generated {{ today|d }}.</p>
+</div>
+</div>
+{% endblock %}

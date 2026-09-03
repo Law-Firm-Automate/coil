@@ -1,0 +1,11 @@
+{% extends "public.html" %}{% block title %}Thank you{% endblock %}{% block content %}
+<div class="card">
+  {% if limited %}
+  <h1 style="font-size:1.3rem;margin:0 0 8px">Too many submissions</h1>
+  <p>We received several messages from this connection in a short time. Please wait a few minutes and try again{% if firm().phone %}, or call {{ firm().phone }}{% endif %}.</p>
+  {% else %}
+  <h1 style="font-size:1.3rem;margin:0 0 8px">Thank you</h1>
+  <p>We received your message and will be in touch shortly{% if firm().phone %}. If it is urgent, call {{ firm().phone }}{% endif %}.</p>
+  {% endif %}
+</div>
+{% endblock %}

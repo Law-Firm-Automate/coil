@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% block title %}Engagement letter{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ e.subject or 'Engagement letter' }} <span class="badge {{ e.status }}">{{ e.status }}</span></h1>
+<div class="actions" style="margin:0">
+  {% if e.status == 'draft' %}<form method="post" action="/engagements/{{ e.id }}/send" class="inline">{{ csrf() }}<button class="btn small">Send</button></form>{% endif %}
+  {% if e.status in ['sent','viewed'] %}<form method="post" action="/engagements/{{ e.id }}/remind" class="inline">{{ csrf() }}<button class="btn small">Send reminder</button></form>{% endif %}
+  {% if e.status != 'signed' and e.status != 'void' %}<form method="post" action="/engagements/{{ e.id }}/void" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Void this letter? The sign link will stop working.">Void</button></form>{% endif %}
+  <a class="btn small secondary" href="/engagements/{{ e.id }}/pdf">{{ 'Signed PDF' if e.status == 'signed' else 'Draft PDF' }}</a>
+</div></div>
+<div class="grid c2">
+  <div class="card">
+    <h2>Details</h2>
+    <dl class="kv">
+      <dt>Client</dt><dd><a href="/contacts/{{ e.contact_id }}">{{ e.contact.display_name }}</a></dd>
+      <dt>Matter</dt><dd><a href="/matters/{{ e.matter_id }}">{{ e.matter.label }}</a></dd>
+      <dt>Template</dt><dd>{{ e.template.name if e.template else 'built-in' }}</dd>
+      <dt>Sent</dt><dd>{{ e.sent_at|dt if e.sent_at else 'not yet' }}{% if e.sent_to %} to {{ e.sent_to }}{% endif %}</dd>
+      <dt>Views</dt><dd>{{ e.view_count or 0 }}{% if e.first_viewed_at %}, first {{ e.first_viewed_at|dt }}{% endif %}</dd>
+      {% if e.status == 'signed' %}
+      <dt>Signed</dt><dd>{{ e.signed_at|dt }} UTC by {{ e.signer_name }}{% if e.signer_email %} ({{ e.signer_email }}){% endif %}</dd>
+      <dt>Signer IP</dt><dd>{{ e.signer_ip }}</dd>
+      <dt>User agent</dt><dd class="small">{{ e.signer_ua }}</dd>
+      <dt>Signature hash</dt><dd class="small" style="word-break:break-all">{{ e.signature_hash }}</dd>
+      {% endif %}
+      {% if e.document_hash %}<dt>Document hash</dt><dd class="small" style="word-break:break-all">{{ e.document_hash }}</dd>{% endif %}
+    </dl>
+    {% if e.status not in ['draft','void'] %}
+    <label>Public sign link</label>
+    <div class="searchbar"><input type="text" readonly value="{{ sign_url }}"><button type="button" class="btn small secondary" data-copy="{{ sign_url }}">Copy</button></div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Timeline</h2>
+    {% if e.events %}<ul class="timeline">
+    {% for ev in e.events %}<li><strong>{{ ev.event|replace('_',' ')|capitalize }}</strong> <span class="muted">{{ ev.created_at|dt }}</span>
+      {% if ev.event == 'viewed' %}<span class="muted small">{{ ev.ip }} {{ ev.detail }}</span>
+      {% elif ev.event == 'signed' %}<br><span class="small">{{ ev.detail }}, IP {{ ev.ip }}<br>{{ ev.ua }}</span>
+      {% elif ev.detail %}<span class="muted small">{{ ev.detail }}</span>{% endif %}</li>{% endfor %}
+    </ul>
+    {% if summary.views %}<p class="small muted" style="margin-top:8px">Viewed {{ summary.views }} time{{ 's' if summary.views != 1 }}, first at {{ summary.first_view|dt }}.</p>{% endif %}
+    {% else %}<div class="empty">No events yet.</div>{% endif %}
+  </div>
+</div>
+<div class="card"><h2>Letter</h2><div class="letter">{{ e.body_html|safe }}</div></div>
+{% endblock %}

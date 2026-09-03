@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% block title %}Settings{% endblock %}{% block content %}
+{% set u = current_user() %}
+<div class="topbar"><h1>Settings</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/users">Users</a><a class="btn small secondary" href="/settings/integrations">Integrations</a><a class="btn small secondary" href="/engagements/templates">Letter templates</a>{% if u.role == 'owner' %}<a class="btn small secondary" href="/dev/outbox">Dev outbox</a>{% endif %}</div></div>
+{% if u.role != 'owner' %}<div class="flash">Only the owner can change settings. You can read them here.</div>{% endif %}
+<form method="post" {% if u.role != 'owner' %}onsubmit="return false"{% endif %}>
+  {{ csrf() }}<input type="hidden" name="_form" value="1">
+  <div class="grid c2">
+    <div class="card"><h2>Firm profile</h2>
+      <label>Firm name</label><input type="text" name="name" value="{{ f.name }}" required>
+      <label>Address</label><textarea name="address" style="min-height:60px">{{ f.address }}</textarea>
+      <div class="row">
+        <div><label>Phone</label><input type="tel" name="phone" value="{{ f.phone }}"></div>
+        <div><label>Email (notifications and reply-to)</label><input type="email" name="email" value="{{ f.email }}"></div>
+      </div>
+      <div class="row">
+        <div><label>Website</label><input type="text" name="website" value="{{ f.website }}"></div>
+        <div><label>Timezone</label><input type="text" name="timezone" value="{{ f.timezone }}"></div>
+      </div>
+      <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="daily_agenda_email" value="1" {{ 'checked' if f.daily_agenda_email }}> Send each user a daily agenda email (python -m app.cli agenda)</label>
+    </div>
+    <div class="card"><h2>Rates and numbering</h2>
+      <div class="row">
+        <div><label>Default hourly rate</label><input type="text" name="default_rate" value="{{ (f.default_rate_cents / 100)|round(2) }}"></div>
+        <div><label>Invoice terms (days)</label><input type="number" name="invoice_terms_days" value="{{ f.invoice_terms_days }}" min="0"></div>
+      </div>
+      <div class="row">
+        <div><label>Invoice prefix</label><input type="text" name="invoice_prefix" value="{{ f.invoice_prefix }}"></div>
+        <div><label>Next invoice number</label><input type="number" name="next_invoice_number" value="{{ f.next_invoice_number }}" min="1"></div>
+      </div>
+      <div class="row">
+        <div><label>Matter prefix</label><input type="text" name="matter_prefix" value="{{ f.matter_prefix }}"></div>
+        <div><label>Next matter number</label><input type="number" name="next_matter_number" value="{{ f.next_matter_number }}" min="1"></div>
+      </div>
+      <label>Invoice footer</label><textarea name="invoice_footer" style="min-height:60px">{{ f.invoice_footer }}</textarea>
+    </div>
+    <div class="card"><h2>Card surcharge</h2>
+      <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="surcharge_enabled" value="1" {{ 'checked' if f.surcharge_enabled }}> Add a surcharge to card payments</label>
+      <label>Surcharge percent (never applied to ACH or eCheck)</label><input type="number" name="surcharge_pct" step="0.01" min="0" max="10" value="{{ (f.surcharge_bps / 100)|round(2) }}">
+      <p class="small muted">Stored as basis points: {{ f.surcharge_bps }} bps. Check your state bar rules and card network caps before enabling.</p>
+    </div>
+    <div class="card"><h2>Bank accounts</h2>
+      <label>Trust (IOLTA) account name</label><input type="text" name="trust_bank_name" value="{{ f.trust_bank_name }}">
+      <label>Trust account last 4 digits</label><input type="text" name="trust_account_last4" value="{{ f.trust_account_last4 }}" maxlength="4">
+      <label>Operating account name</label><input type="text" name="operating_bank_name" value="{{ f.operating_bank_name }}">
+    </div>
+  </div>
+  {% if u.role == 'owner' %}<div class="actions"><button class="btn">Save settings</button></div>{% endif %}
+</form>
+{% endblock %}
