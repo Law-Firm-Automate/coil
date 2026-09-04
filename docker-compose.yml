@@ -1,3 +1,5 @@
+# Coil behind Traefik on the idcprojects VPS. DOMAIN comes from .env (compose substitutes it into the labels).
+# For self-hosting without Traefik, use docker-compose.selfhost.yml instead.
 services:
   web:
     build: .
@@ -9,14 +11,14 @@ services:
       - coolify
     labels:
       - traefik.enable=true
-      - traefik.http.routers.coil.rule=Host(`practice.iandolan.com`)
+      - traefik.http.routers.coil.rule=Host(`${DOMAIN:-coil.localhost}`)
       - traefik.http.routers.coil.entrypoints=https
       - traefik.http.routers.coil.tls.certresolver=letsencrypt
       - traefik.http.services.coil.loadbalancer.server.port=8000
-      - traefik.http.routers.coil-http.rule=Host(`practice.iandolan.com`)
+      - traefik.http.routers.coil-http.rule=Host(`${DOMAIN:-coil.localhost}`)
       - traefik.http.routers.coil-http.entrypoints=http
-      - traefik.http.routers.coil-http.middlewares=redirect-to-https
-      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.coil-http.middlewares=coil-redirect
+      - traefik.http.middlewares.coil-redirect.redirectscheme.scheme=https
 networks:
   coolify:
     external: true

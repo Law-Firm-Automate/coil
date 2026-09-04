@@ -1,0 +1,12 @@
+# Coil on your own machine or server, no reverse proxy. Opens http://localhost:8080.
+# Put a reverse proxy with HTTPS in front of it before exposing it to the internet.
+services:
+  coil:
+    image: ghcr.io/senteras/coil:latest
+    container_name: coil
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./data:/app/data
