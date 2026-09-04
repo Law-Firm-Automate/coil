@@ -13,13 +13,19 @@
 .cal .it:hover{text-decoration:none;filter:brightness(.96)}
 </style>
 <div class="topbar"><h1>Calendar</h1>
-<div class="actions" style="margin:0"><a class="btn small secondary" href="/calendar?month={{ prev_month.strftime('%Y-%m') }}">&larr; {{ prev_month.strftime('%b') }}</a><strong style="min-width:150px;text-align:center">{{ month_label }}</strong><a class="btn small secondary" href="/calendar?month={{ next_month.strftime('%Y-%m') }}">{{ next_month.strftime('%b') }} &rarr;</a><a class="btn small secondary" href="/calendar">Today</a><a class="btn small" href="/calendar/new">New event</a></div></div>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/calendar?month={{ prev_month.strftime('%Y-%m') }}">&larr; {{ prev_month.strftime('%b') }}</a><strong style="min-width:150px;text-align:center">{{ month_label }}</strong><a class="btn small secondary" href="/calendar?month={{ next_month.strftime('%Y-%m') }}">{{ next_month.strftime('%b') }} &rarr;</a><a class="btn small secondary" href="/calendar">Today</a>
+<select onchange="location.href='/calendar?month={{ first.strftime('%Y-%m') }}&user='+this.value" style="width:auto">
+  <option value="all" {{ 'selected' if view == 'all' }}>All calendars</option>
+  <option value="mine" {{ 'selected' if view == 'mine' }}>Mine + firm-wide</option>
+  {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if view == u.id|string }}>{{ u.name }}</option>{% endfor %}
+</select>
+<a class="btn small" href="/calendar/new">New event</a></div></div>
 <div class="cal">
   {% for dow in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] %}<div class="dow">{{ dow }}</div>{% endfor %}
   {% for week in weeks %}{% for d in week %}
   <div class="day {{ 'other' if d.month != first.month }} {{ 'today' if d == today }}">
     <div class="num"><span>{{ d.day }}</span><a class="add" href="/calendar/new?date={{ d|iso }}">+ add</a></div>
-    {% for it in items.get(d, []) %}<a class="it {{ it.kind }}" href="{{ it.url }}" title="{{ it.title }}">{% if it.time %}<span class="muted">{{ it.time }}</span> {% endif %}{{ it.title }}</a>{% endfor %}
+    {% for it in items.get(d, []) %}<a class="it {{ it.kind }}" href="{{ it.url }}" title="{{ it.title }}">{% if it.time %}<span class="muted">{{ it.time }}</span> {% endif %}{% if it.who %}<span class="muted">[{{ it.who }}]</span> {% endif %}{{ it.title }}</a>{% endfor %}
   </div>
   {% endfor %}{% endfor %}
 </div>
@@ -30,8 +36,12 @@
   </div>
   <div class="card"><h2>Subscribe from your phone or Outlook</h2>
     <p class="small">Add this address as a calendar subscription. It lists every event here and updates on its own. Anyone with the link can read your calendar, so keep it private.</p>
+    <p class="small"><strong>Just my calendar</strong> (my events plus firm-wide ones):</p>
+    <pre class="code">{{ my_feed_url }}</pre>
+    <button class="btn small secondary" type="button" data-copy="{{ my_feed_url }}">Copy my link</button>
+    <p class="small" style="margin-top:12px"><strong>Whole firm</strong> (every calendar):</p>
     <pre class="code">{{ feed_url }}</pre>
-    <button class="btn small secondary" type="button" data-copy="{{ feed_url }}">Copy link</button>
+    <button class="btn small secondary" type="button" data-copy="{{ feed_url }}">Copy firm link</button>
   </div>
 </div>
 {% endblock %}

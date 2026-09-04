@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block title %}Contacts{% endblock %}{% block content %}
 <div class="topbar"><h1>Contacts</h1>
-<div class="actions" style="margin:0"><a class="btn small" href="/contacts/new">New contact</a><a class="btn small secondary" href="/contacts/new?kind=company">New company</a></div></div>
+<div class="actions" style="margin:0"><a class="btn small" href="/contacts/new">New contact</a><a class="btn small secondary" href="/contacts/import">Import CSV</a><a class="btn small secondary" href="/contacts/new?kind=company">New company</a></div></div>
 <div class="card">
   <form method="get" class="searchbar">
     <input type="text" name="q" value="{{ q }}" placeholder="Search name, email, phone, company">

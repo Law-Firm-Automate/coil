@@ -12,11 +12,17 @@
     <div><label>Matter</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == e.matter_id }}>{{ m.label }}</option>{% endfor %}{% if e.matter and e.matter.status == 'closed' %}<option value="{{ e.matter_id }}" selected>{{ e.matter.label }} (closed)</option>{% endif %}</select></div>
     <div><label>Location</label><input type="text" name="location" value="{{ e.location or '' }}"></div>
   </div>
+  <div class="row">
+    <div><label>Calendar</label><select name="user_id"><option value="">Firm-wide (everyone)</option>{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == e.user_id }}>{{ u.name }}</option>{% endfor %}</select></div>
+    <div><label>Repeats</label><select name="recurrence" id="recurrence">{% for k, lbl in recurrences %}<option value="{{ k }}" {{ 'selected' if (e.recurrence or 'none') == k }}>{{ lbl }}</option>{% endfor %}</select></div>
+    <div data-until><label>Until (optional)</label><input type="date" name="recurrence_until" value="{{ e.recurrence_until|iso if e.recurrence_until else '' }}"></div>
+  </div>
   <div><label>Notes</label><textarea name="notes">{{ e.notes or '' }}</textarea></div>
   <div class="actions"><button class="btn">{{ 'Add event' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/calendar' if is_new else '/calendar/' ~ e.id }}">Cancel</a></div>
 </form>
 <script>
 (function(){var cb=document.getElementById('all_day'),t=document.querySelector('[data-timed]'),a=document.querySelector('[data-allday]');
-function sync(){t.style.display=cb.checked?'none':'';a.style.display=cb.checked?'':'none';}cb.addEventListener('change',sync);sync();})();
+function sync(){t.style.display=cb.checked?'none':'';a.style.display=cb.checked?'':'none';}cb.addEventListener('change',sync);sync();
+var r=document.getElementById('recurrence'),u=document.querySelector('[data-until]');function rs(){u.style.display=r.value==='none'?'none':'';}r.addEventListener('change',rs);rs();})();
 </script>
 {% endblock %}

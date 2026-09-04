@@ -32,6 +32,41 @@ def abs_path(doc):
     return os.path.join(current_app.config["UPLOAD_DIR"], doc.path)
 
 
+TEXT_CAP = 200_000
+
+
+def extract_text(path, ext):
+    """Best-effort plain text from a stored file for conflict searching. Never raises."""
+    try:
+        if ext in ("txt", "md", "csv", "tsv", "log", "json", "html", "htm", "xml", "eml"):
+            with open(path, "rb") as f:
+                raw = f.read(TEXT_CAP * 2)
+            text = raw.decode("utf-8", "ignore")
+            if ext in ("html", "htm", "xml"):
+                import re
+                text = re.sub(r"<[^>]+>", " ", text)
+            return " ".join(text.split())[:TEXT_CAP]
+        if ext == "docx":
+            import re
+            import zipfile
+            with zipfile.ZipFile(path) as z:
+                xml = z.read("word/document.xml").decode("utf-8", "ignore")
+            xml = re.sub(r"</w:p>", "\n", xml)
+            return " ".join(re.sub(r"<[^>]+>", " ", xml).split())[:TEXT_CAP]
+        if ext == "pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(path)
+            parts = []
+            for page in reader.pages[:200]:
+                parts.append(page.extract_text() or "")
+                if sum(len(x) for x in parts) > TEXT_CAP:
+                    break
+            return " ".join(" ".join(parts).split())[:TEXT_CAP]
+    except Exception as e:  # noqa: BLE001
+        current_app.logger.warning("text extraction failed for %s: %s", path, e)
+    return ""
+
+
 def store_upload(matter_id, file, user_id=None, shared=False, by_client=False):
     """Validate and save an uploaded file. Returns (Document, error)."""
     name = (file.filename or "").strip()
@@ -52,10 +87,12 @@ def store_upload(matter_id, file, user_id=None, shared=False, by_client=False):
     folder = os.path.join(current_app.config["UPLOAD_DIR"], rel_dir)
     os.makedirs(folder, exist_ok=True)
     fname = f"{uuid.uuid4().hex}_{safe}"
-    file.save(os.path.join(folder, fname))
+    full = os.path.join(folder, fname)
+    file.save(full)
     mime = file.mimetype or mimetypes.guess_type(name)[0] or "application/octet-stream"
     doc = Document(matter_id=matter_id, name=name[:300], path=f"{rel_dir}/{fname}", size=size, mime=mime,
-                   uploaded_by_id=user_id, shared_to_portal=shared, uploaded_by_client=by_client)
+                   uploaded_by_id=user_id, shared_to_portal=shared, uploaded_by_client=by_client,
+                   extracted_text=extract_text(full, ext))
     db.session.add(doc)
     return doc, None
 

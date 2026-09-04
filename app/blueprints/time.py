@@ -278,8 +278,11 @@ def _expense_from_form(exp, form, files):
     if not matter:
         return "Pick a matter."
     amount = parse_money(form.get("amount"))
-    if amount <= 0:
-        return "Amount must be greater than zero."
+    has_receipt = bool(files.get("receipt") and files.get("receipt").filename) or bool(exp.receipt_path)
+    if amount < 0:
+        return "Amount cannot be negative."
+    if amount == 0 and not has_receipt:
+        return "Enter an amount, or attach a receipt to fill the amount in later."
     exp.matter_id = matter.id
     exp.date = parse_date(form.get("date"), date.today())
     exp.description = (form.get("description") or "").strip()
@@ -370,4 +373,5 @@ def expense_receipt(id):
     path = os.path.join(current_app.config["UPLOAD_DIR"], exp.receipt_path)
     if not os.path.isfile(path):
         abort(404)
-    return send_file(path, as_attachment=True, download_name=os.path.basename(exp.receipt_path))
+    inline = request.args.get("inline") == "1"
+    return send_file(path, as_attachment=not inline, download_name=os.path.basename(exp.receipt_path))

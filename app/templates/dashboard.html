@@ -2,7 +2,7 @@
 <div class="topbar"><h1>Dashboard</h1>
 <div class="actions" style="margin:0">
   {% if timer %}<span class="timerbar">Timer: <strong data-timer-seconds="{{ timer.elapsed_seconds() }}" data-timer-running="{{ 0 if timer.paused else 1 }}"></strong> {{ timer.matter.label if timer.matter else '' }} <a href="/time/timer">manage</a></span>{% else %}<a class="btn secondary small" href="/time/timer">Start timer</a>{% endif %}
-  <a class="btn small" href="/time/new">Log time</a><a class="btn small secondary" href="/matters/new">New matter</a>
+  <a class="btn small" href="/time/new">Log time</a><a class="btn small secondary" href="/time/expenses/new" title="Snap a receipt with your phone">Receipt</a><a class="btn small secondary" href="/matters/new">New matter</a>
 </div></div>
 <div class="grid c4">
   <div class="card stat"><div class="label">Open matters</div><div class="value">{{ open_matters }}</div></div>

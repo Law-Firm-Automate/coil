@@ -4,7 +4,7 @@ import re
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from rapidfuzz import fuzz
 from ..extensions import db
-from ..models import ConflictCheck, Contact, Matter, MatterParty, Note, IntakeLead, audit
+from ..models import ConflictCheck, Contact, Matter, MatterParty, Note, IntakeLead, Message, Document, audit
 from ..helpers import login_required, current_user
 
 bp = Blueprint("conflicts", __name__, url_prefix="/conflicts")
@@ -19,12 +19,16 @@ def normalise(s):
 
 
 def _score(query, text):
-    """Exact substring wins; otherwise token_set_ratio at or above the threshold."""
+    """Exact substring wins; otherwise token_set_ratio at or above the threshold.
+    Long texts (messages, file contents) only match on substring: fuzzy scoring a whole document
+    against a name is slow and matches on common words."""
     nq, nt = normalise(query), normalise(text)
     if not nq or not nt:
         return None
     if len(nq) >= 3 and nq in nt:
         return 100
+    if len(nt) > 200:
+        return None
     s = fuzz.token_set_ratio(nq, nt)
     return int(s) if s >= FUZZY_MIN else None
 
@@ -52,8 +56,26 @@ def _index():
         url = f"/matters/{n.matter_id}" if n.matter_id else (f"/contacts/{n.contact_id}" if n.contact_id else "")
         snippet = " ".join(n.body.split())[:90]
         rows.append((n.body, "note", snippet, url, "note"))
+    for msg in Message.query.all():
+        if not msg.body:
+            continue
+        who = msg.contact.display_name if msg.contact else (msg.to_addr or msg.from_addr or "unknown")
+        url = f"/messages/{msg.contact_id}" if msg.contact_id else "/messages"
+        snippet = " ".join(msg.body.split())[:90]
+        rows.append((msg.body, "message", f"{msg.channel} with {who}: {snippet}", url, "message"))
+    for d in Document.query.all():
+        url = f"/documents?matter_id={d.matter_id}"
+        label = f"{d.name} on {d.matter.label if d.matter else '?'}"
+        rows.append((d.name, "document", label, url, "file name"))
+        if d.extracted_text:
+            rows.append((d.extracted_text, "document", f"{label} (contents)", url, "file contents"))
     for l in IntakeLead.query.all():
         rows.append((l.name, "lead", l.name, f"/intake/{l.id}", "lead"))
+        if l.email:
+            rows.append((l.email, "lead", f"{l.name} <{l.email}>", f"/intake/{l.id}", "lead email"))
+        if l.description:
+            rows.append((l.description, "lead", f"{l.name}: " + " ".join(l.description.split())[:80], f"/intake/{l.id}",
+                         "lead description"))
         if l.adverse_party:
             rows.append((l.adverse_party, "lead", f"{l.adverse_party} (adverse to lead {l.name})",
                          f"/intake/{l.id}", "adverse party"))

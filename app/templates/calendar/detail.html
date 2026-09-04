@@ -7,6 +7,8 @@
     <dt>When</dt><dd>{% if e.all_day %}{{ e.starts_at|d }} (all day){% else %}{{ e.starts_at|dt }}{% if e.ends_at %} to {{ e.ends_at|dt }}{% endif %}{% endif %}</dd>
     <dt>Location</dt><dd>{{ e.location or '' }}</dd>
     <dt>Matter</dt><dd>{% if e.matter %}<a href="/matters/{{ e.matter_id }}">{{ e.matter.label }}</a>{% else %}<span class="muted">none</span>{% endif %}</dd>
+    <dt>Calendar</dt><dd>{{ e.user.name if e.user else 'Firm-wide' }}</dd>
+    <dt>Repeats</dt><dd>{% if e.recurrence and e.recurrence != 'none' %}{{ e.recurrence }}{% if e.recurrence_until %} until {{ e.recurrence_until|d }}{% endif %}{% else %}<span class="muted">no</span>{% endif %}</dd>
   </dl>
   {% if e.notes %}<h3 style="margin-top:12px">Notes</h3><p style="white-space:pre-line">{{ e.notes }}</p>{% endif %}
 </div>

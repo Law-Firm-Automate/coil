@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}Preview import{% endblock %}{% block content %}
+<div class="topbar"><h1>Preview: {{ filename }}</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/contacts/import">Choose a different file</a></div></div>
+{% if errors %}<div class="flash error">{{ errors|length }} row(s) skipped: {{ errors[:3]|join(' ') }}{% if errors|length > 3 %} ...{% endif %}</div>{% endif %}
+<div class="card">
+  <p><strong>{{ rows|length }}</strong> contacts found, <strong>{{ dupes }}</strong> look like existing contacts. Columns matched: {% for k, h in cols.items() %}<span class="badge">{{ h }} &rarr; {{ k }}</span> {% endfor %}</p>
+  <form method="post" action="/contacts/import/commit">{{ csrf() }}<input type="hidden" name="token" value="{{ token }}">
+    <div class="row">
+      <div><label>Rows that match an existing contact</label><select name="duplicates"><option value="skip">Skip them</option><option value="update">Update the existing contact with the CSV values</option><option value="create">Create anyway (allow duplicates)</option></select></div>
+      <div><label>&nbsp;</label><label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_client" value="1"> Mark every imported contact as a client</label></div>
+    </div>
+    <div class="actions"><button class="btn">Import {{ rows|length }} contacts</button><a class="btn secondary" href="/contacts">Cancel</a></div>
+  </form>
+</div>
+<div class="card" style="overflow:auto"><table>
+<tr><th>#</th><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Aliases</th><th>Status</th></tr>
+{% for r in rows[:500] %}<tr><td class="muted">{{ loop.index }}</td><td>{{ (r.first_name ~ ' ' ~ r.last_name)|trim }}</td><td>{{ r.company_name }}</td><td>{{ r.email }}</td><td>{{ r.phone }}</td><td class="small">{{ r.aliases|replace('\n', ', ') }}</td>
+<td>{% if r.duplicate_id %}<span class="badge draft">matches <a href="/contacts/{{ r.duplicate_id }}">{{ r.duplicate_name }}</a></span>{% else %}<span class="badge open">new</span>{% endif %}</td></tr>{% endfor %}
+{% if rows|length > 500 %}<tr><td colspan="7" class="muted">... and {{ rows|length - 500 }} more</td></tr>{% endif %}
+</table></div>
+{% endblock %}

@@ -475,7 +475,34 @@ class CalendarEvent(db.Model):
     notes = db.Column(db.Text, default="")
     uid = db.Column(db.String(80), default=new_token)
     created_at = db.Column(db.DateTime, default=now)
+    # Whose calendar this sits on. NULL = firm-wide (everyone sees it).
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    # none | daily | weekly | biweekly | monthly | yearly, expanded on the fly in the month view and as RRULE in ICS.
+    recurrence = db.Column(db.String(12), default="none")
+    recurrence_until = db.Column(db.Date)
     matter = db.relationship("Matter")
+    user = db.relationship("User")
+
+    def occurrences(self, start, end):
+        """Yield occurrence start datetimes within [start, end) for this event, expanding recurrence."""
+        from dateutil.relativedelta import relativedelta
+        if not self.starts_at:
+            return
+        step = {"daily": relativedelta(days=1), "weekly": relativedelta(weeks=1), "biweekly": relativedelta(weeks=2),
+                "monthly": relativedelta(months=1), "yearly": relativedelta(years=1)}.get(self.recurrence or "none")
+        if not step:
+            if start <= self.starts_at < end:
+                yield self.starts_at
+            return
+        until = datetime.combine(self.recurrence_until, datetime.max.time()) if self.recurrence_until else None
+        cur, n = self.starts_at, 0
+        while cur < end and n < 1000:
+            if until and cur > until:
+                return
+            if cur >= start:
+                yield cur
+            cur = self.starts_at + step * (n + 1)
+            n += 1
 
 
 class Document(db.Model):
@@ -490,6 +517,8 @@ class Document(db.Model):
     shared_to_portal = db.Column(db.Boolean, default=False)
     uploaded_by_client = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=now)
+    # Plain text pulled out of txt/md/csv/docx/pdf at upload so conflict checks can search inside files.
+    extracted_text = db.Column(db.Text, default="")
     matter = db.relationship("Matter", back_populates="documents")
     uploaded_by = db.relationship("User")
 

@@ -19,6 +19,7 @@
 <div class="card" style="max-width:760px">
 <form method="post" enctype="multipart/form-data">{{ csrf() }}
   {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  {% if expense.id is none %}<div class="small muted" style="margin-bottom:6px">Tip: on a phone, tap the receipt field first. Description and amount are optional until you invoice.</div>{% endif %}
   <div class="row">
     <div style="grid-column:1/-1"><label>Matter</label>
       <select name="matter_id" required><option value="">Choose a matter</option>
@@ -26,11 +27,13 @@
       </select></div>
     <div><label>Date</label><input type="date" name="date" value="{{ v.get('date') or expense.date|iso }}" required></div>
     <div><label>Category</label><select name="category">{% set cur = v.get('category') or expense.category %}{% for c in categories %}<option value="{{ c }}" {{ 'selected' if cur == c }}>{{ c }}</option>{% endfor %}</select></div>
-    <div><label>Amount</label><input type="text" name="amount" value="{{ v.get('amount') if v.get('amount') is not none else ('%.2f' % (expense.amount_cents / 100) if expense.id else '') }}" inputmode="decimal" placeholder="0.00" required></div>
+    <div><label>Amount</label><input type="text" name="amount" value="{{ v.get('amount') if v.get('amount') is not none else ('%.2f' % (expense.amount_cents / 100) if expense.id else '') }}" inputmode="decimal" placeholder="0.00"></div>
   </div>
   <label>Description</label><input type="text" name="description" value="{{ v.get('description') if v.get('description') is not none else expense.description }}" placeholder="e.g. Filing fee, Travis County District Clerk">
-  <label>Receipt (optional{% if expense.receipt_path %}, replaces the current one{% endif %})</label><input type="file" name="receipt" accept="image/*,.pdf">
-  {% if expense.receipt_path %}<div class="small muted">Current: <a href="{{ url_for('time.expense_receipt', id=expense.id) }}">download receipt</a></div>{% endif %}
+  <label>Receipt (optional{% if expense.receipt_path %}, replaces the current one{% endif %})</label><input type="file" name="receipt" accept="image/*,.pdf" capture="environment" id="receipt">
+  <div class="small muted">On a phone this opens the camera. Snap the receipt and the amount and description can be filled in later.</div>
+  <img id="receipt-preview" alt="" style="display:none;max-width:260px;margin-top:8px;border:1px solid var(--line);border-radius:6px">
+  {% if expense.receipt_path %}<div class="small muted" style="margin-top:6px">Current: <a href="{{ url_for('time.expense_receipt', id=expense.id) }}">download receipt</a>{% if expense.receipt_path.lower().endswith(('.jpg','.jpeg','.png','.gif','.webp','.heic')) %}<br><img src="{{ url_for('time.expense_receipt', id=expense.id, inline=1) }}" alt="Receipt" style="max-width:260px;margin-top:6px;border:1px solid var(--line);border-radius:6px">{% endif %}</div>{% endif %}
   <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" name="billable" value="1" {{ 'checked' if (v.get('billable') if form else expense.billable) }}> Billable to client</label>
   <div class="actions">
     <button class="btn">{{ 'Save changes' if expense.id else 'Save expense' }}</button>
@@ -42,4 +45,8 @@
 {% endif %}
 </div>
 {% endif %}
+<script>
+(function(){var f=document.getElementById('receipt'),p=document.getElementById('receipt-preview');if(!f)return;
+f.addEventListener('change',function(){var x=f.files&&f.files[0];if(!x||!x.type.startsWith('image/')){p.style.display='none';return;}p.src=URL.createObjectURL(x);p.style.display='block';});})();
+</script>
 {% endblock %}
