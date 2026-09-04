@@ -21,11 +21,18 @@ class User(db.Model):
     email = db.Column(db.String(200), unique=True, nullable=False)
     name = db.Column(db.String(200), nullable=False)
     password_hash = db.Column(db.String(300), nullable=False)
-    role = db.Column(db.String(20), default="owner")  # owner | staff
+    # owner | attorney | paralegal | billing | readonly  ("staff" is accepted as a legacy alias for attorney)
+    role = db.Column(db.String(20), default="owner")
     hourly_rate_cents = db.Column(db.Integer, default=0)
+    # What an hour of this person costs the firm (salary + overhead). Drives matter profitability.
+    cost_rate_cents = db.Column(db.Integer, default=0)
     initials = db.Column(db.String(6), default="")
     is_active = db.Column(db.Boolean, default=True)
+    office_id = db.Column(db.Integer, db.ForeignKey("offices.id"))
+    # JSON list of dashboard card keys the user wants, in order. Empty = default set.
+    dashboard_json = db.Column(db.Text, default="")
     created_at = db.Column(db.DateTime, default=now)
+    office = db.relationship("Office", foreign_keys=[office_id])
 
     def set_password(self, pw):
         self.password_hash = generate_password_hash(pw)
@@ -58,6 +65,15 @@ class Firm(db.Model):
     operating_bank_name = db.Column(db.String(200), default="Operating Account")
     trust_account_last4 = db.Column(db.String(4), default="")
     daily_agenda_email = db.Column(db.Boolean, default=True)
+    currency = db.Column(db.String(3), default="USD")  # default for new matters
+    # Interest on overdue invoices: annual rate in basis points (1200 = 12%), applied monthly after the grace period.
+    interest_apr_bps = db.Column(db.Integer, default=0)
+    interest_grace_days = db.Column(db.Integer, default=30)
+    # When on, invoices built by non-owners go to pending_approval and an owner/billing user must approve before send.
+    require_invoice_approval = db.Column(db.Boolean, default=False)
+    ledes_firm_id = db.Column(db.String(40), default="")  # LAW_FIRM_ID in LEDES 1998B, usually the firm's tax id
+    # Client-facing language default: en | es
+    default_language = db.Column(db.String(5), default="en")
 
     @staticmethod
     def get():
@@ -67,6 +83,18 @@ class Firm(db.Model):
             db.session.add(f)
             db.session.commit()
         return f
+
+
+class Office(db.Model):
+    """A firm location. Users and matters may belong to one; invoices print the matter's office address."""
+    __tablename__ = "offices"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    address = db.Column(db.Text, default="")
+    phone = db.Column(db.String(50), default="")
+    email = db.Column(db.String(200), default="")
+    is_default = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=now)
 
 
 class Contact(db.Model):
@@ -84,8 +112,22 @@ class Contact(db.Model):
     is_client = db.Column(db.Boolean, default=False)
     aliases = db.Column(db.Text, default="")  # newline-separated other names (maiden, DBA, etc.)
     created_at = db.Column(db.DateTime, default=now)
+    custom_fields_json = db.Column(db.Text, default="{}")
+    language = db.Column(db.String(5), default="")  # "" = firm default; en | es for client-facing pages and emails
+    ledes_client_id = db.Column(db.String(40), default="")  # CLIENT_ID the carrier assigns
 
     matters = db.relationship("Matter", back_populates="client", foreign_keys="Matter.client_id")
+
+    @property
+    def custom_fields(self):
+        try:
+            return json.loads(self.custom_fields_json or "{}")
+        except Exception:
+            return {}
+
+    @custom_fields.setter
+    def custom_fields(self, d):
+        self.custom_fields_json = json.dumps(d or {})
 
     @property
     def display_name(self):
@@ -128,9 +170,21 @@ class Matter(db.Model):
     court = db.Column(db.String(200), default="")
     case_number = db.Column(db.String(100), default="")
     created_at = db.Column(db.DateTime, default=now)
+    office_id = db.Column(db.Integer, db.ForeignKey("offices.id"))
+    originating_user_id = db.Column(db.Integer, db.ForeignKey("users.id"))  # who brought the work in
+    currency = db.Column(db.String(3), default="")  # "" = firm default
+    # Evergreen retainer: when the matter's trust balance falls below the minimum, ask the client to top up to the target.
+    trust_minimum_cents = db.Column(db.Integer, default=0)
+    trust_replenish_to_cents = db.Column(db.Integer, default=0)
+    ledes_matter_id = db.Column(db.String(40), default="")  # CLIENT_MATTER_ID the carrier assigns
+    template_id = db.Column(db.Integer, db.ForeignKey("matter_templates.id"))
 
     client = db.relationship("Contact", back_populates="matters", foreign_keys=[client_id])
     responsible = db.relationship("User", foreign_keys=[responsible_user_id])
+    originator = db.relationship("User", foreign_keys=[originating_user_id])
+    office = db.relationship("Office", foreign_keys=[office_id])
+    template = db.relationship("MatterTemplate", foreign_keys=[template_id])
+    payers = db.relationship("MatterPayer", back_populates="matter", cascade="all, delete-orphan")
     parties = db.relationship("MatterParty", back_populates="matter", cascade="all, delete-orphan")
     milestones = db.relationship("FlatFeeMilestone", back_populates="matter", cascade="all, delete-orphan",
                                  order_by="FlatFeeMilestone.sort")
@@ -156,6 +210,10 @@ class Matter(db.Model):
     def label(self):
         return f"{self.number} {self.name}"
 
+    @property
+    def currency_code(self):
+        return self.currency or Firm.get().currency or "USD"
+
     def effective_rate_cents(self, user=None):
         if self.hourly_rate_cents:
             return self.hourly_rate_cents
@@ -176,6 +234,61 @@ class Matter(db.Model):
 
     def outstanding_cents(self):
         return sum(i.balance_cents for i in self.invoices if i.status not in ("draft", "void", "paid"))
+
+
+class MatterPayer(db.Model):
+    """Split billing: who pays what share of a matter's invoices. Absent = the client pays 100%."""
+    __tablename__ = "matter_payers"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"), nullable=False)
+    percent = db.Column(db.Float, default=100.0)
+    label = db.Column(db.String(120), default="")  # e.g. "Insurer", "Co-defendant"
+    matter = db.relationship("Matter", back_populates="payers")
+    contact = db.relationship("Contact")
+
+
+class MatterTemplate(db.Model):
+    """Practice-area template: billing defaults, milestone schedule, task workflow, custom fields."""
+    __tablename__ = "matter_templates"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    practice_area = db.Column(db.String(100), default="")
+    description = db.Column(db.Text, default="")
+    billing_type = db.Column(db.String(20), default="flat")
+    hourly_rate_cents = db.Column(db.Integer, default=0)
+    flat_fee_cents = db.Column(db.Integer, default=0)
+    contingency_pct = db.Column(db.Float, default=0.0)
+    # [{"description": "...", "amount_cents": 0, "due_offset_days": null}]
+    milestones_json = db.Column(db.Text, default="[]")
+    # [{"title": "...", "kind": "task|deadline|court_date", "offset_days": 7, "priority": "normal", "assignee": "responsible|none"}]
+    tasks_json = db.Column(db.Text, default="[]")
+    # {"Field name": "default value"}
+    custom_fields_json = db.Column(db.Text, default="{}")
+    sol_years = db.Column(db.Float, default=0.0)  # 0 = do not set; otherwise sol_date = opened_on + years
+    sol_basis = db.Column(db.String(200), default="")
+    trust_minimum_cents = db.Column(db.Integer, default=0)
+    trust_replenish_to_cents = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=now)
+
+    def _load(self, attr, default):
+        try:
+            return json.loads(getattr(self, attr) or "") or default
+        except Exception:
+            return default
+
+    @property
+    def milestones(self):
+        return self._load("milestones_json", [])
+
+    @property
+    def tasks(self):
+        return self._load("tasks_json", [])
+
+    @property
+    def custom_fields(self):
+        return self._load("custom_fields_json", {})
 
 
 class MatterParty(db.Model):
@@ -241,7 +354,8 @@ class TimeEntry(db.Model):
     rate_cents = db.Column(db.Integer, default=0)
     billable = db.Column(db.Boolean, default=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"))
-    activity_code = db.Column(db.String(20), default="")
+    activity_code = db.Column(db.String(20), default="")  # UTBMS activity code, e.g. A104
+    task_code = db.Column(db.String(20), default="")  # UTBMS task code, e.g. L110
     created_at = db.Column(db.DateTime, default=now)
     matter = db.relationship("Matter", back_populates="time_entries")
     user = db.relationship("User")
@@ -287,6 +401,7 @@ class Expense(db.Model):
     billable = db.Column(db.Boolean, default=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"))
     receipt_path = db.Column(db.String(400), default="")
+    expense_code = db.Column(db.String(20), default="")  # UTBMS expense code, e.g. E101
     created_at = db.Column(db.DateTime, default=now)
     matter = db.relationship("Matter", back_populates="expenses")
     invoice = db.relationship("Invoice", foreign_keys=[invoice_id], back_populates="expenses")
@@ -314,9 +429,26 @@ class Invoice(db.Model):
     view_count = db.Column(db.Integer, default=0)
     pdf_path = db.Column(db.String(400), default="")
     created_at = db.Column(db.DateTime, default=now)
+    # Approval workflow: none | pending | approved | rejected. Only matters when Firm.require_invoice_approval.
+    approval_status = db.Column(db.String(20), default="none")
+    approved_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    approved_at = db.Column(db.DateTime)
+    approval_note = db.Column(db.String(300), default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    # Split billing: this invoice is payer_contact's share (split_pct) of the matter's charges. NULL = the client, 100%.
+    payer_contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"))
+    split_pct = db.Column(db.Float, default=100.0)
+    split_group = db.Column(db.String(40), default="")  # same value on every invoice produced by one split build
+    interest_cents = db.Column(db.Integer, default=0)  # total interest added so far (also present as lines)
+    last_interest_on = db.Column(db.Date)
+    currency = db.Column(db.String(3), default="USD")
+    ledes_exported_at = db.Column(db.DateTime)
 
     matter = db.relationship("Matter", back_populates="invoices")
-    client = db.relationship("Contact")
+    client = db.relationship("Contact", foreign_keys=[client_id])
+    payer = db.relationship("Contact", foreign_keys=[payer_contact_id])
+    approved_by = db.relationship("User", foreign_keys=[approved_by_id])
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
     lines = db.relationship("InvoiceLine", back_populates="invoice", cascade="all, delete-orphan",
                             order_by="InvoiceLine.sort")
     time_entries = db.relationship("TimeEntry", back_populates="invoice", foreign_keys="TimeEntry.invoice_id")
@@ -351,7 +483,7 @@ class InvoiceLine(db.Model):
     __tablename__ = "invoice_lines"
     id = db.Column(db.Integer, primary_key=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False)
-    kind = db.Column(db.String(20), default="flat")  # time | expense | flat | adjustment | discount
+    kind = db.Column(db.String(20), default="flat")  # time | expense | flat | adjustment | discount | interest
     date = db.Column(db.Date)
     description = db.Column(db.Text, default="")
     quantity = db.Column(db.Float, default=1.0)  # hours for time lines, 1 otherwise
@@ -636,8 +768,55 @@ class Message(db.Model):
     provider_id = db.Column(db.String(120), default="")
     status = db.Column(db.String(30), default="queued")
     created_at = db.Column(db.DateTime, default=now)
+    # channel "portal": secure messages typed in the client portal or replied to from the staff thread.
+    read_at = db.Column(db.DateTime)  # when the other side opened it
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))  # staff author for outbound portal messages
     contact = db.relationship("Contact")
     matter = db.relationship("Matter")
+    user = db.relationship("User")
+
+
+class DocumentSignature(db.Model):
+    """Click-to-sign on any uploaded document, with the same audit record as engagement letters."""
+    __tablename__ = "document_signatures"
+    id = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, db.ForeignKey("documents.id"), nullable=False)
+    contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"), nullable=False)
+    token = db.Column(db.String(80), unique=True, default=new_token)
+    title = db.Column(db.String(300), default="")
+    message = db.Column(db.Text, default="")  # note shown to the signer
+    status = db.Column(db.String(20), default="draft")  # draft | sent | viewed | signed | declined | void
+    sent_at = db.Column(db.DateTime)
+    sent_to = db.Column(db.String(200), default="")
+    first_viewed_at = db.Column(db.DateTime)
+    view_count = db.Column(db.Integer, default=0)
+    signed_at = db.Column(db.DateTime)
+    signer_name = db.Column(db.String(200), default="")
+    signer_email = db.Column(db.String(200), default="")
+    signer_ip = db.Column(db.String(60), default="")
+    signer_ua = db.Column(db.String(300), default="")
+    document_hash = db.Column(db.String(80), default="")  # sha256 of the file bytes at send time
+    signature_hash = db.Column(db.String(80), default="")
+    certificate_pdf_path = db.Column(db.String(400), default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    document = db.relationship("Document")
+    contact = db.relationship("Contact")
+    created_by = db.relationship("User")
+    events = db.relationship("DocumentSignatureEvent", back_populates="signature", cascade="all, delete-orphan",
+                             order_by="DocumentSignatureEvent.created_at")
+
+
+class DocumentSignatureEvent(db.Model):
+    __tablename__ = "document_signature_events"
+    id = db.Column(db.Integer, primary_key=True)
+    signature_id = db.Column(db.Integer, db.ForeignKey("document_signatures.id"), nullable=False)
+    event = db.Column(db.String(30))  # sent | viewed | signed | declined | reminder
+    ip = db.Column(db.String(60), default="")
+    ua = db.Column(db.String(300), default="")
+    detail = db.Column(db.String(300), default="")
+    created_at = db.Column(db.DateTime, default=now)
+    signature = db.relationship("DocumentSignature", back_populates="events")
 
 
 class AuditLog(db.Model):

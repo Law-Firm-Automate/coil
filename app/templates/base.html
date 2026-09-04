@@ -21,6 +21,7 @@
     <a class="nav {{ 'active' if _path.startswith('/conflicts') }}" href="/conflicts">Conflict check</a>
     <a class="nav {{ 'active' if _path.startswith('/engagements') }}" href="/engagements">Engagement letters</a>
     <a class="nav {{ 'active' if _path.startswith('/messages') }}" href="/messages">Messages</a>
+    <a class="nav {{ 'active' if _path.startswith('/signatures') }}" href="/signatures">Signatures</a>
     <div class="sec">Work</div>
     <a class="nav {{ 'active' if _path.startswith('/time') }}" href="/time">Time &amp; expenses</a>
     <a class="nav {{ 'active' if _path.startswith('/tasks') }}" href="/tasks">Tasks &amp; deadlines</a>
@@ -32,7 +33,9 @@
     <a class="nav {{ 'active' if _path.startswith('/trust') }}" href="/trust">Trust accounting</a>
     <a class="nav {{ 'active' if _path.startswith('/reports') }}" href="/reports">Reports</a>
     <div class="sec">Firm</div>
-    <a class="nav {{ 'active' if _path.startswith('/settings') }}" href="/settings">Settings</a>
+    <a class="nav {{ 'active' if _path.startswith('/settings') and not _path.startswith('/settings/templates') and not _path.startswith('/settings/audit') }}" href="/settings">Settings</a>
+    <a class="nav {{ 'active' if _path.startswith('/settings/templates') }}" href="/settings/templates">Matter templates</a>
+    <a class="nav {{ 'active' if _path.startswith('/settings/audit') }}" href="/settings/audit">Audit log</a>
     <a class="nav {{ 'active' if _path.startswith('/exports') }}" href="/exports">Exports</a>
     {% if u %}
     <div class="user">{{ u.name }}<br>
