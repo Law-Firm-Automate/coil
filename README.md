@@ -24,6 +24,13 @@ collecting payment, and a trust ledger that reconciles. Everything else is delib
 - **Two-way texting** via Twilio. **Reports:** AR aging, WIP, revenue, trust balances, productivity.
 - **QuickBooks Online CSV exports** for invoices, payments and customers.
 - **Daily agenda and reminder emails** from a cron-friendly CLI.
+- **Billing depth:** UTBMS codes and LEDES 1998B export, bulk invoicing, an approval workflow, split billing across
+  payers, interest on overdue balances, evergreen retainer top-up requests, and per-matter currency.
+- **Firm structure:** five roles with a permission matrix, offices, a searchable audit log, matter templates that
+  create milestones, tasks, custom fields and limitations dates, and custom fields on contacts.
+- **Reports:** origination, realization and matter profitability, plus a dashboard each user arranges.
+- **Client-facing:** secure portal messaging, click-to-sign on any document with a certificate PDF, and Spanish on
+  every client page and email when a contact prefers it.
 
 ## Run locally
 
@@ -52,6 +59,7 @@ Cron on the server:
 ```
 15 7 * * *  cd /home/deploy/apps/practice.iandolan.com && docker compose exec -T web python -m app.cli agenda
 30 7 * * *  cd /home/deploy/apps/practice.iandolan.com && docker compose exec -T web python -m app.cli reminders
+0  6 1 * *  cd /home/deploy/apps/practice.iandolan.com && docker compose exec -T web python -m app.cli interest
 ```
 
 ## Money handling notes
