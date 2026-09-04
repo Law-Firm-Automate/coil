@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 # Coil installer for Mac and Linux. Needs Docker (Docker Desktop on a Mac).
-#   curl -fsSL https://raw.githubusercontent.com/Coil-Legal/coil/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Law-Firm-Automate/coil/main/install.sh | sh
 set -e
 DIR="${COIL_DIR:-$HOME/coil}"
 PORT="${COIL_PORT:-8080}"
-IMAGE="${COIL_IMAGE:-ghcr.io/coil-legal/coil:latest}"
+IMAGE="${COIL_IMAGE:-ghcr.io/law-firm-automate/coil:latest}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is not installed. On a Mac, install Docker Desktop from https://www.docker.com/products/docker-desktop/ and run this again."
@@ -55,7 +55,7 @@ YML
 if ! docker compose pull 2>/dev/null; then
   echo "Could not pull the prebuilt image; building from source instead (takes a few minutes)."
   if ! command -v git >/dev/null 2>&1; then echo "git is needed to build from source."; exit 1; fi
-  [ -d src ] || git clone --depth 1 https://github.com/Coil-Legal/coil.git src
+  [ -d src ] || git clone --depth 1 https://github.com/Law-Firm-Automate/coil.git src
   (cd src && git pull -q || true)
   sed -i.bak "s#image: .*#build: ./src#" docker-compose.yml && rm -f docker-compose.yml.bak
   docker compose build

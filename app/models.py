@@ -74,7 +74,7 @@ class Firm(db.Model):
     ledes_firm_id = db.Column(db.String(40), default="")  # LAW_FIRM_ID in LEDES 1998B, usually the firm's tax id
     # Client-facing language default: en | es
     default_language = db.Column(db.String(5), default="en")
-    install_key = db.Column(db.String(40), default="")  # free key from coil.legal, recorded at first-run setup
+    install_key = db.Column(db.String(40), default="")  # free key from lawfirmautomate.com, recorded at first-run setup
     ai_enabled = db.Column(db.Boolean, default=False)  # AI features also need an API key in the environment
     sequences_auto_send = db.Column(db.Boolean, default=False)  # follow-up sequences send only when this is on; otherwise drafts
 

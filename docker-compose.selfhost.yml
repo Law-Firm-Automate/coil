@@ -2,7 +2,7 @@
 # Put a reverse proxy with HTTPS in front of it before exposing it to the internet.
 services:
   coil:
-    image: ghcr.io/coil-legal/coil:latest
+    image: ghcr.io/law-firm-automate/coil:latest
     container_name: coil
     restart: unless-stopped
     env_file: .env
