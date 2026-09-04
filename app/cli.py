@@ -147,8 +147,11 @@ def run_reminders():
             db.session.commit()
             inv_count += 1
 
+    # Engagement.sent_at is naive UTC, so the day window must be built from the UTC date,
+    # not the local one, or reminders silently skip near midnight.
+    utc_today = datetime.utcnow().date()
     for days in (3, 7):
-        day = today - timedelta(days=days)
+        day = utc_today - timedelta(days=days)
         start = datetime.combine(day, datetime.min.time())
         end = start + timedelta(days=1)
         for e in Engagement.query.filter(Engagement.status.in_(["sent", "viewed"]), Engagement.sent_at >= start,
