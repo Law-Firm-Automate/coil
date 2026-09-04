@@ -27,7 +27,8 @@ def create_app(config=None):
     for modname in ("contacts", "matters", "conflicts", "tasks", "calendar", "documents",
                     "time", "invoices", "reports",
                     "trust", "payments", "portal",
-                    "intake", "engagements", "messages", "settings", "exports", "signatures"):
+                    "intake", "engagements", "messages", "settings", "exports", "signatures",
+                    "rules", "doctemplates", "emailin", "accounting", "api", "webhooks_out", "ai"):
         try:
             mod = __import__(f"app.blueprints.{modname}", fromlist=["bp"])
             app.register_blueprint(mod.bp)

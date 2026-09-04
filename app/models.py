@@ -74,6 +74,8 @@ class Firm(db.Model):
     ledes_firm_id = db.Column(db.String(40), default="")  # LAW_FIRM_ID in LEDES 1998B, usually the firm's tax id
     # Client-facing language default: en | es
     default_language = db.Column(db.String(5), default="en")
+    ai_enabled = db.Column(db.Boolean, default=False)  # AI features also need an API key in the environment
+    sequences_auto_send = db.Column(db.Boolean, default=False)  # follow-up sequences send only when this is on; otherwise drafts
 
     @staticmethod
     def get():
@@ -587,8 +589,13 @@ class Task(db.Model):
     done_at = db.Column(db.DateTime)
     notes = db.Column(db.Text, default="")
     created_at = db.Column(db.DateTime, default=now)
+    # Set when the task was produced by a court rule: which rule, from which trigger event on which date.
+    rule_id = db.Column(db.Integer, db.ForeignKey("court_rules.id"))
+    trigger_date = db.Column(db.Date)
+    rule_trigger = db.Column(db.String(120), default="")
     matter = db.relationship("Matter", back_populates="tasks")
     assignee = db.relationship("User")
+    rule = db.relationship("CourtRule")
 
     @property
     def is_overdue(self):
@@ -651,7 +658,19 @@ class Document(db.Model):
     created_at = db.Column(db.DateTime, default=now)
     # Plain text pulled out of txt/md/csv/docx/pdf at upload so conflict checks can search inside files.
     extracted_text = db.Column(db.Text, default="")
+    template_id = db.Column(db.Integer, db.ForeignKey("doc_templates.id"))  # set when generated from a template
+    version = db.Column(db.Integer, default=1)
+    version_of_id = db.Column(db.Integer, db.ForeignKey("documents.id"))  # root document id for v2+; NULL on the root
+    is_current = db.Column(db.Boolean, default=True)
+    folder = db.Column(db.String(300), default="")  # "Pleadings/Motions"
+    tags = db.Column(db.String(300), default="")  # comma separated
     matter = db.relationship("Matter", back_populates="documents")
+    template = db.relationship("DocTemplate")
+    root = db.relationship("Document", remote_side="Document.id", foreign_keys=[version_of_id])
+
+    @property
+    def root_id(self):
+        return self.version_of_id or self.id
     uploaded_by = db.relationship("User")
 
 
@@ -683,9 +702,16 @@ class IntakeLead(db.Model):
     matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"))
     conflict_check_id = db.Column(db.Integer, db.ForeignKey("conflict_checks.id"))
     created_at = db.Column(db.DateTime, default=now)
+    # CRM pipeline: new | contacted | consult_scheduled | proposal | won | lost (status stays for the older flow)
+    stage = db.Column(db.String(30), default="new")
+    value_cents = db.Column(db.Integer, default=0)
+    next_follow_up_on = db.Column(db.Date)
+    assigned_user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    lost_reason = db.Column(db.String(200), default="")
     contact = db.relationship("Contact")
     matter = db.relationship("Matter")
     conflict_check = db.relationship("ConflictCheck")
+    assigned_user = db.relationship("User")
 
 
 class LetterTemplate(db.Model):
@@ -770,6 +796,9 @@ class Message(db.Model):
     created_at = db.Column(db.DateTime, default=now)
     # channel "portal": secure messages typed in the client portal or replied to from the staff thread.
     read_at = db.Column(db.DateTime)  # when the other side opened it
+    subject = db.Column(db.String(300), default="")  # email channel
+    message_id = db.Column(db.String(300), default="")  # RFC 5322 Message-ID for dedupe on email filing
+    has_attachments = db.Column(db.Boolean, default=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"))  # staff author for outbound portal messages
     contact = db.relationship("Contact")
     matter = db.relationship("Matter")
@@ -817,6 +846,205 @@ class DocumentSignatureEvent(db.Model):
     detail = db.Column(db.String(300), default="")
     created_at = db.Column(db.DateTime, default=now)
     signature = db.relationship("DocumentSignature", back_populates="events")
+
+
+class Holiday(db.Model):
+    """Court holidays used by court-day counting."""
+    __tablename__ = "holidays"
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False, unique=True)
+    name = db.Column(db.String(120), default="")
+
+
+class CourtRuleSet(db.Model):
+    __tablename__ = "court_rule_sets"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    jurisdiction = db.Column(db.String(120), default="")
+    description = db.Column(db.Text, default="")
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=now)
+    rules = db.relationship("CourtRule", back_populates="ruleset", cascade="all, delete-orphan", order_by="CourtRule.sort")
+
+
+class CourtRule(db.Model):
+    __tablename__ = "court_rules"
+    id = db.Column(db.Integer, primary_key=True)
+    ruleset_id = db.Column(db.Integer, db.ForeignKey("court_rule_sets.id"), nullable=False)
+    trigger = db.Column(db.String(120), nullable=False)  # e.g. "Service of complaint"
+    title = db.Column(db.String(300), nullable=False)  # e.g. "Answer due"
+    offset_days = db.Column(db.Integer, default=0)
+    day_type = db.Column(db.String(10), default="calendar")  # calendar | court
+    direction = db.Column(db.String(10), default="after")  # after | before
+    roll = db.Column(db.Boolean, default=True)  # roll off weekends/holidays
+    kind = db.Column(db.String(20), default="deadline")  # deadline | court_date | task
+    notes = db.Column(db.Text, default="")
+    sort = db.Column(db.Integer, default=0)
+    ruleset = db.relationship("CourtRuleSet", back_populates="rules")
+
+
+class DocTemplate(db.Model):
+    """Document automation template: an uploaded .docx with {{ merge_fields }} or an HTML body."""
+    __tablename__ = "doc_templates"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    kind = db.Column(db.String(10), default="html")  # docx | html
+    practice_area = db.Column(db.String(100), default="")
+    description = db.Column(db.Text, default="")
+    path = db.Column(db.String(500), default="")  # docx file, relative to UPLOAD_DIR
+    body_html = db.Column(db.Text, default="")
+    fields_json = db.Column(db.Text, default="[]")  # merge fields detected in the template
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=now)
+
+    @property
+    def fields(self):
+        try:
+            return json.loads(self.fields_json or "[]")
+        except Exception:
+            return []
+
+
+class Account(db.Model):
+    """Operating chart of accounts."""
+    __tablename__ = "accounts"
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(10), default="")
+    name = db.Column(db.String(120), nullable=False)
+    type = db.Column(db.String(12), default="expense")  # income | expense | asset | liability | equity
+    is_active = db.Column(db.Boolean, default=True)
+    is_system = db.Column(db.Boolean, default=False)
+
+
+class LedgerEntry(db.Model):
+    """Operating ledger line. amount_cents is signed from the bank's point of view: money in positive, money out negative."""
+    __tablename__ = "ledger_entries"
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, default=date.today, nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey("accounts.id"))  # NULL = needs a category
+    amount_cents = db.Column(db.Integer, nullable=False)
+    description = db.Column(db.String(300), default="")
+    payee = db.Column(db.String(200), default="")
+    reference = db.Column(db.String(120), default="")
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"))
+    payment_id = db.Column(db.Integer, db.ForeignKey("payments.id"))
+    expense_id = db.Column(db.Integer, db.ForeignKey("expenses.id"))
+    source = db.Column(db.String(12), default="manual")  # manual | payment | expense | import
+    cleared = db.Column(db.Boolean, default=False)
+    cleared_on = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=now)
+    account = db.relationship("Account")
+    matter = db.relationship("Matter")
+
+
+class BankImport(db.Model):
+    __tablename__ = "bank_imports"
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(300), default="")
+    rows = db.Column(db.Integer, default=0)
+    matched = db.Column(db.Integer, default=0)
+    created = db.Column(db.Integer, default=0)
+    imported_at = db.Column(db.DateTime, default=now)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+
+
+class OperatingReconciliation(db.Model):
+    __tablename__ = "operating_reconciliations"
+    id = db.Column(db.Integer, primary_key=True)
+    period_end = db.Column(db.Date, nullable=False)
+    statement_balance_cents = db.Column(db.Integer, default=0)
+    book_balance_cents = db.Column(db.Integer, default=0)
+    outstanding_in_cents = db.Column(db.Integer, default=0)
+    outstanding_out_cents = db.Column(db.Integer, default=0)
+    balanced = db.Column(db.Boolean, default=False)
+    detail_json = db.Column(db.Text, default="{}")
+    notes = db.Column(db.Text, default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+
+
+class AiRun(db.Model):
+    """One model call, for spend tracking and the daily cap."""
+    __tablename__ = "ai_runs"
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(40), default="")
+    entity = db.Column(db.String(40), default="")
+    entity_id = db.Column(db.Integer)
+    model = db.Column(db.String(120), default="")
+    prompt_chars = db.Column(db.Integer, default=0)
+    output_chars = db.Column(db.Integer, default=0)
+    cost_cents = db.Column(db.Integer, default=0)
+    ok = db.Column(db.Boolean, default=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+
+
+class FollowUpSequence(db.Model):
+    __tablename__ = "follow_up_sequences"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    steps_json = db.Column(db.Text, default="[]")  # [{"day": 0, "subject": "...", "body": "..."}]
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=now)
+
+    @property
+    def steps(self):
+        try:
+            return json.loads(self.steps_json or "[]")
+        except Exception:
+            return []
+
+
+class LeadSequence(db.Model):
+    __tablename__ = "lead_sequences"
+    id = db.Column(db.Integer, primary_key=True)
+    lead_id = db.Column(db.Integer, db.ForeignKey("intake_leads.id"), nullable=False)
+    sequence_id = db.Column(db.Integer, db.ForeignKey("follow_up_sequences.id"), nullable=False)
+    started_on = db.Column(db.Date, default=date.today)
+    next_step = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(20), default="active")  # active | done | stopped
+    created_at = db.Column(db.DateTime, default=now)
+    lead = db.relationship("IntakeLead")
+    sequence = db.relationship("FollowUpSequence")
+
+
+class ApiToken(db.Model):
+    __tablename__ = "api_tokens"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    name = db.Column(db.String(120), default="")
+    token_hash = db.Column(db.String(80), unique=True, nullable=False)  # sha256 of the raw token
+    prefix = db.Column(db.String(12), default="")  # first 8 chars, for display
+    scopes = db.Column(db.String(60), default="read")  # read | read,write
+    last_used_at = db.Column(db.DateTime)
+    revoked_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=now)
+    user = db.relationship("User")
+
+
+class Webhook(db.Model):
+    __tablename__ = "webhooks"
+    id = db.Column(db.Integer, primary_key=True)
+    url = db.Column(db.String(500), nullable=False)
+    events = db.Column(db.String(500), default="")  # comma separated event names
+    secret = db.Column(db.String(120), default=new_token)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=now)
+
+
+class WebhookDelivery(db.Model):
+    __tablename__ = "webhook_deliveries"
+    id = db.Column(db.Integer, primary_key=True)
+    webhook_id = db.Column(db.Integer, db.ForeignKey("webhooks.id"), nullable=False)
+    event = db.Column(db.String(60), default="")
+    payload_json = db.Column(db.Text, default="{}")
+    status = db.Column(db.String(12), default="pending")  # pending | ok | failed
+    attempts = db.Column(db.Integer, default=0)
+    response_code = db.Column(db.Integer)
+    last_error = db.Column(db.String(300), default="")
+    last_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=now)
+    webhook = db.relationship("Webhook")
 
 
 class AuditLog(db.Model):
