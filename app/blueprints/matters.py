@@ -321,7 +321,7 @@ def detail(id):
                                                                              TrustTransaction.id.desc()).all()
     tasks = Task.query.filter_by(matter_id=m.id, done=False).order_by(Task.due_on.asc().nulls_last()).all()
     done_tasks = Task.query.filter_by(matter_id=m.id, done=True).order_by(Task.done_at.desc()).limit(10).all()
-    documents = Document.query.filter_by(matter_id=m.id).order_by(Document.created_at.desc()).all()
+    documents = Document.query.filter_by(matter_id=m.id, is_current=True).order_by(Document.created_at.desc()).all()
     engagements = Engagement.query.filter_by(matter_id=m.id).order_by(Engagement.created_at.desc()).all()
     activity = AuditLog.query.filter_by(entity="matter", entity_id=m.id).order_by(AuditLog.created_at.desc()).limit(
         50).all()

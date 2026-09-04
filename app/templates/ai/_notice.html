@@ -1,0 +1,8 @@
+{# Calm explanation when the model is unavailable. Expects `error` (string) #}
+{% if error %}
+<div class="card" style="border-left:4px solid var(--warn)">
+  <h2 style="margin-top:0">AI is not available right now</h2>
+  <p>{{ error }}</p>
+  <p class="small muted">Nothing on this page was changed. Everything else in Coil keeps working without AI. {% if current_user().role == 'owner' %}Check <a href="/ai">AI status</a> or <a href="/settings">Settings</a>.{% endif %}</p>
+</div>
+{% endif %}

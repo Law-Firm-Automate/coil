@@ -141,7 +141,7 @@ def csrf_field():
     return Markup(f'<input type="hidden" name="_csrf" value="{csrf_token()}">')
 
 
-CSRF_EXEMPT_PREFIXES = ("/webhooks/", "/intake/submit", "/track/", "/sign/", "/pay/", "/p/", "/portal/")
+CSRF_EXEMPT_PREFIXES = ("/webhooks/", "/intake/submit", "/track/", "/sign/", "/pay/", "/p/", "/portal/", "/api/v1/")
 
 
 def check_csrf():
@@ -153,6 +153,15 @@ def check_csrf():
     tok = request.form.get("_csrf") or request.headers.get("X-CSRF-Token")
     if not tok or tok != session.get("_csrf"):
         abort(400, "CSRF token missing or invalid")
+
+
+def emit_event(name, payload):
+    """Queue one outgoing-webhook delivery per active Webhook subscribed to `name` and try to send each
+    right away. Returns the WebhookDelivery ids created. Call it after your own commit: it writes through
+    its own short-lived session so it is safe from SQLAlchemy after_commit hooks too. Implemented in
+    app/blueprints/webhooks_out.py; this is the import-friendly entry point."""
+    from .blueprints.webhooks_out import deliver_event
+    return deliver_event(name, payload)
 
 
 def client_ip():

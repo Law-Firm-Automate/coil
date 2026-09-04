@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block title %}{{ 'New rule set' if is_new else rs.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New rule set' if is_new else 'Edit rule set' }}</h1></div>
+<form method="post" class="card" style="max-width:720px">{{ csrf() }}
+  <div><label>Name</label><input type="text" name="name" value="{{ rs.name or '' }}" required placeholder="Travis County civil, local rules"></div>
+  <div><label>Jurisdiction</label><input type="text" name="jurisdiction" value="{{ rs.jurisdiction or '' }}" placeholder="Texas district courts"></div>
+  <div><label>Description</label><textarea name="description">{{ rs.description or '' }}</textarea></div>
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if rs.is_active or is_new }}> Active (offered when applying rules to a matter)</label>
+  <div class="actions"><button class="btn">{{ 'Create and add rules' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/settings/rules' if is_new else '/settings/rules/' ~ rs.id }}">Cancel</a></div>
+</form>
+{% endblock %}

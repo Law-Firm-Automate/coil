@@ -1,10 +1,13 @@
 {% extends "base.html" %}{% block title %}Documents{% endblock %}{% block content %}
-<div class="topbar"><h1>Documents{% if matter %} <span style="font-weight:500">for <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></span>{% endif %}</h1></div>
+<div class="topbar"><h1>Documents{% if matter %} <span style="font-weight:500">for <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></span>{% endif %}</h1>
+<form method="get" action="/documents/search" class="searchbar" style="margin:0">{% if matter_id %}<input type="hidden" name="matter_id" value="{{ matter_id }}">{% endif %}<input type="text" name="q" placeholder="Search names, tags, folders and file text" aria-label="Search documents"><button class="btn small secondary">Search</button></form></div>
 <div class="grid c2">
   <div class="card">
-    <form method="get" class="searchbar">
+    <form method="get" class="searchbar" style="flex-wrap:wrap">
       <select name="matter_id" style="width:auto;max-width:100%"><option value="">All matters</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}{% if m.status == 'closed' %} (closed){% endif %}</option>{% endfor %}</select>
-      <button class="btn secondary">Filter</button>{% if matter_id %}<a class="small" href="/documents">Clear</a>{% endif %}
+      <select name="folder" style="width:auto;max-width:100%"><option value="">All folders</option>{% for f in folders %}<option value="{{ f }}" {{ 'selected' if f == folder }}>{{ f }}</option>{% endfor %}</select>
+      <select name="tag" style="width:auto;max-width:100%"><option value="">All tags</option>{% for t in all_tags %}<option value="{{ t }}" {{ 'selected' if t == tag }}>{{ t }}</option>{% endfor %}</select>
+      <button class="btn secondary">Filter</button>{% if matter_id or folder or tag %}<a class="small" href="/documents">Clear</a>{% endif %}
     </form>
   </div>
   <div class="card">
@@ -13,22 +16,39 @@
         <div><label>Matter</label><select name="matter_id" required><option value="">Choose</option>{% for m in matters if m.status != 'closed' %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}</option>{% endfor %}</select></div>
         <div><label>File (25 MB max, no executables)</label><input type="file" name="file" required></div>
       </div>
+      <div class="row">
+        <div><label>Folder (optional, like Pleadings/Motions)</label><input type="text" name="folder" list="folder-list" value="{{ folder }}"><datalist id="folder-list">{% for f in folders %}<option value="{{ f }}">{% endfor %}</datalist></div>
+        <div><label>Tags (comma separated)</label><input type="text" name="tags" placeholder="urgent, filed"></div>
+      </div>
       <div class="actions" style="margin-top:8px"><label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="shared_to_portal" value="1"> Share to client portal</label><button class="btn small">Upload</button></div>
     </form>
   </div>
 </div>
+<form method="post" action="/documents/bulk" id="bulkform">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}">
 <div class="card">
-{% if docs %}<table><tr><th>Name</th><th>Matter</th><th>Uploaded</th><th>By</th><th class="num">Size</th><th>Portal</th><th></th></tr>
-{% for d in docs %}<tr>
-  <td><a href="/documents/{{ d.id }}/download">{{ d.name }}</a><br><span class="small muted">{{ d.mime }}</span></td>
+{% if docs %}
+<div class="searchbar" style="flex-wrap:wrap;margin-bottom:10px">
+  <span class="small muted">With ticked documents:</span>
+  <label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="set_folder" value="1"> Move to</label><input type="text" name="folder" list="folder-list" placeholder="Folder (blank = root)" style="max-width:220px">
+  <input type="text" name="tags" placeholder="Tags to add" style="max-width:200px">
+  <select name="tag_mode" style="width:auto"><option value="add">Add tags</option><option value="replace">Replace tags</option></select>
+  <button class="btn small secondary">Apply</button>
+</div>
+<table><tr><th style="width:24px"><input type="checkbox" onclick="document.querySelectorAll('#bulkform input[name=doc_id]').forEach(function(c){c.checked=this.checked}.bind(this))" aria-label="Select all"></th><th>Name</th><th>Matter</th><th>Uploaded</th><th>By</th><th class="num">Size</th><th>Portal</th><th></th></tr>
+{% for gfolder, gdocs in groups %}
+<tr><td colspan="8" style="background:#f6f7f9;font-weight:600;font-size:.85rem">{% if gfolder %}<a href="/documents?folder={{ gfolder|urlencode }}{% if matter_id %}&amp;matter_id={{ matter_id }}{% endif %}">{{ gfolder }}</a>{% else %}<span class="muted">No folder</span>{% endif %} <span class="muted" style="font-weight:400">({{ gdocs|length }})</span></td></tr>
+{% for d in gdocs %}<tr>
+  <td><input type="checkbox" name="doc_id" value="{{ d.id }}" aria-label="Select {{ d.name }}"></td>
+  <td><a href="/documents/{{ d.id }}/download">{{ d.name }}</a>{% if d.version and d.version > 1 %} <a class="badge new" href="/documents/{{ d.id }}/versions" title="See version history">v{{ d.version }}</a>{% endif %}<br><span class="small muted">{{ d.mime }}</span>{% if d.tags %} {% for t in d.tags.split(',') %}<a class="badge" href="/documents?tag={{ t.strip()|urlencode }}{% if matter_id %}&amp;matter_id={{ matter_id }}{% endif %}" style="text-transform:none">{{ t.strip() }}</a> {% endfor %}{% endif %}</td>
   <td><a href="/matters/{{ d.matter_id }}">{{ d.matter.label }}</a></td>
   <td class="nowrap">{{ d.created_at|dt }}</td>
   <td>{% if d.uploaded_by_client %}<span class="badge pending">client</span>{% else %}{{ d.uploaded_by.name if d.uploaded_by else '' }}{% endif %}</td>
   <td class="num">{% if d.size >= 1048576 %}{{ (d.size / 1048576)|round(1) }} MB{% else %}{{ (d.size / 1024)|round(1) }} KB{% endif %}</td>
-  <td><form method="post" action="/documents/{{ d.id }}/share" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small {{ 'ok' if d.shared_to_portal else 'secondary' }}">{{ 'Shared' if d.shared_to_portal else 'Not shared' }}</button></form></td>
-  <td class="right nowrap"><a class="btn small secondary" href="/signatures/new?document_id={{ d.id }}" title="Send this file for e-signature">Request signature</a> <a class="btn small secondary" href="/documents/{{ d.id }}/download">Download</a> <form method="post" action="/documents/{{ d.id }}/delete" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small secondary" data-confirm="Delete {{ d.name }}? The file is removed from disk.">Delete</button></form></td>
-</tr>{% endfor %}</table>
-<p class="small muted">{{ docs|length }} files, {{ (total / 1048576)|round(2) }} MB.</p>
-{% else %}<div class="empty">No documents{% if matter %} on this matter{% endif %} yet.</div>{% endif %}
+  <td><button class="btn small {{ 'ok' if d.shared_to_portal else 'secondary' }}" formaction="/documents/{{ d.id }}/share">{{ 'Shared' if d.shared_to_portal else 'Not shared' }}</button></td>
+  <td class="right nowrap"><a class="btn small secondary" href="/documents/{{ d.id }}/versions" title="Version history and new version upload">Versions</a> <a class="btn small secondary" href="/signatures/new?document_id={{ d.id }}" title="Send this file for e-signature">Request signature</a> <button class="btn small secondary" formaction="/ai/document/{{ d.id }}/dates" title="Find deadlines and hearings in the file text and add the ones you tick as tasks or events">AI dates</button> <a class="btn small secondary" href="/documents/{{ d.id }}/download">Download</a> <button class="btn small secondary" formaction="/documents/{{ d.id }}/delete" data-confirm="Delete {{ d.name }}? The file is removed from disk.">Delete</button></td>
+</tr>{% endfor %}{% endfor %}</table>
+<p class="small muted">{{ docs|length }} files (current versions only), {{ (total / 1048576)|round(2) }} MB.</p>
+{% else %}<div class="empty">No documents{% if matter %} on this matter{% endif %}{% if folder or tag %} match that filter{% else %} yet{% endif %}.</div>{% endif %}
 </div>
+</form>
 {% endblock %}

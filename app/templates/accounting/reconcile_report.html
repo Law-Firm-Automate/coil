@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block title %}Operating reconciliation {{ r.period_end|d }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Operating reconciliation as of {{ r.period_end|d }}</h1>
+<div class="actions no-print" style="margin:0"><a class="btn small secondary" href="{{ url_for('accounting.reconcile') }}">All reconciliations</a> <button class="btn small secondary" onclick="window.print()">Print</button></div></div>
+{% if r.balanced %}
+<div class="flash ok" style="font-size:1.25rem;padding:18px"><strong>Balanced.</strong> The adjusted statement and the book agree at {{ r.book_balance_cents|money }}.</div>
+{% else %}
+<div class="flash error" style="font-size:1.25rem;padding:18px"><strong>Out of balance by {{ diff|abs|money }}.</strong> The adjusted statement is {{ 'above' if diff > 0 else 'below' }} the book. Look for bank fees or deposits not yet entered, or entries dated in the wrong period.</div>
+{% endif %}
+{% if detail.uncategorised %}<div class="flash">{{ detail.uncategorised }} imported item{{ 's' if detail.uncategorised != 1 }} in this period still need{{ '' if detail.uncategorised != 1 else 's' }} a category. That does not affect the bank balance, only the P&amp;L.</div>{% endif %}
+<div class="grid c2">
+  <div class="card"><h2>Bank</h2>
+    <dl class="kv">
+      <dt>Statement balance</dt><dd>{{ r.statement_balance_cents|money }}</dd>
+      <dt>+ Deposits not yet cleared</dt><dd>{{ r.outstanding_in_cents|money }}</dd>
+      <dt>- Payments not yet cleared</dt><dd>{{ r.outstanding_out_cents|abs|money }}</dd>
+      <dt><strong>Adjusted bank</strong></dt><dd><strong>{{ adjusted|money }}</strong></dd>
+    </dl>
+  </div>
+  <div class="card"><h2>Book</h2>
+    <dl class="kv"><dt>All ledger entries dated on or before {{ r.period_end|d }}</dt><dd></dd><dt><strong>Book balance</strong></dt><dd><strong>{{ r.book_balance_cents|money }}</strong></dd></dl>
+  </div>
+</div>
+<div class="grid c2">
+  <div class="card"><h2>Uncleared deposits ({{ oin|length }})</h2>
+    {% if oin %}<table><tr><th>Date</th><th>Description</th><th class="num">Amount</th></tr>{% for e in oin %}<tr><td class="nowrap">{{ e.date|d }}</td><td>{{ e.payee }} {{ e.description }} <span class="muted small">{{ e.reference }}</span></td><td class="num">{{ e.amount_cents|money }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">None</div>{% endif %}
+  </div>
+  <div class="card"><h2>Uncleared payments ({{ oout|length }})</h2>
+    {% if oout %}<table><tr><th>Date</th><th>Description</th><th class="num">Amount</th></tr>{% for e in oout %}<tr><td class="nowrap">{{ e.date|d }}</td><td>{{ e.payee }} {{ e.description }} <span class="muted small">{{ e.reference }}</span></td><td class="num">{{ e.amount_cents|money }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">None</div>{% endif %}
+  </div>
+</div>
+{% if r.notes %}<div class="card"><h2>Notes</h2><p>{{ r.notes }}</p></div>{% endif %}
+<p class="small muted">Prepared {{ r.created_at|dt }}.</p>
+{% endblock %}

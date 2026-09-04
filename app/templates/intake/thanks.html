@@ -6,6 +6,7 @@
   {% else %}
   <h1 style="font-size:1.3rem;margin:0 0 8px">Thank you</h1>
   <p>We received your message and will be in touch shortly{% if firm().phone %}. If it is urgent, call {{ firm().phone }}{% endif %}.</p>
+  {% if booking_url %}<p>Want to pick a time now? <a class="btn" href="{{ booking_url }}">Book a consultation</a></p>{% endif %}
   {% endif %}
 </div>
 {% endblock %}

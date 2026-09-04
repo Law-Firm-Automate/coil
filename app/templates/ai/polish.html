@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Polish narratives: {{ inv.number }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Narrative cleanup <span style="font-weight:500">for invoice {{ inv.number }}</span> <span class="badge {{ inv.status }}">{{ inv.status }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/invoices/{{ inv.id }}">Back to invoice</a></div></div>
+{% include "ai/_notice.html" %}
+{% if rows %}
+<form method="post" action="/ai/invoice/{{ inv.id }}/polish/apply">{{ csrf() }}
+<div class="card">
+  <p class="small muted">Each time line rewritten as a client-facing past-tense narrative. Hours, rates and amounts are not touched. Edit any suggestion before applying. {{ changed }} of {{ rows|length }} line(s) differ from the original.</p>
+  <table><tr><th>Date</th><th style="width:40%">Before</th><th style="width:45%">After (editable)</th></tr>
+  {% for l, text in rows %}<tr>
+    <td class="nowrap">{{ l.date|d }}<br><span class="small muted">{{ '%.2f' % l.quantity }} h</span></td>
+    <td class="small" style="white-space:pre-wrap">{{ l.description }}</td>
+    <td><textarea name="line_{{ l.id }}" style="min-height:64px;width:100%">{{ text }}</textarea>{% if text == l.description %}<div class="small muted">unchanged</div>{% endif %}</td>
+  </tr>{% endfor %}</table>
+  <div class="actions">
+    {% if can_apply %}<button class="btn">Apply to the draft invoice</button>
+    {% else %}<button class="btn" disabled title="Only draft invoices can be changed">Apply</button> <span class="small muted">{% if inv.split_group %}This invoice is part of a split group, so its lines cannot be edited here.{% else %}This invoice has been {{ inv.status }}, so its lines cannot be changed. You can still copy the wording for the next one.{% endif %}</span>{% endif %}
+    <a class="btn secondary" href="/invoices/{{ inv.id }}">Cancel</a>
+  </div>
+</div>
+</form>
+{% endif %}
+{% endblock %}

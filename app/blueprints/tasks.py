@@ -75,7 +75,12 @@ def index():
     sol_matters = Matter.query.filter(Matter.status != "closed", Matter.sol_date != None,
                                       Matter.sol_date <= today + timedelta(days=SOL_WINDOW_DAYS)).order_by(
         Matter.sol_date).all()
+    # Agent E: open tasks that came from a court rule set (see app/blueprints/rules.py)
+    rule_tasks = q.filter(Task.done == False, Task.rule_id != None).order_by(  # noqa: E711,E712
+        Task.due_on.asc().nulls_last()).limit(30).all()
+    open_matters = Matter.query.filter(Matter.status != "closed").order_by(Matter.number).all()
     return render_template("tasks/index.html", groups=groups, done_tasks=done_tasks, sol_matters=sol_matters,
+                           rule_tasks=rule_tasks, open_matters=open_matters,
                            today=today, kinds=KINDS, priorities=PRIORITIES,
                            users=User.query.filter_by(is_active=True).order_by(User.name).all(),
                            matters=Matter.query.order_by(Matter.number).all(),

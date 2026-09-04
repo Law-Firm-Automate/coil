@@ -1,12 +1,56 @@
 {% extends "base.html" %}{% block title %}Lead: {{ lead.name }}{% endblock %}{% block content %}
-<div class="topbar"><h1>{{ lead.name }} <span class="badge {{ lead.status }}">{{ lead.status }}</span></h1>
+{% set stage_labels = dict(stages) %}
+<div class="topbar"><h1>{{ lead.name }} <span class="badge {{ lead.status }}">{{ lead.status }}</span> <span class="badge {{ 'paid' if lead.stage == 'won' else ('declined' if lead.stage == 'lost' else 'new') }}" title="Pipeline stage">{{ stage_labels.get(lead.stage, lead.stage) }}</span></h1>
 <div class="actions" style="margin:0">
   {% if lead.status != 'converted' %}
   <form method="post" action="/intake/{{ lead.id }}/status" class="inline">{{ csrf() }}<input type="hidden" name="status" value="{{ 'new' if lead.status == 'contacted' else 'contacted' }}"><button class="btn small secondary">Mark {{ 'new' if lead.status == 'contacted' else 'contacted' }}</button></form>
-  <form method="post" action="/intake/{{ lead.id }}/decline" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Decline this lead?">Decline</button></form>
+  <form method="post" action="/intake/{{ lead.id }}/decline" class="inline" style="display:inline-flex;gap:6px;align-items:center">{{ csrf() }}<input type="text" name="reason" placeholder="Lost reason (optional)" style="width:180px;margin:0"><button class="btn small danger" data-confirm="Decline this lead?">Decline</button></form>
   {% endif %}
+  <a class="btn small secondary" href="/intake/pipeline">Pipeline</a>
   <a class="btn small secondary" href="/intake">Back</a>
 </div></div>
+{# ---- Agent H: pipeline fields + follow-up sequences ---- #}
+<div class="grid c2">
+  <form method="post" action="/intake/{{ lead.id }}/fields" class="card">{{ csrf() }}
+    <h2>Pipeline</h2>
+    <div class="row">
+      <div><label>Stage</label>
+        <select name="stage" form="stageform">{% for k, lbl in stages %}<option value="{{ k }}" {{ 'selected' if k == lead.stage }}>{{ lbl }}</option>{% endfor %}</select></div>
+      <div><label>Estimated value</label><input type="text" name="value" value="{{ (lead.value_cents / 100)|round(2) if lead.value_cents else '' }}" placeholder="3,000.00" inputmode="decimal"></div>
+    </div>
+    <div class="row">
+      <div><label>Assigned to</label><select name="assigned_user_id"><option value="">Nobody</option>{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == lead.assigned_user_id }}>{{ u.name }}</option>{% endfor %}</select></div>
+      <div><label>Next follow-up</label><input type="date" name="next_follow_up_on" value="{{ lead.next_follow_up_on|iso }}">{% if lead.next_follow_up_on and lead.next_follow_up_on < today %}<span class="badge overdue">overdue</span>{% endif %}</div>
+    </div>
+    <label>Lost reason{% if lead.stage != 'lost' %} <span class="muted small">(only shown when the lead is lost)</span>{% endif %}</label><input type="text" name="lost_reason" value="{{ lead.lost_reason or '' }}" placeholder="Went with another firm, no budget, no response">
+    <div class="actions" style="margin-top:8px"><button class="btn small">Save</button></div>
+  </form>
+  <form method="post" action="/intake/{{ lead.id }}/stage" id="stageform" class="inline" style="display:none">{{ csrf() }}<input type="hidden" name="next" value="/intake/{{ lead.id }}"></form>
+  <div class="card">
+    <h2>Follow-up sequences</h2>
+    {% if run_rows %}
+      {% for rr in run_rows %}
+      <div style="margin-bottom:10px">
+        <div><strong>{{ rr.run.sequence.name if rr.run.sequence else 'sequence' }}</strong> <span class="badge {{ 'open' if rr.run.status == 'active' else ('paid' if rr.run.status == 'done' else 'closed') }}">{{ rr.run.status }}</span> <span class="small muted">started {{ rr.run.started_on|d }}</span>
+          {% if rr.run.status == 'active' %}<form method="post" action="/intake/{{ lead.id }}/sequence/{{ rr.run.id }}/stop" class="inline">{{ csrf() }}<button class="btn small secondary">Stop</button></form>{% endif %}</div>
+        <table class="small">{% for i, st, msg in rr.steps %}<tr><td class="nowrap">Day {{ st.day }}</td><td>{{ st.subject }}</td><td class="nowrap">{% if msg %}<span class="badge {{ 'paid' if msg.status == 'sent' else 'draft' }}">{{ msg.status }}</span>{% if msg.status == 'draft' %} <a class="small" href="/intake/drafts">review</a>{% endif %}{% elif i < rr.run.next_step %}<span class="muted">skipped</span>{% elif rr.run.status == 'active' %}<span class="muted">waiting</span>{% else %}<span class="muted">not sent</span>{% endif %}</td></tr>{% endfor %}</table>
+      </div>
+      {% endfor %}
+    {% else %}<p class="small muted">No sequence running for this lead.</p>{% endif %}
+    {% if lead.status not in ('converted', 'declined') %}
+    <form method="post" action="/intake/{{ lead.id }}/sequence/start" class="searchbar" style="margin-top:6px">{{ csrf() }}
+      <select name="sequence_id" style="width:auto" required><option value="">Choose a sequence</option>{% for s in sequences %}<option value="{{ s.id }}">{{ s.name }} ({{ s.steps|length }} steps)</option>{% endfor %}</select>
+      <button class="btn small" {% if not lead.email %}disabled title="Lead has no email"{% endif %}>Start sequence</button>
+      <a class="small" href="/intake/sequences">manage</a>
+    </form>
+    <p class="small muted" style="margin-top:6px">{% if firm().sequences_auto_send %}Auto-send is on: due steps are emailed when the sequences job runs.{% else %}Auto-send is off: due steps become <a href="/intake/drafts">drafts</a> for you to send.{% endif %}</p>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function(){var sel=document.querySelector('select[name=stage]');if(sel){sel.addEventListener('change',function(){document.getElementById('stageform').submit();});}})();
+</script>
+{# ---- end Agent H block ---- #}
 <div class="grid c2">
   <div class="card">
     <h2>Lead</h2>

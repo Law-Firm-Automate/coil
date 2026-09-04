@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}{{ 'New ledger entry' if is_new else 'Edit ledger entry' }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New ledger entry' if is_new else 'Edit ledger entry' }}</h1><a class="btn small secondary" href="{{ url_for('accounting.index') }}">Back to ledger</a></div>
+<div class="card" style="max-width:720px">
+<form method="post">{{ csrf() }}
+  <div class="row">
+    <div><label>Date</label><input type="date" name="date" value="{{ e.date|iso }}" required></div>
+    <div><label>Account</label><select name="account_id" required><option value="">Pick one</option>{% for a in accounts %}<option value="{{ a.id }}" {% if a.id == e.account_id %}selected{% endif %}>{{ a.code }} {{ a.name }} ({{ a.type }})</option>{% endfor %}</select></div>
+  </div>
+  <div class="row">
+    <div><label>Amount</label><input type="text" name="amount" value="{{ (e.amount_cents|abs / 100)|round(2) if e.amount_cents else '' }}" placeholder="1,250.00" required></div>
+    <div><label>Direction</label><select name="direction"><option value="out" {% if direction == 'out' %}selected{% endif %}>Money out (paid from the bank)</option><option value="in" {% if direction == 'in' %}selected{% endif %}>Money in (deposited to the bank)</option></select></div>
+  </div>
+  <div class="row">
+    <div><label>Payee</label><input type="text" name="payee" value="{{ e.payee or '' }}"></div>
+    <div><label>Reference (check no., confirmation)</label><input type="text" name="reference" value="{{ e.reference or '' }}"></div>
+  </div>
+  <label>Description</label><input type="text" name="description" value="{{ e.description or '' }}">
+  <div class="row">
+    <div><label>Matter (optional)</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {% if m.id == e.matter_id %}selected{% endif %}>{{ m.label }}</option>{% endfor %}</select></div>
+    <div><label>&nbsp;</label><label><input type="checkbox" name="cleared" value="1" {% if e.cleared %}checked{% endif %}> Already cleared the bank</label></div>
+  </div>
+  <div class="actions"><button class="btn">{{ 'Add entry' if is_new else 'Save' }}</button></div>
+</form>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Balance{% endblock %}{% block content %}
+<div class="topbar"><h1>Balance as of {{ today|d }}</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="{{ url_for('accounting.balance', format='csv') }}">Download CSV</a><a class="btn small secondary" href="{{ url_for('accounting.index') }}">Ledger</a><a class="btn small secondary" href="/reports">Reports</a></div></div>
+<div class="grid c3">
+  <div class="card"><h2>Operating bank</h2>
+    <dl class="kv">
+      <dt>Balance per book</dt><dd>{{ bank_book|money }}</dd>
+      <dt>Cleared the bank</dt><dd>{{ bank_cleared|money }}</dd>
+      <dt>Uncleared items</dt><dd>{{ uncleared|money }}</dd>
+    </dl>
+    <p class="small muted">{{ f.operating_bank_name }}. <a href="{{ url_for('accounting.reconcile') }}">Reconcile</a>{% if uncategorised %}, <a href="{{ url_for('accounting.uncategorised') }}">{{ uncategorised }} uncategorised</a>{% endif %}.</p>
+  </div>
+  <div class="card"><h2>Owed to the firm</h2>
+    <dl class="kv">
+      <dt>Accounts receivable</dt><dd>{{ receivables|money }}</dd>
+      <dt>Open invoices</dt><dd>{{ receivable_count }}</dd>
+      <dt>Client costs advanced</dt><dd>{{ client_costs|money }}</dd>
+    </dl>
+    <p class="small muted">Receivables are the balances on sent, viewed and partly paid invoices. Client costs are expenses paid on a client's behalf and not yet recovered. <a href="/reports/ar-aging">A/R aging</a>.</p>
+  </div>
+  <div class="card"><h2>Client trust liability</h2>
+    <dl class="kv"><dt>Held in trust (per trust ledger)</dt><dd>{{ trust|money }}</dd></dl>
+    <p class="small muted">{{ f.trust_bank_name }}. This is client money, shown for completeness only. It is never part of the operating balance or the P&amp;L. <a href="/trust">Trust accounting</a>.</p>
+  </div>
+</div>
+{% endblock %}

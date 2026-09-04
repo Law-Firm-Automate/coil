@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block title %}Webhooks{% endblock %}{% block content %}
+<div class="topbar"><h1>Outgoing webhooks</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/api">API tokens</a><a class="btn small secondary" href="/settings">Settings</a></div></div>
+<div class="grid c2">
+  <div class="card"><h2>Add a webhook</h2>
+    <form method="post" action="/settings/webhooks/new">{{ csrf() }}
+      <label>URL to POST to</label><input type="url" name="url" placeholder="https://hooks.zapier.com/..." required>
+      <label>Events</label>
+      {% for name, desc in events %}<label><input type="checkbox" name="events" value="{{ name }}"> <code>{{ name }}</code> <span class="muted small">{{ desc }}</span></label>{% endfor %}
+      <label>Secret (blank to generate one)</label><input type="text" name="secret" placeholder="leave blank">
+      <div class="actions"><button class="btn">Add webhook</button></div>
+    </form>
+  </div>
+  <div class="card"><h2>How deliveries work</h2>
+    <p class="small">Each event is POSTed as JSON <code>{"event": "invoice.sent", "created_at": "...", "data": {...}}</code> with headers <code>X-Coil-Event</code>, <code>X-Coil-Delivery</code> and <code>X-Coil-Signature: sha256=&lt;hmac&gt;</code>. The signature is an HMAC-SHA256 of the raw body using the webhook's secret; verify it before trusting the payload.</p>
+    <p class="small">A 2xx response counts as delivered. Anything else, or a timeout after 5 seconds, is retried by <code>python -m app.cli webhooks</code> (run it from cron every few minutes) with backoff at 1, 5, 30, 120 and 720 minutes, up to 5 attempts. You can also retry a delivery from the list below.</p>
+  </div>
+</div>
+<div class="card"><h2>Webhooks</h2>
+  {% if hooks %}<table><tr><th>URL</th><th>Events</th><th>Secret</th><th>Status</th><th></th></tr>
+  {% for h in hooks %}<tr>
+    <td style="word-break:break-all">{{ h.url }}</td>
+    <td class="small">{{ h.events.replace(',', ', ') }}</td>
+    <td><code class="small">{{ h.secret }}</code></td>
+    <td>{% if h.is_active %}<span class="badge open">active</span>{% else %}<span class="badge closed">paused</span>{% endif %}</td>
+    <td class="nowrap">
+      <form method="post" action="/settings/webhooks/{{ h.id }}/test" class="inline">{{ csrf() }}<button class="btn small secondary">Send test</button></form>
+      <form method="post" action="/settings/webhooks/{{ h.id }}/toggle" class="inline">{{ csrf() }}<button class="btn small secondary">{{ 'Pause' if h.is_active else 'Resume' }}</button></form>
+      <form method="post" action="/settings/webhooks/{{ h.id }}/delete" class="inline" onsubmit="return confirm('Delete this webhook and its delivery history?')">{{ csrf() }}<button class="btn small secondary">Delete</button></form>
+    </td>
+  </tr>{% endfor %}</table>{% else %}<div class="empty">No webhooks yet.</div>{% endif %}
+</div>
+<div class="card"><h2>Recent deliveries</h2>
+  {% if deliveries %}<table><tr><th>When</th><th>Event</th><th>Webhook</th><th>Status</th><th class="num">Attempts</th><th>Response</th><th></th></tr>
+  {% for d in deliveries %}<tr>
+    <td class="nowrap small">{{ (d.last_at or d.created_at)|dt }}</td><td><code>{{ d.event }}</code></td>
+    <td class="small" style="word-break:break-all">{{ d.webhook.url if d.webhook else '' }}</td>
+    <td>{% if d.status == 'ok' %}<span class="badge paid">ok</span>{% elif d.status == 'failed' %}<span class="badge overdue">failed</span>{% else %}<span class="badge draft">{{ d.status }}</span>{% endif %}</td>
+    <td class="num">{{ d.attempts }}</td>
+    <td class="small muted">{{ d.response_code or '' }} {{ d.last_error }}</td>
+    <td>{% if d.status != 'ok' %}<form method="post" action="/settings/webhooks/deliveries/{{ d.id }}/retry" class="inline">{{ csrf() }}<button class="btn small secondary">Retry</button></form>{% endif %}</td>
+  </tr>{% endfor %}</table>{% else %}<div class="empty">Nothing delivered yet.</div>{% endif %}
+</div>
+{% endblock %}

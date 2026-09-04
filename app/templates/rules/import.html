@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Import rule set{% endblock %}{% block content %}
+<div class="topbar"><h1>Import a rule set</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/rules">Back</a></div></div>
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:860px">{{ csrf() }}
+  <p class="small muted">Use a file exported from this page on another Coil, or paste JSON in the same shape: <code>{"name": "...", "jurisdiction": "...", "description": "...", "rules": [{"trigger": "...", "title": "...", "offset_days": 21, "day_type": "calendar", "direction": "after", "roll": true, "kind": "deadline", "notes": "..."}]}</code></p>
+  <div><label>JSON file</label><input type="file" name="file" accept=".json,application/json"></div>
+  <div><label>Or paste JSON</label><textarea name="json" style="min-height:200px;font-family:ui-monospace,monospace">{{ raw }}</textarea></div>
+  <div class="actions"><button class="btn">Import</button></div>
+</form>
+{% endblock %}

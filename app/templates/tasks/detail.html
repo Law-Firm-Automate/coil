@@ -14,6 +14,12 @@
     <dt>Assignee</dt><dd>{{ t.assignee.name if t.assignee else 'Unassigned' }}</dd>
     {% if t.done %}<dt>Completed</dt><dd>{{ t.done_at|dt }}</dd>{% endif %}
     <dt>Created</dt><dd>{{ t.created_at|dt }}</dd>
+    {# ---- Agent E: court rule provenance ---- #}
+    {% if t.rule_id %}
+    <dt>From rule</dt><dd>{% if t.rule %}<a href="/settings/rules/{{ t.rule.ruleset_id }}">{{ t.rule.ruleset.name if t.rule.ruleset else 'rule set' }}</a>: {{ t.rule.title }}<br><span class="small muted">{{ t.rule.offset_days }} {{ {'calendar': 'calendar days', 'court': 'court days', 'nextmonday': 'calendar days, then the Monday next after'}.get(t.rule.day_type, t.rule.day_type) }} {{ t.rule.direction }} {{ t.rule.trigger }}{% if not t.rule.roll %}, no rolling{% endif %}</span>{% if t.rule.notes %}<br><span class="small muted">{{ t.rule.notes }}</span>{% endif %}{% else %}<span class="muted">rule since removed</span>{% endif %}</dd>
+    <dt>Trigger</dt><dd>{{ t.rule_trigger }}{% if t.trigger_date %} on {{ t.trigger_date|d }}{% endif %}</dd>
+    {% endif %}
+    {# ---- end Agent E block ---- #}
   </dl>
   {% if t.notes %}<h3 style="margin-top:12px">Notes</h3><p style="white-space:pre-line">{{ t.notes }}</p>{% endif %}
 </div>

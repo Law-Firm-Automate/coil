@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% block title %}Search{% endblock %}{% block content %}
+<div class="topbar"><h1>Search</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/ai">AI status</a></div></div>
+<div class="card">
+  <form method="get" action="/ai/search" class="searchbar"><input type="text" name="q" value="{{ q }}" placeholder="Ask in plain words: overdue invoices for Bluebonnet, litigation matters opened this year, tasks due this week" style="flex:1" autofocus><button class="btn">Search</button></form>
+  {% if error %}<p class="small" style="margin:10px 0 0"><span class="badge draft">plain search</span> {{ error }} Showing plain text matches instead.</p>
+  {% elif filters %}<p class="small muted" style="margin:10px 0 0">Understood as: {% for k, v in filters.items() if v not in ('', 0, false, none, []) %}<span class="badge new" style="text-transform:none">{{ k.replace('_', ' ') }}: {{ v if v is not iterable or v is string else v|join(', ') }}</span> {% endfor %}</p>{% endif %}
+</div>
+{% if q %}
+{% set any_structured = structured and (structured.values()|map('length')|sum) > 0 %}
+{% if structured is not none %}
+  {% for key, rows in structured.items() %}
+  <div class="card"><h2>{{ key|capitalize }} <span class="small muted">{{ rows|length }}</span></h2>
+    {% if not rows %}<div class="empty">No {{ key }} match.</div>
+    {% elif key == 'matters' %}<table><tr><th>Matter</th><th>Client</th><th>Practice area</th><th>Status</th><th>Opened</th></tr>{% for m in rows %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td>{{ m.client.display_name }}</td><td>{{ m.practice_area }}</td><td><span class="badge {{ m.status }}">{{ m.status }}</span></td><td class="nowrap">{{ m.opened_on|d }}</td></tr>{% endfor %}</table>
+    {% elif key == 'contacts' %}<table><tr><th>Name</th><th>Email</th><th>Phone</th><th>Client</th></tr>{% for c in rows %}<tr><td><a href="/contacts/{{ c.id }}">{{ c.display_name }}</a></td><td>{{ c.email }}</td><td>{{ c.phone }}</td><td>{{ 'yes' if c.is_client else '' }}</td></tr>{% endfor %}</table>
+    {% elif key == 'invoices' %}<table><tr><th>Number</th><th>Client</th><th>Status</th><th>Issued</th><th>Due</th><th class="num">Total</th><th class="num">Balance</th></tr>{% for i in rows %}<tr><td><a href="/invoices/{{ i.id }}">{{ i.number }}</a></td><td>{{ i.client.display_name }}</td><td><span class="badge {{ 'overdue' if i.is_overdue else i.status }}">{{ 'overdue' if i.is_overdue else i.status }}</span></td><td class="nowrap">{{ i.issued_on|d }}</td><td class="nowrap">{{ i.due_on|d }}</td><td class="num">{{ i.total_cents|cur(i.currency) }}</td><td class="num">{{ i.balance_cents|cur(i.currency) }}</td></tr>{% endfor %}</table>
+    {% elif key == 'time' %}<table><tr><th>Date</th><th>Matter</th><th>Who</th><th>Description</th><th class="num">Hours</th><th>Billed</th></tr>{% for t in rows %}<tr><td class="nowrap"><a href="/time/{{ t.id }}/edit">{{ t.date|d }}</a></td><td><a href="/matters/{{ t.matter_id }}">{{ t.matter.number }}</a></td><td>{{ t.user.name if t.user else '' }}</td><td>{{ t.description }}</td><td class="num">{{ t.minutes|hours }}</td><td>{% if t.invoice_id %}<a href="/invoices/{{ t.invoice_id }}">invoiced</a>{% elif not t.billable %}<span class="muted">no charge</span>{% else %}<span class="badge draft">unbilled</span>{% endif %}</td></tr>{% endfor %}</table>
+    {% elif key == 'tasks' %}<table><tr><th>Task</th><th>Matter</th><th>Kind</th><th>Due</th><th>Assignee</th><th>Done</th></tr>{% for t in rows %}<tr><td><a href="/tasks/{{ t.id }}">{{ t.title }}</a></td><td>{% if t.matter %}<a href="/matters/{{ t.matter_id }}">{{ t.matter.number }}</a>{% endif %}</td><td>{{ t.kind.replace('_', ' ') }}</td><td class="nowrap">{% if t.is_overdue %}<span class="badge overdue">overdue</span> {% endif %}{{ t.due_on|d }}</td><td>{{ t.assignee.name if t.assignee else '' }}</td><td>{{ 'yes' if t.done else '' }}</td></tr>{% endfor %}</table>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+{% if plain and (error or not any_structured) %}
+  <h2 style="margin:16px 0 8px">{% if error %}Plain text matches{% else %}Plain text matches (nothing matched the filters above){% endif %}</h2>
+  <div class="grid c3">
+    <div class="card"><h2>Matters <span class="small muted">{{ plain.matters|length }}</span></h2>{% if plain.matters %}<ul class="small">{% for m in plain.matters %}<li><a href="/matters/{{ m.id }}">{{ m.label }}</a> <span class="muted">{{ m.client.display_name }}</span></li>{% endfor %}</ul>{% else %}<div class="empty">None.</div>{% endif %}</div>
+    <div class="card"><h2>Contacts <span class="small muted">{{ plain.contacts|length }}</span></h2>{% if plain.contacts %}<ul class="small">{% for c in plain.contacts %}<li><a href="/contacts/{{ c.id }}">{{ c.display_name }}</a> <span class="muted">{{ c.email }}</span></li>{% endfor %}</ul>{% else %}<div class="empty">None.</div>{% endif %}</div>
+    <div class="card"><h2>Documents <span class="small muted">{{ plain.documents|length }}</span></h2>{% if plain.documents %}<ul class="small">{% for d in plain.documents %}<li><a href="/documents/{{ d.id }}/download">{{ d.name }}</a> <span class="muted">{{ d.matter.number if d.matter else '' }}</span></li>{% endfor %}</ul>{% else %}<div class="empty">None.</div>{% endif %}</div>
+  </div>
+{% endif %}
+{% endif %}
+{% endblock %}

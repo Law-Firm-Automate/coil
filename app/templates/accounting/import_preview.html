@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Import preview{% endblock %}{% block content %}
+<div class="topbar"><h1>Import preview: {{ filename }}</h1><a class="btn small secondary" href="{{ url_for('accounting.import_csv') }}">Cancel</a></div>
+{% if errors %}<div class="flash error">{{ errors|length }} row{{ 's' if errors|length != 1 }} skipped: {{ errors[:5]|join('; ') }}{% if errors|length > 5 %} and more{% endif %}</div>{% endif %}
+<div class="card">
+<p class="small muted">{{ rows|length }} rows, {{ matched }} matched to existing entries, {{ rows|length - matched }} new. Change a row's action if the match is wrong, then commit.</p>
+<form method="post" action="{{ url_for('accounting.import_commit') }}">{{ csrf() }}
+  <input type="hidden" name="rows_json" value='{{ rows_json|e }}'><input type="hidden" name="filename" value="{{ filename }}">
+  <table><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Result</th><th>Action</th></tr>
+  {% for r in rows %}<tr>
+    <td class="nowrap">{{ r.date|d }}</td><td>{{ r.description }}</td><td class="num">{{ r.amount_cents|money }}</td>
+    <td>{% if r.match_id %}<span class="badge paid">matched</span> <span class="small muted">{{ r.match_label }}</span>{% else %}<span class="badge draft">new</span>{% endif %}</td>
+    <td><select name="action_{{ loop.index0 }}">{% if r.match_id %}<option value="auto">Match and mark cleared</option><option value="new">Create a new entry instead</option>{% else %}<option value="auto">Create entry (needs category)</option>{% endif %}<option value="skip">Skip this row</option></select></td>
+  </tr>{% endfor %}</table>
+  <div class="actions"><button class="btn">Commit import</button></div>
+</form>
+</div>
+{% endblock %}

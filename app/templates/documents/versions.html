@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Versions of {{ doc.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ doc.name }} <span class="badge new">v{{ doc.version or 1 }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/documents?matter_id={{ doc.matter_id }}">Documents</a> <a class="btn small secondary" href="/matters/{{ doc.matter_id }}?tab=documents">{{ doc.matter.label }}</a></div></div>
+<div class="grid c2">
+<div class="card"><h2>Current version</h2>
+  <dl class="kv">
+    <dt>Matter</dt><dd><a href="/matters/{{ doc.matter_id }}">{{ doc.matter.label }}</a></dd>
+    <dt>Folder</dt><dd>{{ doc.folder or 'No folder' }}</dd>
+    <dt>Tags</dt><dd>{{ doc.tags or 'None' }}</dd>
+    <dt>Portal</dt><dd>{{ 'Shared with the client' if doc.shared_to_portal else 'Not shared' }}</dd>
+    <dt>Uploaded</dt><dd>{{ doc.created_at|dt }}{% if doc.uploaded_by %} by {{ doc.uploaded_by.name }}{% endif %}</dd>
+  </dl>
+  <div class="actions"><a class="btn small secondary" href="/documents/{{ doc.id }}/download">Download current</a></div>
+</div>
+<div class="card"><h2>Upload a new version</h2>
+  <form method="post" action="/documents/{{ doc.id }}/new-version" enctype="multipart/form-data">{{ csrf() }}
+    <label>File (25 MB max)</label><input type="file" name="file" required>
+    <p class="small muted">The new file becomes version {{ (doc.version or 1) + 1 }} and keeps this document's folder, tags and portal sharing. Older versions stay downloadable here.</p>
+    <div class="actions"><button class="btn small">Upload version {{ (doc.version or 1) + 1 }}</button></div>
+  </form>
+</div>
+</div>
+<div class="card"><h2>History</h2>
+<table><tr><th>Version</th><th>Name</th><th>Uploaded</th><th>By</th><th class="num">Size</th><th></th></tr>
+{% for v in family %}<tr>
+  <td class="nowrap"><span class="badge {{ 'new' if v.is_current else '' }}">v{{ v.version or 1 }}</span>{% if v.is_current %} <span class="small muted">current</span>{% endif %}</td>
+  <td>{{ v.name }}<br><span class="small muted">{{ v.mime }}</span></td>
+  <td class="nowrap">{{ v.created_at|dt }}</td>
+  <td>{% if v.uploaded_by_client %}<span class="badge pending">client</span>{% else %}{{ v.uploaded_by.name if v.uploaded_by else '' }}{% endif %}</td>
+  <td class="num">{{ (v.size / 1024)|round(1) }} KB</td>
+  <td class="right nowrap"><a class="btn small secondary" href="/documents/{{ v.id }}/download">Download</a> <form method="post" action="/documents/{{ v.id }}/delete" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/documents?matter_id={{ doc.matter_id }}"><button class="btn small secondary" data-confirm="Delete version {{ v.version or 1 }} of {{ v.name }}? The file is removed from disk.">Delete</button></form></td>
+</tr>{% endfor %}</table>
+</div>
+{% endblock %}

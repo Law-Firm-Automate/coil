@@ -3,7 +3,7 @@
 everything here except a user editing their own account, and reading the template list)."""
 import json
 from datetime import datetime, timedelta
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, session
 from sqlalchemy import func
 from ..extensions import db
 from ..models import Firm, User, Office, Matter, MatterTemplate, AuditLog, audit
@@ -77,8 +77,11 @@ def index():
             f.surcharge_enabled = form.get("surcharge_enabled") == "1"
             f.daily_agenda_email = form.get("daily_agenda_email") == "1"
             f.require_invoice_approval = form.get("require_invoice_approval") == "1"
+            f.ai_enabled = form.get("ai_enabled") == "1"
+            f.sequences_auto_send = form.get("sequences_auto_send") == "1"
         else:
-            for k in ("surcharge_enabled", "daily_agenda_email", "require_invoice_approval"):
+            for k in ("surcharge_enabled", "daily_agenda_email", "require_invoice_approval", "ai_enabled",
+                      "sequences_auto_send"):
                 if k in form:
                     setattr(f, k, form.get(k) == "1")
         audit("update", "firm", f.id, "settings saved", current_user().id)
@@ -551,3 +554,133 @@ def integrations():
 def outbox():
     return render_template("settings/outbox.html", rows=dev_outbox(),
                            smtp=bool(current_app.config.get("SMTP_HOST")))
+
+
+# ---------------------------------------------------------------- API tokens (Agent G)
+@bp.route("/settings/api", methods=["GET", "POST"])
+@login_required
+def api_tokens():
+    from ..models import ApiToken
+    from .api import create_token, RATE_LIMIT
+    u = current_user()
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        if not name:
+            flash("Give the token a name so you know what to revoke later.", "error")
+            return redirect(url_for("settings.api_tokens"))
+        t, raw = create_token(u, name, request.form.get("scopes") or "read")
+        db.session.flush()
+        audit("api_token_create", "api_token", t.id, f"{name} ({t.scopes})", u.id)
+        db.session.commit()
+        session["_new_api_token"] = raw
+        return redirect(url_for("settings.api_tokens"))
+    new_token = session.pop("_new_api_token", None)
+    rows = ApiToken.query.order_by(ApiToken.revoked_at.isnot(None), ApiToken.created_at.desc()).all()
+    return render_template("settings/api.html", rows=rows, new_token=new_token, base=current_app.config["BASE_URL"],
+                           rate_limit=current_app.config.get("API_RATE_LIMIT", RATE_LIMIT))
+
+
+@bp.route("/settings/api/<int:id>/revoke", methods=["POST"])
+@login_required
+def api_token_revoke(id):
+    from ..models import ApiToken
+    t = db.session.get(ApiToken, id) or abort(404)
+    u = current_user()
+    if t.user_id != u.id and u.role != "owner":
+        abort(403)
+    if not t.revoked_at:
+        t.revoked_at = datetime.utcnow()
+        audit("api_token_revoke", "api_token", t.id, t.name, u.id)
+        db.session.commit()
+    flash(f"Token {t.name} revoked.", "ok")
+    return redirect(url_for("settings.api_tokens"))
+
+
+# ---------------------------------------------------------------- outgoing webhooks (Agent G)
+@bp.route("/settings/webhooks")
+@login_required
+def webhooks():
+    from ..models import Webhook, WebhookDelivery
+    from .webhooks_out import EVENTS
+    hooks = Webhook.query.order_by(Webhook.id).all()
+    deliveries = WebhookDelivery.query.order_by(WebhookDelivery.id.desc()).limit(50).all()
+    return render_template("settings/webhooks.html", hooks=hooks, deliveries=deliveries, events=EVENTS)
+
+
+@bp.route("/settings/webhooks/new", methods=["POST"])
+@login_required
+def webhook_new():
+    from ..models import Webhook, new_token
+    from .webhooks_out import EVENT_NAMES
+    url = (request.form.get("url") or "").strip()
+    events = [e for e in request.form.getlist("events") if e in EVENT_NAMES]
+    if not url.lower().startswith(("http://", "https://")):
+        flash("Enter a full http(s) URL.", "error")
+        return redirect(url_for("settings.webhooks"))
+    if not events:
+        flash("Pick at least one event.", "error")
+        return redirect(url_for("settings.webhooks"))
+    h = Webhook(url=url[:500], events=",".join(events), secret=(request.form.get("secret") or "").strip()[:120] or new_token(24),
+                is_active=True)
+    db.session.add(h)
+    db.session.flush()
+    audit("webhook_create", "webhook", h.id, f"{url} [{h.events}]", current_user().id)
+    db.session.commit()
+    flash("Webhook added.", "ok")
+    return redirect(url_for("settings.webhooks"))
+
+
+@bp.route("/settings/webhooks/<int:id>/toggle", methods=["POST"])
+@login_required
+def webhook_toggle(id):
+    from ..models import Webhook
+    h = db.session.get(Webhook, id) or abort(404)
+    h.is_active = not h.is_active
+    db.session.commit()
+    flash("Webhook resumed." if h.is_active else "Webhook paused.", "ok")
+    return redirect(url_for("settings.webhooks"))
+
+
+@bp.route("/settings/webhooks/<int:id>/delete", methods=["POST"])
+@login_required
+def webhook_delete(id):
+    from ..models import Webhook, WebhookDelivery
+    h = db.session.get(Webhook, id) or abort(404)
+    WebhookDelivery.query.filter_by(webhook_id=h.id).delete()
+    audit("webhook_delete", "webhook", h.id, h.url, current_user().id)
+    db.session.delete(h)
+    db.session.commit()
+    flash("Webhook deleted.", "ok")
+    return redirect(url_for("settings.webhooks"))
+
+
+@bp.route("/settings/webhooks/<int:id>/test", methods=["POST"])
+@login_required
+def webhook_test(id):
+    from ..models import Webhook, WebhookDelivery
+    from .webhooks_out import attempt_delivery
+    import json as _json
+    h = db.session.get(Webhook, id) or abort(404)
+    d = WebhookDelivery(webhook_id=h.id, event="ping", status="pending", attempts=0,
+                        payload_json=_json.dumps({"event": "ping", "created_at": datetime.utcnow().isoformat(),
+                                                  "data": {"message": "Test delivery from Coil", "webhook_id": h.id}}))
+    db.session.add(d)
+    db.session.flush()
+    ok = attempt_delivery(d, h)
+    db.session.commit()
+    flash("Test delivered." if ok else f"Test failed: {d.last_error}", "ok" if ok else "error")
+    return redirect(url_for("settings.webhooks"))
+
+
+@bp.route("/settings/webhooks/deliveries/<int:id>/retry", methods=["POST"])
+@login_required
+def webhook_retry(id):
+    from ..models import WebhookDelivery
+    from .webhooks_out import attempt_delivery
+    d = db.session.get(WebhookDelivery, id) or abort(404)
+    if not d.webhook:
+        abort(404)
+    ok = attempt_delivery(d, d.webhook)
+    db.session.commit()
+    flash("Delivered." if ok else f"Still failing: {d.last_error}", "ok" if ok else "error")
+    return redirect(url_for("settings.webhooks"))

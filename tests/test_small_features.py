@@ -21,7 +21,8 @@ def app():
     subprocess.run([sys.executable, os.path.join(ROOT, "seed.py")], check=True, cwd=ROOT, env=env)
     os.environ["DATABASE_URL"] = env["DATABASE_URL"]
     from app import create_app
-    a = create_app({"TESTING": True, "UPLOAD_DIR": os.path.join(ROOT, "data", "uploads-test-small")})
+    a = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": env["DATABASE_URL"],
+                    "UPLOAD_DIR": os.path.join(ROOT, "data", "uploads-test-small")})
     return a
 
 

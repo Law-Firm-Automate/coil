@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Summary: {{ m.label }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Matter summary <span style="font-weight:500">{{ m.label }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/matters/{{ m.id }}">Back to matter</a></div></div>
+{% include "ai/_notice.html" %}
+{% if cut %}<div class="flash">The matter has more history than fits in one request, so the oldest notes and entries were left out of the summary.</div>{% endif %}
+{% if summary %}
+<form method="post" action="/ai/matter/{{ m.id }}/summary/save">{{ csrf() }}
+<div class="grid c2">
+  <div class="card"><h2>Summary</h2>
+    <textarea name="summary" style="min-height:220px;width:100%">{{ summary }}</textarea>
+    <p class="small muted">Written from the matter details, notes, recent time, tasks, events and messages. Read it before you rely on it; edit here before saving.</p>
+  </div>
+  <div class="card"><h2>Open items</h2>
+    <textarea name="open_items" style="min-height:220px;width:100%">{{ items|join('\n') }}</textarea>
+    <p class="small muted">One per line. Saved under the summary in the note.</p>
+  </div>
+</div>
+<div class="actions"><button class="btn">Save as a note on the matter</button><a class="btn secondary" href="/matters/{{ m.id }}">Discard</a></div>
+</form>
+{% endif %}
+{% endblock %}

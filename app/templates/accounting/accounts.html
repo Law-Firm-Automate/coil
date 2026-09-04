@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Chart of accounts{% endblock %}{% block content %}
+<div class="topbar"><h1>Chart of accounts</h1><div class="actions" style="margin:0"><a class="btn small" href="{{ url_for('accounting.account_new') }}">Add account</a><a class="btn small secondary" href="{{ url_for('accounting.index') }}">Ledger</a></div></div>
+<div class="card">
+<table><tr><th>Code</th><th>Name</th><th>Type</th><th class="num">Entries</th><th>Status</th><th></th></tr>
+{% for a in rows %}<tr>
+  <td>{{ a.code }}</td><td><a href="{{ url_for('accounting.account_edit', id=a.id) }}">{{ a.name }}</a>{% if a.is_system %} <span class="muted small">system</span>{% endif %}</td><td>{{ a.type }}</td>
+  <td class="num"><a href="{{ url_for('accounting.index', account_id=a.id) }}">{{ counts.get(a.id, 0) }}</a></td>
+  <td>{% if a.is_active %}<span class="badge open">active</span>{% else %}<span class="badge closed">inactive</span>{% endif %}</td>
+  <td class="small"><a href="{{ url_for('accounting.account_edit', id=a.id) }}">Edit</a>{% if not a.is_system %} <form method="post" action="{{ url_for('accounting.account_delete', id=a.id) }}" class="inline" onsubmit="return confirm('Delete this account?')">{{ csrf() }}<button class="btn small secondary">Delete</button></form>{% endif %}</td>
+</tr>{% endfor %}</table>
+<p class="small muted">System accounts are used by the automatic postings (payments, expenses, surcharges, processing fees) and cannot be deleted. Accounts with entries are deactivated instead of deleted.</p>
+</div>
+{% endblock %}

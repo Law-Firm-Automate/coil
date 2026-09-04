@@ -11,6 +11,13 @@
   {% if c.link %}<a class="btn small secondary" href="{{ c.link[0] }}">{{ c.link[1] }}</a>{% endif %}
 </div>
 {% endfor %}
+<div class="card">
+  <h2>Email filing (IMAP) {% if config.IMAP_HOST and config.IMAP_USER %}<span class="badge open">configured</span>{% else %}<span class="badge draft">not configured</span>{% endif %}</h2>
+  {% if config.IMAP_HOST and config.IMAP_USER %}<p class="small">Forward or BCC <strong>{{ config.IMAP_USER }}</strong> and put the matter number in brackets in the subject, like <code>[M-1002]</code>. Mail from a client with exactly one open matter files itself without a number. Run <code>python -m app.cli emailin</code> on a schedule (every few minutes is fine); it reads {{ config.IMAP_FOLDER }} on {{ config.IMAP_HOST }}:{{ config.IMAP_PORT }}.</p>
+  {% else %}<p class="small">IMAP_HOST is empty. Set the IMAP variables for a mailbox the firm can forward or BCC to, then run <code>python -m app.cli emailin</code> on a schedule. Staff put the matter number in brackets in the subject, like <code>[M-1002]</code>, and Coil files the email and its attachments on that matter.</p>{% endif %}
+  <p class="small muted">Env: IMAP_HOST, IMAP_PORT, IMAP_USER, IMAP_PASS, IMAP_FOLDER</p>
+  <a class="btn small secondary" href="/messages/unfiled">Unfiled email</a>
+</div>
 </div>
 <div class="grid c2">
 <div class="card"><h2>Public intake form</h2>

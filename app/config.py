@@ -24,3 +24,19 @@ class Config:
     TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
     TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
     TWILIO_FROM_NUMBER = os.environ.get("TWILIO_FROM_NUMBER", "")
+    # Email filing (python -m app.cli emailin). Leave IMAP_HOST blank to disable.
+    IMAP_HOST = os.environ.get("IMAP_HOST", "")
+    IMAP_PORT = int(os.environ.get("IMAP_PORT", "993") or 993)
+    IMAP_USER = os.environ.get("IMAP_USER", "")
+    IMAP_PASS = os.environ.get("IMAP_PASS", "")
+    IMAP_FOLDER = os.environ.get("IMAP_FOLDER", "INBOX") or "INBOX"
+    # ---- AI features (Agent H). Provider precedence at call time: OPENROUTER_API_KEY, then ANTHROPIC_API_KEY,
+    # else the AI pages explain that no key is set. Firm.ai_enabled must also be on. See app/llm.py.
+    OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+    AI_MODEL = os.environ.get("AI_MODEL", "claude-haiku-4-5")  # direct Anthropic id (no date suffix)
+    AI_OPENROUTER_MODEL = os.environ.get("AI_OPENROUTER_MODEL", "anthropic/claude-haiku-4.5")
+    AI_DAILY_CAP_CENTS = int(os.environ.get("AI_DAILY_CAP_CENTS", "300") or 300)  # estimated spend per UTC day
+    LLM_ENABLED = os.environ.get("LLM_ENABLED", "true")  # 0/false/no/off turns every model call off
+    LLM_DAILY_CAP = int(os.environ.get("LLM_DAILY_CAP", "0") or 0)  # max model calls per UTC day, 0 = no limit
+    BOOKING_URL = os.environ.get("BOOKING_URL", "")  # consult booking page, shown after intake and as {{ booking_url }}

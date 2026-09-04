@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Operating ledger{% endblock %}{% block content %}
+<div class="topbar"><h1>Operating ledger</h1>
+<div class="actions" style="margin:0"><a class="btn small" href="{{ url_for('accounting.new') }}">Add entry</a><a class="btn small secondary" href="{{ url_for('accounting.import_csv') }}">Import bank CSV</a><a class="btn small secondary" href="{{ url_for('accounting.reconcile') }}">Reconcile</a><a class="btn small secondary" href="{{ url_for('accounting.pnl') }}">P&amp;L</a><a class="btn small secondary" href="{{ url_for('accounting.balance') }}">Balance</a><a class="btn small secondary" href="{{ url_for('accounting.accounts') }}">Accounts</a></div></div>
+{% if uncategorised %}<div class="flash"><a href="{{ url_for('accounting.uncategorised') }}">{{ uncategorised }} imported item{{ 's' if uncategorised != 1 }} need{{ '' if uncategorised != 1 else 's' }} a category</a>.</div>{% endif %}
+<div class="grid c4">
+  <div class="card stat"><div class="muted small">Bank balance per book</div><div style="font-size:1.4rem">{{ book|money }}</div></div>
+  <div class="card stat"><div class="muted small">Opening {{ start|d }}</div><div style="font-size:1.4rem">{{ opening|money }}</div></div>
+  <div class="card stat"><div class="muted small">In / out this month</div><div style="font-size:1.4rem">{{ money_in|money }} <span class="muted">/</span> {{ money_out|money }}</div></div>
+  <div class="card stat"><div class="muted small">Closing {{ end|d }}</div><div style="font-size:1.4rem">{{ closing|money }}</div></div>
+</div>
+<div class="card">
+  <form method="get" class="inline actions" style="margin-bottom:10px">
+    <a class="btn small secondary" href="{{ url_for('accounting.index', month=prev_month, account_id=account_filter) }}">&larr;</a>
+    <input type="month" name="month" value="{{ month }}">
+    <a class="btn small secondary" href="{{ url_for('accounting.index', month=next_month, account_id=account_filter) }}">&rarr;</a>
+    <select name="account_id"><option value="">All accounts</option>{% for a in accounts %}<option value="{{ a.id }}" {% if a.id == account_filter %}selected{% endif %}>{{ a.code }} {{ a.name }}</option>{% endfor %}</select>
+    <button class="btn small secondary">Show</button>
+  </form>
+  {% if rows %}
+  <table><tr><th>Date</th><th>Account</th><th>Payee / description</th><th>Matter</th><th>Source</th><th class="num">Amount</th>{% if not account_filter %}<th class="num">Balance</th>{% endif %}<th>Cleared</th><th></th></tr>
+  {% for e, bal in rows %}<tr>
+    <td class="nowrap">{{ e.date|d }}</td>
+    <td>{% if e.account %}{{ e.account.code }} {{ e.account.name }}{% else %}<span class="badge overdue">needs category</span>{% endif %}</td>
+    <td>{% if e.payee %}<strong>{{ e.payee }}</strong> {% endif %}{{ e.description }}{% if e.reference %} <span class="muted small">{{ e.reference }}</span>{% endif %}</td>
+    <td class="small">{% if e.matter %}<a href="/matters/{{ e.matter.id }}">{{ e.matter.number }}</a>{% endif %}</td>
+    <td class="small">{% if e.source == 'payment' %}<a href="/payments/{{ e.payment_id }}">payment</a>{% elif e.source == 'expense' %}<a href="/time/expenses/{{ e.expense_id }}/edit">expense</a>{% else %}{{ e.source }}{% endif %}</td>
+    <td class="num {% if e.amount_cents < 0 %}muted{% endif %}">{{ e.amount_cents|money }}</td>
+    {% if not account_filter %}<td class="num">{{ bal|money }}</td>{% endif %}
+    <td><form method="post" action="{{ url_for('accounting.clear', id=e.id) }}" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small secondary" title="Toggle cleared">{{ 'cleared ' ~ (e.cleared_on|d) if e.cleared else 'mark cleared' }}</button></form></td>
+    <td class="small">{% if e.source in ('manual', 'import') %}<a href="{{ url_for('accounting.edit', id=e.id) }}">Edit</a> <form method="post" action="{{ url_for('accounting.delete_entry', id=e.id) }}" class="inline" onsubmit="return confirm('Delete this entry?')">{{ csrf() }}<button class="btn small secondary">Delete</button></form>{% endif %}</td>
+  </tr>{% endfor %}</table>
+  {% else %}<div class="empty">No entries for {{ start.strftime('%B %Y') }}. Payments and expenses post here automatically; add rent, software and other bills with Add entry, or import a bank statement.</div>{% endif %}
+</div>
+{% endblock %}

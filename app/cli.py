@@ -1,4 +1,4 @@
-"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders` or `... interest`.
+"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders`, `... interest` or `... emailin`.
 
 All three are idempotent: agenda and reminders write an AuditLog row and skip work that already has one today
 (evergreen top-up requests use a 14-day window), interest checks Invoice.last_interest_on for the month.
@@ -11,6 +11,7 @@ from .extensions import db
 from .models import (Firm, User, Task, Matter, Invoice, InvoiceEvent, Engagement, IntakeLead, AuditLog, audit)
 from .helpers import cents_to_str
 from .services.mail import send_email
+from .blueprints.webhooks_out import run_webhooks
 
 
 def _today_start():
@@ -224,20 +225,65 @@ def run_interest(today=None):
     return count, total
 
 
+# ---------------------------------------------------------------------------
+# email filing (IMAP -> matters)
+# ---------------------------------------------------------------------------
+def run_emailin():
+    """Pull unseen mail from the IMAP_* mailbox and file it to matters. Idempotent on Message-ID.
+    Returns dict(filed, unfiled, skipped). Does nothing when IMAP_HOST is blank."""
+    from .blueprints.emailin import run_emailin as _run, imap_configured
+    if not imap_configured():
+        print("emailin: IMAP_HOST / IMAP_USER not set, nothing to do")
+        return dict(filed=0, unfiled=0, skipped=0)
+    return _run()
+
+
+# ---------------------------------------------------------------------------
+# follow-up sequences (Agent H)
+# ---------------------------------------------------------------------------
+def run_sequences(today=None):
+    """Advance every active lead sequence whose next step date has arrived.
+
+    Sends the step by email only when Firm.sequences_auto_send is on; otherwise it writes a draft Message that
+    staff send from /intake/drafts. Idempotent per step (LeadSequence.next_step plus a unique Message key).
+    Returns (sent, drafted).
+    """
+    from .models import LeadSequence
+    from .blueprints.intake import process_lead_sequence
+    today = today or date.today()
+    auto = bool(Firm.get().sequences_auto_send)
+    sent = drafted = 0
+    for ls in LeadSequence.query.filter_by(status="active").order_by(LeadSequence.id).all():
+        s, d = process_lead_sequence(ls, today, auto)
+        sent += s
+        drafted += d
+    return sent, drafted
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
-    if not argv or argv[0] not in ("agenda", "reminders", "interest"):
-        print("usage: python -m app.cli agenda|reminders|interest")
+    if not argv or argv[0] not in ("agenda", "reminders", "interest", "emailin", "sequences", "webhooks"):
+        print("usage: python -m app.cli agenda|reminders|interest|emailin|sequences|webhooks")
         return 2
     from . import create_app
     app = create_app()
     with app.app_context():
-        if argv[0] == "agenda":
+        if argv[0] == "webhooks":
+            r, ok, bad = run_webhooks()
+            print(f"webhooks: {r} retried, {ok} delivered, {bad} still failing")
+        elif argv[0] == "agenda":
             n = run_agenda()
             print(f"agenda: {n} email(s) sent")
         elif argv[0] == "interest":
             n, cents = run_interest()
             print(f"interest: {n} invoice(s) charged, {cents_to_str(cents)} total")
+        elif argv[0] == "emailin":
+            c = run_emailin()
+            print(f"emailin: {c['filed']} filed, {c['unfiled']} unfiled, {c['skipped']} already seen")
+        elif argv[0] == "sequences":
+            s, d = run_sequences()
+            print(f"sequences: {s} sent, {d} drafted" + ("" if Firm.get().sequences_auto_send else
+                                                          " (auto-send is off; drafts wait at /intake/drafts)"))
         else:
             i, e = run_reminders()
             ev = run_evergreen()

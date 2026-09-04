@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Profit and loss{% endblock %}{% block content %}
+<div class="topbar"><h1>Profit and loss</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="{{ url_for('accounting.pnl', **{'from': start|iso, 'to': end|iso, 'format': 'csv'}) }}">Download CSV</a><a class="btn small secondary" href="{{ url_for('accounting.index') }}">Ledger</a><a class="btn small secondary" href="/reports">Reports</a></div></div>
+<div class="card">
+  <form method="get" class="inline actions" style="margin:0">
+    <label>From <input type="date" name="from" value="{{ start|iso }}"></label>
+    <label>To <input type="date" name="to" value="{{ end|iso }}"></label>
+    <button class="btn small secondary">Run</button>
+  </form>
+  <p class="small muted">Cash basis: what was received and paid from the operating account between {{ start|d }} and {{ end|d }}, by account. Trust money is not income and never appears here.</p>
+</div>
+<div class="grid c2">
+  <div class="card"><h2>Income</h2>
+    <table>{% for a, v in income %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ v|money }}</td></tr>{% else %}<tr><td class="muted" colspan="2">No income in this period.</td></tr>{% endfor %}
+    <tr><td><strong>Total income</strong></td><td class="num"><strong>{{ total_income|money }}</strong></td></tr></table>
+  </div>
+  <div class="card"><h2>Expenses</h2>
+    <table>{% for a, v in expense %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ (-v)|money }}</td></tr>{% else %}<tr><td class="muted" colspan="2">No expenses in this period.</td></tr>{% endfor %}
+    <tr><td><strong>Total expenses</strong></td><td class="num"><strong>{{ (-total_expense)|money }}</strong></td></tr></table>
+  </div>
+</div>
+<div class="card"><h2>Net income: {{ net|money }}</h2>
+  {% if other %}<p class="small muted">Not part of net income (asset, liability and equity movements): {% for a, v in other %}{{ a.name }} {{ v|money }}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+  {% if uncategorised_count %}<p class="small"><a href="{{ url_for('accounting.uncategorised') }}">{{ uncategorised_count }} uncategorised item{{ 's' if uncategorised_count != 1 }} totalling {{ uncategorised_cents|money }}</a> are excluded until they get an account.</p>{% endif %}
+</div>
+{% endblock %}

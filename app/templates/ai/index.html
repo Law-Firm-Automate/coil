@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}AI{% endblock %}{% block content %}
+<div class="topbar"><h1>AI features</h1>
+<div class="actions" style="margin:0">{% if current_user().role == 'owner' %}<a class="btn small secondary" href="/settings">Settings</a>{% endif %}</div></div>
+<div class="grid c2">
+  <div class="card"><h2>Status</h2>
+    <dl class="kv">
+      <dt>Available</dt><dd>{% if st.available %}<span class="badge open">yes</span>{% else %}<span class="badge declined">no</span> <span class="small muted">{{ st.reason }}</span>{% endif %}</dd>
+      <dt>Turned on in Settings</dt><dd>{{ 'yes' if st.firm_on else 'no' }}</dd>
+      <dt>Provider</dt><dd>{% if st.provider %}{{ st.provider }} ({{ st.model }}){% else %}<span class="muted">no key set</span>{% endif %}</dd>
+      <dt>Spent today (estimate)</dt><dd>{{ st.spent_today_cents|money }}{% if st.cap_cents %} of {{ st.cap_cents|money }} daily budget{% endif %}</dd>
+      <dt>Calls today</dt><dd>{{ st.calls_today }}{% if st.cap_calls %} of {{ st.cap_calls }}{% endif %}</dd>
+    </dl>
+    <p class="small muted">Set OPENROUTER_API_KEY or ANTHROPIC_API_KEY in the environment, then turn AI on under Settings. AI_DAILY_CAP_CENTS (default 300) caps estimated spend per day. Spend is an estimate from token counts and is rounded up to whole cents.</p>
+  </div>
+  <div class="card"><h2>Ask a question</h2>
+    <form method="get" action="/ai/search" class="searchbar"><input type="text" name="q" placeholder="Overdue invoices for Bluebonnet, open litigation matters, tasks due this week" style="flex:1"><button class="btn">Search</button></form>
+    <p class="small muted" style="margin-top:8px">Turns a plain question into filters over matters, contacts, invoices, time and tasks. When AI is unavailable the page falls back to a plain text search, so it always answers.</p>
+    <h3 style="margin-top:14px">Where the other features live</h3>
+    <ul class="small">
+      <li><strong>Invoice narrative cleanup</strong>: the "AI: polish narratives" button on an invoice. Rewrites time line descriptions for the client; you see before and after and apply only on drafts.</li>
+      <li><strong>Matter summary</strong>: the "AI summary" button on a matter's overview. About 150 words plus open items, with save-as-note.</li>
+      <li><strong>Dates from a document</strong>: the "AI dates" button on the documents list. Finds deadlines and hearings in the file text and creates the ones you tick as tasks or events.</li>
+    </ul>
+  </div>
+</div>
+<div class="card"><h2>Recent calls</h2>
+{% if recent %}<table><tr><th>When</th><th>Feature</th><th>Entity</th><th>Model</th><th class="num">In chars</th><th class="num">Out chars</th><th class="num">Cost</th><th>OK</th></tr>
+{% for r in recent %}<tr><td class="nowrap">{{ r.created_at|dt }}</td><td>{{ r.kind }}</td><td>{{ r.entity }}{% if r.entity_id %} #{{ r.entity_id }}{% endif %}</td><td class="small">{{ r.model }}</td><td class="num">{{ r.prompt_chars }}</td><td class="num">{{ r.output_chars }}</td><td class="num">{{ r.cost_cents|money }}</td><td>{% if r.ok %}<span class="badge open">ok</span>{% else %}<span class="badge declined">failed</span>{% endif %}</td></tr>{% endfor %}</table>
+{% else %}<div class="empty">No AI calls yet.</div>{% endif %}
+</div>
+{% endblock %}

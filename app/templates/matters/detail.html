@@ -23,7 +23,7 @@
 
 {% if tab == 'overview' %}
 <div class="grid c2">
-  <div class="card"><h2>Details</h2>
+  <div class="card"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Details</h2>{# Agent H #}<form method="post" action="/ai/matter/{{ m.id }}/summary" class="inline">{{ csrf() }}<button class="btn small secondary" title="About 150 words plus open items, from notes, time, tasks and messages; you can save it as a note">AI summary</button></form></div>
     <dl class="kv">
       <dt>Client</dt><dd><a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a></dd>
       <dt>Practice area</dt><dd>{{ m.practice_area or '' }}</dd>
@@ -113,14 +113,14 @@
 {% else %}<div class="empty">No trust activity for this matter.</div>{% endif %}</div>
 
 {% elif tab == 'tasks' %}
-<div class="card"><div class="topbar" style="margin-bottom:10px"><h2>Open tasks and deadlines</h2><div class="actions" style="margin:0"><a class="btn small" href="/tasks/new?matter_id={{ m.id }}">New task</a><a class="btn small secondary" href="/calendar/new?matter_id={{ m.id }}">New event</a></div></div>
+<div class="card"><div class="topbar" style="margin-bottom:10px"><h2>Open tasks and deadlines</h2><div class="actions" style="margin:0"><a class="btn small" href="/tasks/new?matter_id={{ m.id }}">New task</a><a class="btn small secondary" href="/calendar/new?matter_id={{ m.id }}">New event</a>{# Agent E #}<a class="btn small secondary" href="/rules/matters/{{ m.id }}/apply">Court deadlines</a></div></div>
 {% if tasks %}<table><tr><th>Task</th><th>Kind</th><th>Due</th><th>Assignee</th><th>Priority</th><th></th></tr>
 {% for t in tasks %}<tr><td><a href="/tasks/{{ t.id }}">{{ t.title }}</a></td><td>{{ t.kind.replace('_', ' ') }}</td><td class="nowrap">{% if t.is_overdue %}<span class="badge overdue">overdue</span> {% endif %}{{ t.due_on|d }}</td><td>{{ t.assignee.name if t.assignee else '' }}</td><td>{{ t.priority }}</td><td class="right"><form method="post" action="/tasks/{{ t.id }}/done" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/matters/{{ m.id }}?tab=tasks"><button class="btn small secondary">Done</button></form></td></tr>{% endfor %}</table>
 {% else %}<div class="empty">Nothing open.</div>{% endif %}
 {% if done_tasks %}<h3 style="margin-top:14px">Recently completed</h3><table>{% for t in done_tasks %}<tr><td><a href="/tasks/{{ t.id }}" class="muted">{{ t.title }}</a></td><td class="nowrap small muted">{{ t.done_at|dt }}</td></tr>{% endfor %}</table>{% endif %}</div>
 
 {% elif tab == 'documents' %}
-<div class="card"><div class="topbar" style="margin-bottom:10px"><h2>Documents</h2><div class="actions" style="margin:0"><a class="btn small secondary" href="/documents?matter_id={{ m.id }}">All documents</a></div></div>
+<div class="card"><div class="topbar" style="margin-bottom:10px"><h2>Documents</h2><div class="actions" style="margin:0">{# Agent E #}<a class="btn small" href="/doctemplates?matter_id={{ m.id }}">Generate document</a><a class="btn small secondary" href="/documents?matter_id={{ m.id }}">All documents</a></div></div>
 {% if documents %}<table><tr><th>Name</th><th>Uploaded</th><th>By</th><th class="num">Size</th><th>Portal</th><th></th></tr>
 {% for d in documents %}<tr><td><a href="/documents/{{ d.id }}/download">{{ d.name }}</a></td><td class="nowrap">{{ d.created_at|d }}</td><td>{% if d.uploaded_by_client %}client{% else %}{{ d.uploaded_by.name if d.uploaded_by else '' }}{% endif %}</td><td class="num">{{ (d.size / 1024)|round(1) }} KB</td>
 <td><form method="post" action="/documents/{{ d.id }}/share" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/matters/{{ m.id }}?tab=documents"><button class="btn small {{ 'ok' if d.shared_to_portal else 'secondary' }}">{{ 'Shared' if d.shared_to_portal else 'Not shared' }}</button></form></td>

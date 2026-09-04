@@ -1,0 +1,67 @@
+{% extends "base.html" %}{% block title %}Pipeline{% endblock %}{% block content %}
+<style>
+.kanban{display:grid;grid-template-columns:repeat(6,minmax(180px,1fr));gap:10px;overflow-x:auto;align-items:start}
+.kcol{background:#f3f5f8;border-radius:8px;padding:8px;min-height:160px}
+.kcol.over{outline:2px dashed #1f4f8b;outline-offset:-4px}
+.kcol h3{font-size:.85rem;margin:0 0 8px;display:flex;justify-content:space-between;gap:6px}
+.kcard{background:#fff;border:1px solid #dfe3ea;border-radius:6px;padding:8px;margin-bottom:8px;cursor:grab;font-size:.85rem}
+.kcard.dragging{opacity:.45}
+.kcard .meta{color:#6b7280;font-size:.75rem;margin-top:4px;display:flex;flex-wrap:wrap;gap:6px}
+.kcard select{margin:6px 0 0;font-size:.75rem;padding:2px 4px;width:100%}
+</style>
+<div class="topbar"><h1>Pipeline</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/intake">Lead list</a><a class="btn small secondary" href="/intake/sequences">Sequences</a><a class="btn small secondary" href="/intake/drafts">Drafts</a></div></div>
+<p class="small muted">Drag a card between columns, or use the small menu on a card. Won and Lost are set for you when a lead is converted or declined. Values are your estimate of the matter, entered on the lead.</p>
+<div class="kanban" id="kanban">
+{% for key, label in stages %}
+<div class="kcol" data-stage="{{ key }}">
+  <h3><span>{{ label }} <span class="muted" data-count>({{ cols[key]|length }})</span></span><span class="muted" data-value>{{ values[key]|money if values[key] else '' }}</span></h3>
+  {% for l in cols[key] %}
+  <div class="kcard" draggable="true" data-id="{{ l.id }}" data-value="{{ l.value_cents or 0 }}">
+    <a href="/intake/{{ l.id }}"><strong>{{ l.name }}</strong></a>
+    <div class="small">{{ l.matter_type or 'no type' }}</div>
+    <div class="meta">
+      {% if l.value_cents %}<span>{{ l.value_cents|money }}</span>{% endif %}
+      {% if l.assigned_user %}<span title="{{ l.assigned_user.name }}">{{ l.assigned_user.initials or l.assigned_user.name }}</span>{% endif %}
+      {% if l.next_follow_up_on %}<span class="{{ 'badge overdue' if l.next_follow_up_on < today else '' }}" title="Next follow-up">{{ 'follow up ' ~ (l.next_follow_up_on|d) }}</span>{% endif %}
+      <span title="{{ l.created_at|dt }}">{{ age(l.created_at) }}</span>
+      {% if l.status == 'converted' and l.matter_id %}<a href="/matters/{{ l.matter_id }}">matter</a>{% endif %}
+      {% if l.stage == 'lost' and l.lost_reason %}<span title="Lost reason">{{ l.lost_reason }}</span>{% endif %}
+    </div>
+    <form method="post" action="/intake/{{ l.id }}/stage" class="nojs-move">{{ csrf() }}<input type="hidden" name="next" value="/intake/pipeline">
+      <select name="stage" onchange="this.form.submit()" aria-label="Move {{ l.name }}"><option value="">Move to</option>{% for k2, lbl2 in stages if k2 != key %}<option value="{{ k2 }}">{{ lbl2 }}</option>{% endfor %}</select></form>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+</div>
+<script>
+(function(){
+  var csrf=(document.querySelector('input[name=_csrf]')||{}).value||'';
+  var dragged=null;
+  function money(c){c=Math.round(c);return '$'+Math.floor(c/100).toLocaleString()+'.'+String(c%100).padStart(2,'0');}
+  function refresh(col){var cards=col.querySelectorAll('.kcard');col.querySelector('[data-count]').textContent='('+cards.length+')';var v=0;cards.forEach(function(c){v+=parseInt(c.getAttribute('data-value')||'0',10);});col.querySelector('[data-value]').textContent=v?money(v):'';}
+  document.querySelectorAll('.kcard').forEach(function(card){
+    card.addEventListener('dragstart',function(e){dragged=card;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',card.getAttribute('data-id'));}catch(_){}});
+    card.addEventListener('dragend',function(){card.classList.remove('dragging');dragged=null;document.querySelectorAll('.kcol.over').forEach(function(c){c.classList.remove('over');});});
+  });
+  document.querySelectorAll('.kcol').forEach(function(col){
+    col.addEventListener('dragover',function(e){e.preventDefault();col.classList.add('over');e.dataTransfer.dropEffect='move';});
+    col.addEventListener('dragleave',function(){col.classList.remove('over');});
+    col.addEventListener('drop',function(e){
+      e.preventDefault();col.classList.remove('over');
+      if(!dragged)return;
+      var from=dragged.parentNode,stage=col.getAttribute('data-stage');
+      if(from===col)return;
+      var card=dragged;
+      col.appendChild(card);refresh(from);refresh(col);
+      var body=new URLSearchParams();body.set('stage',stage);body.set('_csrf',csrf);
+      fetch('/intake/'+card.getAttribute('data-id')+'/stage',{method:'POST',headers:{'X-Requested-With':'fetch','X-CSRF-Token':csrf,'Accept':'application/json'},body:body,credentials:'same-origin'})
+        .then(function(r){return r.json().then(function(j){return {ok:r.ok&&j.ok,j:j};});})
+        .then(function(res){if(!res.ok){from.appendChild(card);refresh(from);refresh(col);alert(res.j&&res.j.error?res.j.error:'Could not move the lead.');}})
+        .catch(function(){from.appendChild(card);refresh(from);refresh(col);alert('Could not move the lead. Check your connection and try again.');});
+    });
+  });
+})();
+</script>
+{% endblock %}

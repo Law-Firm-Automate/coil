@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Needs category{% endblock %}{% block content %}
+<div class="topbar"><h1>Imported items that need a category</h1><a class="btn small secondary" href="{{ url_for('accounting.index') }}">Ledger</a></div>
+<div class="card">
+{% if rows %}
+<form method="post">{{ csrf() }}
+<table><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Account</th><th>Matter</th></tr>
+{% for e in rows %}<tr>
+  <td class="nowrap">{{ e.date|d }}</td><td>{{ e.description }}</td><td class="num">{{ e.amount_cents|money }}</td>
+  <td><select name="account_{{ e.id }}"><option value="">Leave for now</option>{% for a in accounts %}{% if (e.amount_cents > 0 and a.type != 'expense') or (e.amount_cents < 0 and a.type != 'income') %}<option value="{{ a.id }}">{{ a.code }} {{ a.name }}</option>{% endif %}{% endfor %}</select></td>
+  <td><select name="matter_{{ e.id }}"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}">{{ m.number }}</option>{% endfor %}</select></td>
+</tr>{% endfor %}</table>
+<div class="actions"><button class="btn">Save categories</button></div>
+</form>
+<p class="small muted">Money in offers income, asset, liability and equity accounts; money out offers everything except income. Items you leave blank stay on this list and are excluded from the P&amp;L.</p>
+{% else %}<div class="empty">Everything is categorised.</div>{% endif %}
+</div>
+{% endblock %}

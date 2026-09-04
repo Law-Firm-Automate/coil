@@ -116,7 +116,8 @@ def home():
     invoices = Invoice.query.filter(Invoice.client_id == c.id, Invoice.status.in_(["sent", "viewed", "partial"])) \
         .order_by(Invoice.due_on.asc().nulls_last(), Invoice.issued_on.desc()).all()
     invoices = [i for i in invoices if i.balance_cents > 0]
-    docs = Document.query.filter(Document.matter_id.in_(matter_ids or [0]), Document.shared_to_portal == True) \
+    docs = Document.query.filter(Document.matter_id.in_(matter_ids or [0]), Document.shared_to_portal == True,
+                                 Document.is_current == True) \
         .order_by(Document.created_at.desc()).all()  # noqa: E712
     letters = Engagement.query.filter(Engagement.contact_id == c.id, Engagement.status.in_(["sent", "viewed"])) \
         .order_by(Engagement.sent_at.desc()).all()

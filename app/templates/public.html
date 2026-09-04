@@ -5,6 +5,8 @@
 <title>{% block title %}{{ firm().name }}{% endblock %}</title>
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#1f5f8b"><link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<script>if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); }); }</script>
 {% block head %}{% endblock %}
 </head>
 <body>

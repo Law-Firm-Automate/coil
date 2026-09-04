@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}{{ 'New account' if is_new else a.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New account' if is_new else 'Edit account' }}</h1><a class="btn small secondary" href="{{ url_for('accounting.accounts') }}">Back</a></div>
+<div class="card" style="max-width:560px">
+<form method="post">{{ csrf() }}
+  <div class="row">
+    <div><label>Code</label><input type="text" name="code" value="{{ a.code or '' }}" placeholder="6700"></div>
+    <div><label>Type</label><select name="type">{% for t in types %}<option value="{{ t }}" {% if a.type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+  </div>
+  <label>Name</label><input type="text" name="name" value="{{ a.name or '' }}" required>
+  <label><input type="checkbox" name="is_active" value="1" {% if a.is_active or is_new %}checked{% endif %} {% if a.is_system %}disabled{% endif %}> Active{% if a.is_system %} (system accounts stay active){% endif %}</label>
+  <div class="actions"><button class="btn">{{ 'Add account' if is_new else 'Save' }}</button></div>
+</form>
+</div>
+{% endblock %}

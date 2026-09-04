@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Follow-up sequences{% endblock %}{% block content %}
+<div class="topbar"><h1>Follow-up sequences</h1>
+<div class="actions" style="margin:0"><a class="btn small" href="/intake/sequences/new">New sequence</a><a class="btn small secondary" href="/intake/pipeline">Pipeline</a><a class="btn small secondary" href="/intake/drafts">Drafts</a></div></div>
+<div class="flash">
+  {% if firm_settings.sequences_auto_send %}<strong>Auto-send is on.</strong> Due steps are emailed to leads when <code>python -m app.cli sequences</code> runs.
+  {% else %}<strong>Auto-send is off.</strong> Due steps are written as drafts on the <a href="/intake/drafts">Drafts</a> page and nothing goes out until someone presses Send. The owner can change this under Settings.{% endif %}
+  {% if not booking_url %} <span class="muted">Set BOOKING_URL in the environment to use the booking_url merge field.</span>{% endif %}
+</div>
+<div class="card">
+{% if rows %}
+<table><tr><th>Name</th><th>Steps</th><th>Schedule</th><th>Leads running</th><th>Active</th><th></th></tr>
+{% for s in rows %}<tr>
+  <td><a href="/intake/sequences/{{ s.id }}/edit">{{ s.name }}</a></td>
+  <td class="num">{{ s.steps|length }}</td>
+  <td class="small muted">{% for st in s.steps %}day {{ st.day }}{{ ', ' if not loop.last }}{% endfor %}</td>
+  <td class="num">{{ running[s.id] }}</td>
+  <td>{% if s.is_active %}<span class="badge open">active</span>{% else %}<span class="badge closed">inactive</span>{% endif %}</td>
+  <td class="right nowrap"><a class="btn small secondary" href="/intake/sequences/{{ s.id }}/edit">Edit</a> <form method="post" action="/intake/sequences/{{ s.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Delete {{ s.name }}? Leads on it are stopped.">Delete</button></form></td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No sequences yet.</div>{% endif %}
+</div>
+<p class="small muted">Start a sequence from a lead's page. Day 0 is the day it is started. Merge fields: {% for f in ['name','first_name','firm_name','firm_phone','firm_email','matter_type','attorney_name','booking_url'] %}<code>{{ '{{ ' ~ f ~ ' }}' }}</code>{{ ' ' }}{% endfor %}</p>
+{% endblock %}

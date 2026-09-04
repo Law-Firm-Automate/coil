@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}Edit rule{% endblock %}{% block content %}
+<div class="topbar"><h1>Edit rule <span class="muted" style="font-weight:500">{{ rs.name }}</span></h1></div>
+<form method="post" class="card" style="max-width:860px">{{ csrf() }}
+  <div class="row">
+    <div><label>Trigger event</label><input type="text" name="trigger" value="{{ r.trigger }}" required></div>
+    <div><label>Deadline title</label><input type="text" name="title" value="{{ r.title }}" required></div>
+  </div>
+  <div class="row">
+    <div><label>Days</label><input type="number" name="offset_days" value="{{ r.offset_days }}" min="0"></div>
+    <div><label>Counted as</label><select name="day_type">{% for k, label in day_types %}<option value="{{ k }}" {{ 'selected' if k == r.day_type }}>{{ label }}</option>{% endfor %}</select></div>
+    <div><label>Direction</label><select name="direction">{% for d in directions %}<option value="{{ d }}" {{ 'selected' if d == r.direction }}>{{ d }} the trigger</option>{% endfor %}</select></div>
+    <div><label>Creates a</label><select name="kind">{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == r.kind }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select></div>
+  </div>
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="roll" value="1" {{ 'checked' if r.roll }}> Roll off weekends and holidays to the next court day</label>
+  <div><label>Notes</label><input type="text" name="notes" value="{{ r.notes or '' }}"></div>
+  <div><label>Sort order</label><input type="number" name="sort" value="{{ r.sort or 0 }}"></div>
+  <div class="actions"><button class="btn">Save</button><a class="btn secondary" href="/settings/rules/{{ rs.id }}">Cancel</a></div>
+</form>
+{% endblock %}

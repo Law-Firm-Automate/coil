@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Court rules{% endblock %}{% block content %}
+<div class="topbar"><h1>Court rules</h1><div class="actions" style="margin:0">{% if is_owner %}<a class="btn small" href="/settings/rules/new">New rule set</a><a class="btn small secondary" href="/settings/rules/import">Import JSON</a>{% endif %}<a class="btn small secondary" href="/settings/holidays">Holidays <span class="muted">{{ holiday_count }}</span></a>{% if is_owner %}<a class="btn small secondary" href="/settings">Settings</a>{% endif %}</div></div>
+<div class="card">
+{% if sets %}
+<table><tr><th>Rule set</th><th>Jurisdiction</th><th class="num">Rules</th><th class="num">Tasks created</th><th></th></tr>
+{% for rs in sets %}<tr>
+  <td><a href="/settings/rules/{{ rs.id }}">{{ rs.name }}</a>{% if not rs.is_active %} <span class="badge closed">inactive</span>{% endif %}{% if rs.description %}<br><span class="small muted">{{ rs.description }}</span>{% endif %}</td>
+  <td>{{ rs.jurisdiction }}</td>
+  <td class="num">{{ rs.rules|length }}</td>
+  <td class="num">{{ usage.get(rs.id, 0) }}</td>
+  <td class="right nowrap"><a class="btn small secondary" href="/settings/rules/{{ rs.id }}">Open</a> <a class="btn small secondary" href="/settings/rules/{{ rs.id }}/export.json">Export</a>
+    {% if is_owner %}<form method="post" action="/settings/rules/{{ rs.id }}/delete" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="{{ 'Deactivate' if usage.get(rs.id, 0) else 'Delete' }} {{ rs.name }}?">{{ 'Deactivate' if usage.get(rs.id, 0) else 'Delete' }}</button></form>{% endif %}</td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No rule sets yet.</div>{% endif %}
+<p class="small muted" style="margin-top:10px">A rule set turns one trigger event (service of a complaint, entry of judgment) into dated tasks on a matter. The starter sets are generic and incomplete: they are a place to begin, not a statement of the rules. Read the current rule text and the local rules before relying on any date. Apply a set from a matter's Tasks tab.</p>
+</div>
+{% endblock %}

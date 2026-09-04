@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Unfiled email{% endblock %}{% block content %}
+<div class="topbar"><h1>Unfiled email</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/messages">Messages</a> <a class="btn small secondary" href="/settings/integrations">Email filing setup</a></div></div>
+<p class="small muted">Mail pulled in by <code>python -m app.cli emailin</code> that did not name a matter and did not come from a client with exactly one open matter. Pick a matter to file each one; attachments become documents in that matter's Email folder.{% if not configured %} IMAP is not configured yet, so nothing new will arrive here until IMAP_HOST and IMAP_USER are set.{% endif %}</p>
+<div class="card">
+{% if rows %}
+<table><tr><th>Received</th><th>From</th><th>Subject and preview</th><th>Attachments</th><th>File to</th></tr>
+{% for r in rows %}<tr>
+  <td class="nowrap small muted">{{ r.created_at|dt }}</td>
+  <td class="small">{{ r.from_addr }}</td>
+  <td class="small"><strong>{{ r.subject or '(no subject)' }}</strong><br>{{ r.body[:240] }}{% if r.body|length > 240 %}...{% endif %}</td>
+  <td class="small">{% for n in held.get(r.id, []) %}{{ n }}<br>{% else %}<span class="muted">none</span>{% endfor %}</td>
+  <td class="nowrap"><form method="post" action="/messages/unfiled/{{ r.id }}/file" class="inline">{{ csrf() }}<select name="matter_id" required style="width:auto;max-width:260px"><option value="">Choose a matter</option>{% for m in matters %}<option value="{{ m.id }}">{{ m.label }}</option>{% endfor %}</select> <button class="btn small">File</button></form>
+  <form method="post" action="/messages/unfiled/{{ r.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Discard this email? It is removed from Coil, not from the mailbox.">Discard</button></form></td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">Nothing waiting. Every filed email lands on its matter and in the client's thread under Messages.</div>{% endif %}
+</div>
+{% endblock %}

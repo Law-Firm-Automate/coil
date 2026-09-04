@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block title %}Court deadlines: {{ m.number }}{% endblock %}{% block content %}
+<div class="topbar"><div><h1>Court deadlines</h1><div class="small muted"><a href="/matters/{{ m.id }}">{{ m.label }}</a>{% if m.court %} &middot; {{ m.court }}{% endif %}{% if m.case_number %} &middot; {{ m.case_number }}{% endif %}</div></div>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/matters/{{ m.id }}?tab=tasks">Back to tasks</a><a class="btn small secondary" href="/settings/rules">Rule sets</a></div></div>
+<div class="grid c2">
+  <div class="card">
+    <h2>Apply a rule set</h2>
+    <form method="get" class="row" style="align-items:end">
+      <div><label>Rule set</label><select name="ruleset_id" onchange="this.form.submit()"><option value="">Choose</option>{% for s in sets %}<option value="{{ s.id }}" {{ 'selected' if rs and s.id == rs.id }}>{{ s.name }}</option>{% endfor %}</select></div>
+      {% if rs %}<div><label>Trigger event</label><select name="trigger" onchange="this.form.submit()"><option value="">Choose</option>{% for t in triggers %}<option value="{{ t }}" {{ 'selected' if t == trigger }}>{{ t }}</option>{% endfor %}</select></div>
+      <div><label>Date it happened</label><input type="date" name="trigger_date" value="{{ trigger_date|iso }}"></div>
+      <div><button class="btn small secondary">Preview</button></div>{% endif %}
+    </form>
+    {% if rs and rs.description %}<p class="small muted" style="margin-top:8px">{{ rs.description }}</p>{% endif %}
+    {% if preview %}
+    <table style="margin-top:12px"><tr><th>Deadline</th><th>Counting</th><th>Due</th><th></th></tr>
+    {% for r, due, exists in preview %}<tr><td>{{ r.title }}{% if r.notes %}<br><span class="small muted">{{ r.notes }}</span>{% endif %}</td><td class="small muted">{{ describe(r) }}</td><td class="nowrap"><strong>{{ due|d }}</strong> <span class="small muted">{{ due.strftime('%a') }}</span></td><td>{% if exists %}<span class="badge paid">already on matter</span>{% else %}<span class="badge pending">{{ r.kind.replace('_', ' ') }}</span>{% endif %}</td></tr>{% endfor %}</table>
+    <form method="post" style="margin-top:12px">{{ csrf() }}<input type="hidden" name="ruleset_id" value="{{ rs.id }}"><input type="hidden" name="trigger" value="{{ trigger }}"><input type="hidden" name="trigger_date" value="{{ trigger_date|iso }}">
+      <div class="actions" style="margin-top:0"><button class="btn">Add these deadlines to the matter</button></div></form>
+    <p class="small muted">Dates are computed from the rule set as entered here. They are a starting point: confirm each one against the current rules and the court's local rules.{% if not holiday_count %} No holidays are loaded, so only weekends are skipped. <a href="/settings/holidays">Load holidays</a>.{% endif %}</p>
+    {% elif rs and trigger %}<div class="empty" style="margin-top:12px">Enter the date the trigger happened, then preview.</div>{% endif %}
+  </div>
+  <div class="card"><h2>Deadlines already from rules <span class="muted small">{{ existing|length }}</span></h2>
+    {% if existing %}<table><tr><th>Deadline</th><th>From</th><th>Due</th></tr>
+    {% for t in existing %}<tr><td><a href="/tasks/{{ t.id }}" {% if t.done %}class="muted"{% endif %}>{{ t.title }}</a>{% if t.done %} <span class="badge paid">done</span>{% elif t.is_overdue %} <span class="badge overdue">overdue</span>{% endif %}</td><td class="small muted">{{ t.rule_trigger }} on {{ t.trigger_date|d }}</td><td class="nowrap">{{ t.due_on|d }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">None yet.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

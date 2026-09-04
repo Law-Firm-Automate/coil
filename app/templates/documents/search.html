@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Search documents{% endblock %}{% block content %}
+<div class="topbar"><h1>Search documents{% if matter %} <span style="font-weight:500">in <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></span>{% endif %}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/documents{% if matter_id %}?matter_id={{ matter_id }}{% endif %}">All documents</a></div></div>
+<div class="card">
+  <form method="get" class="searchbar">{% if matter_id %}<input type="hidden" name="matter_id" value="{{ matter_id }}">{% endif %}<input type="text" name="q" value="{{ q }}" placeholder="Words in the name, tags, folder or file text" autofocus><button class="btn">Search</button>{% if matter_id %}<a class="small" href="/documents/search?q={{ q|urlencode }}">Search every matter</a>{% endif %}</form>
+  <p class="small muted" style="margin:8px 0 0">Matches current versions only. Text inside PDF, Word, text and CSV files is searched when it could be read at upload.</p>
+</div>
+{% if q %}
+<div class="card">
+{% if results %}
+<table><tr><th>Document</th><th>Matter</th><th>Where</th><th>Match</th><th></th></tr>
+{% for d, where, snip in results %}<tr>
+  <td><a href="/documents/{{ d.id }}/download">{{ d.name }}</a>{% if d.version and d.version > 1 %} <a class="badge new" href="/documents/{{ d.id }}/versions">v{{ d.version }}</a>{% endif %}<br><span class="small muted">{{ d.folder or 'No folder' }}{% if d.tags %} &middot; {{ d.tags }}{% endif %}</span></td>
+  <td><a href="/matters/{{ d.matter_id }}">{{ d.matter.label }}</a></td>
+  <td class="nowrap"><span class="badge">{{ where }}</span></td>
+  <td class="small">{{ snip }}</td>
+  <td class="right nowrap"><a class="btn small secondary" href="/documents/{{ d.id }}/versions">Versions</a> <a class="btn small secondary" href="/documents/{{ d.id }}/download">Download</a></td>
+</tr>{% endfor %}</table>
+<p class="small muted">{{ results|length }} result{{ 's' if results|length != 1 }}.</p>
+{% else %}<div class="empty">Nothing matches "{{ q }}".</div>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

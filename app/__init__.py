@@ -9,6 +9,9 @@ from .helpers import register_template_globals, check_csrf
 def create_app(config=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config.from_object(Config)
+    # DATABASE_URL is read again here so a test that sets it after app.config was imported still gets its own DB.
+    if os.environ.get("DATABASE_URL"):
+        app.config["SQLALCHEMY_DATABASE_URI"] = os.environ["DATABASE_URL"]
     if config:
         app.config.update(config)
     os.makedirs(DATA_DIR, exist_ok=True)

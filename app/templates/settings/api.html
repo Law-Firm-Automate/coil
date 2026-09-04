@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% block title %}API tokens{% endblock %}{% block content %}
+<div class="topbar"><h1>API tokens</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/webhooks">Webhooks</a><a class="btn small secondary" href="/settings">Settings</a></div></div>
+{% if new_token %}
+<div class="flash ok"><strong>Copy this token now. It is shown once and cannot be recovered.</strong>
+<div class="searchbar" style="margin-top:8px"><input type="text" readonly value="{{ new_token }}" onclick="this.select()"><button type="button" class="btn small secondary" data-copy="{{ new_token }}">Copy</button></div></div>
+{% endif %}
+<div class="grid c2">
+  <div class="card"><h2>Create a token</h2>
+    <form method="post">{{ csrf() }}
+      <label>Name (what will use it)</label><input type="text" name="name" placeholder="Chrome extension on my laptop" required>
+      <label>Scope</label>
+      <label><input type="radio" name="scopes" value="read" checked> Read only: matters, contacts, time, invoices, tasks</label>
+      <label><input type="radio" name="scopes" value="read,write"> Read and write: also log time and run the timer</label>
+      <div class="actions"><button class="btn">Create token</button></div>
+    </form>
+    <p class="small muted">Tokens act as the user who created them. Only the SHA-256 of the token is stored.</p>
+  </div>
+  <div class="card"><h2>Your tokens</h2>
+    {% if rows %}<table><tr><th>Name</th><th>Prefix</th><th>Scope</th><th>User</th><th>Last used</th><th></th></tr>
+    {% for t in rows %}<tr>
+      <td>{{ t.name }}</td><td><code>{{ t.prefix }}...</code></td><td>{{ t.scopes }}</td><td class="small">{{ t.user.name if t.user else '' }}</td>
+      <td class="small muted">{{ t.last_used_at|dt if t.last_used_at else 'never' }}</td>
+      <td>{% if t.revoked_at %}<span class="badge void">revoked {{ t.revoked_at|d }}</span>{% else %}<form method="post" action="/settings/api/{{ t.id }}/revoke" class="inline" onsubmit="return confirm('Revoke this token? Anything using it stops working.')">{{ csrf() }}<button class="btn small secondary">Revoke</button></form>{% endif %}</td>
+    </tr>{% endfor %}</table>{% else %}<div class="empty">No tokens yet.</div>{% endif %}
+  </div>
+</div>
+<div class="card"><h2>API reference</h2>
+<p class="small">Base URL <code>{{ base }}/api/v1</code>. Send <code>Authorization: Bearer &lt;token&gt;</code> on every request. Responses are JSON. Errors look like <code>{"error": "...", "status": 401}</code>: 401 bad token, 403 missing scope, 404 not found, 429 more than {{ rate_limit }} calls in a minute. Money is integer cents; dates are YYYY-MM-DD.</p>
+<table>
+<tr><th>Method</th><th>Path</th><th>Scope</th><th>Notes</th></tr>
+<tr><td>GET</td><td><code>/me</code></td><td>read</td><td>The token's user, scopes, firm name and any running timer.</td></tr>
+<tr><td>GET</td><td><code>/matters?q=&amp;status=</code></td><td>read</td><td>q matches number, name, case number or client. status defaults to open; use all, pending or closed.</td></tr>
+<tr><td>GET</td><td><code>/matters/&lt;id&gt;</code></td><td>read</td><td>One matter with unbilled totals.</td></tr>
+<tr><td>GET</td><td><code>/contacts?q=</code></td><td>read</td><td>Name or email search, 50 results.</td></tr>
+<tr><td>GET</td><td><code>/time?matter_id=&amp;from=&amp;to=&amp;user_id=</code></td><td>read</td><td>Newest 200 entries.</td></tr>
+<tr><td>POST</td><td><code>/time</code></td><td>write</td><td>JSON or form: matter_id, minutes or hours (1.5, 1:30, 90m), description, date, billable. Rate comes from the matter or user.</td></tr>
+<tr><td>GET</td><td><code>/timer</code></td><td>read</td><td>The user's running timer or null.</td></tr>
+<tr><td>POST</td><td><code>/timer/start</code></td><td>write</td><td>matter_id, description. 409 if one is already running.</td></tr>
+<tr><td>POST</td><td><code>/timer/stop</code></td><td>write</td><td>Optional matter_id, description. Creates a time entry rounded up to 6 minutes.</td></tr>
+<tr><td>GET</td><td><code>/invoices?status=</code></td><td>read</td><td>status: open (sent, viewed, partial), draft, paid, void, all.</td></tr>
+<tr><td>GET</td><td><code>/tasks?due=today|overdue|week&amp;mine=1</code></td><td>read</td><td>Open tasks.</td></tr>
+</table>
+<p class="small muted">Example: <code>curl -H "Authorization: Bearer coil_..." "{{ base }}/api/v1/matters?q=alvarez"</code>. The Chrome extension in the repository's <code>extension/</code> folder uses these endpoints; see its README for load-unpacked steps.</p>
+</div>
+{% endblock %}

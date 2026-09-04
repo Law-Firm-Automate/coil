@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<h1>Coil <span id="who" class="muted"></span></h1>
+<div id="msg" class="msg" hidden></div>
+
+<details id="setup">
+  <summary>Connection</summary>
+  <label>Coil URL <input id="base" type="url" placeholder="https://coil.example.com"></label>
+  <label>API token <input id="token" type="password" placeholder="coil_..."></label>
+  <button id="save">Save and test</button>
+  <p class="muted">Create a token with read and write scope at Settings &gt; API tokens.</p>
+</details>
+
+<label>Matter <input id="q" type="search" placeholder="Search number, name or client" autocomplete="off"></label>
+<ul id="results"></ul>
+<div id="picked" class="picked" hidden></div>
+
+<section id="timerbox" hidden>
+  <div class="row"><strong id="elapsed">0:00</strong> <span id="timer-matter" class="muted"></span></div>
+  <button id="stop" class="danger">Stop and log</button>
+</section>
+
+<section id="startbox">
+  <label>Description <input id="desc" type="text" placeholder="What are you doing?"></label>
+  <div class="row">
+    <button id="start">Start timer</button>
+    <input id="minutes" type="number" min="1" step="1" placeholder="min">
+    <button id="log" class="secondary">Log time</button>
+  </div>
+</section>
+<script src="popup.js"></script>
+</body>
+</html>

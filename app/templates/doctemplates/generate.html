@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}Generate {{ t.name }}{% endblock %}{% block content %}
+<div class="topbar"><div><h1>Generate: {{ t.name }}</h1><div class="small muted">{{ 'Word document' if t.kind == 'docx' else 'PDF from HTML' }}{% if m %} &middot; <a href="/matters/{{ m.id }}">{{ m.label }}</a>{% endif %}</div></div>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="{{ '/matters/' ~ m.id ~ '?tab=documents' if m else '/doctemplates' }}">Back</a></div></div>
+{% if not m %}
+<form method="get" class="card" style="max-width:640px">
+  <label>Which matter?</label><select name="matter_id" required><option value="">Choose a matter</option>{% for x in matters %}<option value="{{ x.id }}">{{ x.label }}</option>{% endfor %}</select>
+  <div class="actions"><button class="btn">Continue</button></div>
+</form>
+{% else %}
+<form method="post" class="card" style="max-width:860px">{{ csrf() }}<input type="hidden" name="matter_id" value="{{ m.id }}">
+  {% if fields %}
+  <p class="small muted">Values come from the firm, the matter and the client. Change anything before generating. Blank rows are fields the template uses that the app does not know.</p>
+  <table>{% for name, value, known in fields %}<tr><td class="nowrap" style="width:30%"><code>{{ name }}</code>{% if not known %}<br><span class="small muted">not prefilled</span>{% endif %}</td><td><input type="text" name="f_{{ name }}" value="{{ value }}"></td></tr>{% endfor %}</table>
+  {% else %}<div class="empty">This template has no merge fields. It will be generated as is.</div>{% endif %}
+  <div class="actions"><button class="btn">Generate and save to {{ m.number }}</button></div>
+  <p class="small muted">The file is saved to the matter's documents as "{{ t.name }} - {{ m.number }}.{{ 'docx' if t.kind == 'docx' else 'pdf' }}".</p>
+</form>
+{% endif %}
+{% endblock %}

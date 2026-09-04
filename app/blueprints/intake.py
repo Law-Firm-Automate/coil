@@ -1,12 +1,24 @@
-"""Intake: public lead form, staff lead list, and one-step conversion to Contact + Matter + ConflictCheck + Engagement."""
+"""Intake: public lead form, staff lead list, one-step conversion to Contact + Matter + ConflictCheck + Engagement,
+the CRM pipeline (stages, value, owner, follow-up date), and follow-up sequences.
+
+Sequences: FollowUpSequence.steps_json is [{"day": 0, "subject": "...", "body": "..."}] with Jinja merge fields
+(name, first_name, firm_name, firm_phone, firm_email, matter_type, attorney_name, booking_url). `python -m app.cli
+sequences` runs process_lead_sequence() for every active LeadSequence. A due step is emailed only when
+Firm.sequences_auto_send is on; otherwise it becomes a draft Message (channel=email, direction=out, status=draft)
+listed at /intake/drafts with a Send button. Each step is keyed by Message.provider_id = "lead-seq:<ls>:<step>",
+so a re-run never sends or drafts the same step twice.
+"""
 import json
 import time
-from datetime import date
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
+from datetime import date, timedelta
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, jsonify
+from markupsafe import escape
+from jinja2.sandbox import SandboxedEnvironment
+from jinja2 import TemplateError
 from rapidfuzz import fuzz
 from ..extensions import db
 from ..models import (Firm, User, Contact, Matter, MatterParty, FlatFeeMilestone, ConflictCheck, IntakeLead,
-                      LetterTemplate, audit, now)
+                      LetterTemplate, FollowUpSequence, LeadSequence, Message, audit, now)
 from ..helpers import login_required, current_user, client_ip, parse_money, parse_date
 from ..services.mail import send_email
 from .engagements import build_engagement, send_engagement
@@ -16,6 +28,12 @@ bp = Blueprint("intake", __name__, url_prefix="/intake")
 MATTER_TYPES = ["Estate Planning", "Business formation", "Litigation", "Family law", "Real estate",
                 "Criminal defense", "Personal injury", "Employment", "Immigration", "Other"]
 STATUSES = ("new", "contacted", "converted", "declined")
+STAGES = [("new", "New"), ("contacted", "Contacted"), ("consult_scheduled", "Consult scheduled"),
+          ("proposal", "Proposal"), ("won", "Won"), ("lost", "Lost")]
+STAGE_KEYS = [k for k, _ in STAGES]
+MERGE_FIELDS = ("name", "first_name", "firm_name", "firm_phone", "firm_email", "matter_type", "attorney_name",
+                "booking_url")
+MAX_STEPS = 20
 FUZZ_THRESHOLD = 80
 
 RATE_LIMIT_MAX = 5
@@ -129,7 +147,7 @@ def submit():
             f"<p>{_esc(lead.description).replace(chr(10), '<br>')}</p><p><a href='{link}'>Open the lead</a></p>")
     send_email(to, f"New intake lead: {lead.name} ({lead.matter_type or 'no type'})", html,
                text=f"New lead {lead.name}. Open: {link}", reply_to=lead.email or None)
-    return render_template("intake/thanks.html")
+    return render_template("intake/thanks.html", booking_url=current_app.config.get("BOOKING_URL", ""))
 
 
 def _esc(s):
@@ -158,7 +176,401 @@ def index():
         q = q.filter_by(status=status)
     rows = q.order_by(IntakeLead.created_at.desc()).all()
     counts = {s: IntakeLead.query.filter_by(status=s).count() for s in STATUSES}
-    return render_template("intake/index.html", rows=rows, status=status, counts=counts, age=age_str)
+    drafts = Message.query.filter_by(status="draft", direction="out", channel="email").count()
+    return render_template("intake/index.html", rows=rows, status=status, counts=counts, age=age_str,
+                           stages=dict(STAGES), drafts=drafts)
+
+
+# ---------------------------------------------------------------------------
+# CRM pipeline
+# ---------------------------------------------------------------------------
+@bp.route("/pipeline")
+@login_required
+def pipeline():
+    leads = IntakeLead.query.order_by(IntakeLead.next_follow_up_on.asc().nulls_last(),
+                                      IntakeLead.created_at.desc()).all()
+    cols = {k: [] for k in STAGE_KEYS}
+    for l in leads:
+        cols[l.stage if l.stage in cols else "new"].append(l)
+    values = {k: sum(l.value_cents or 0 for l in v) for k, v in cols.items()}
+    return render_template("intake/pipeline.html", stages=STAGES, cols=cols, values=values, age=age_str,
+                           today=date.today())
+
+
+def _set_stage(lead, stage):
+    """Move a lead between pipeline stages, keeping the older status field in step."""
+    lead.stage = stage
+    if lead.status != "converted":
+        if stage == "lost":
+            lead.status = "declined"
+        elif stage == "new":
+            lead.status = "new"
+        else:
+            lead.status = "contacted"
+    if stage != "lost":
+        lead.lost_reason = ""
+
+
+@bp.route("/<int:id>/stage", methods=["POST"])
+@login_required
+def stage(id):
+    lead = db.session.get(IntakeLead, id) or abort(404)
+    s = request.form.get("stage", "")
+    wants_json = request.headers.get("X-Requested-With") == "fetch" or "application/json" in request.headers.get(
+        "Accept", "")
+    if s not in STAGE_KEYS:
+        if wants_json:
+            return jsonify(ok=False, error="Unknown stage."), 400
+        flash("Unknown stage.", "error")
+        return redirect(url_for("intake.pipeline"))
+    if lead.status == "converted" and s != "won":
+        msg = "This lead was converted into a matter, so it stays in Won."
+        if wants_json:
+            return jsonify(ok=False, error=msg), 400
+        flash(msg, "error")
+        return redirect(url_for("intake.pipeline"))
+    old = lead.stage
+    _set_stage(lead, s)
+    if s == "lost" and request.form.get("lost_reason"):
+        lead.lost_reason = request.form.get("lost_reason", "").strip()[:200]
+    audit("stage", "intake_lead", lead.id, f"{old} -> {s}", current_user().id)
+    db.session.commit()
+    if wants_json:
+        return jsonify(ok=True, stage=s, status=lead.status)
+    flash(f"Moved {lead.name} to {dict(STAGES)[s]}." + (" Convert the lead to open the matter." if s == "won" and
+                                                          lead.status != "converted" else ""), "ok")
+    return redirect(request.form.get("next") or url_for("intake.pipeline"))
+
+
+@bp.route("/<int:id>/fields", methods=["POST"])
+@login_required
+def fields(id):
+    lead = db.session.get(IntakeLead, id) or abort(404)
+    f = request.form
+    lead.value_cents = parse_money(f.get("value"))
+    lead.assigned_user_id = f.get("assigned_user_id", type=int) or None
+    lead.next_follow_up_on = parse_date(f.get("next_follow_up_on"))
+    lead.lost_reason = f.get("lost_reason", "").strip()[:200]
+    db.session.commit()
+    flash("Lead updated.", "ok")
+    return redirect(url_for("intake.detail", id=lead.id))
+
+
+# ---------------------------------------------------------------------------
+# Follow-up sequences
+# ---------------------------------------------------------------------------
+_jinja = SandboxedEnvironment(autoescape=False)
+
+SAMPLE_SEQUENCE = dict(name="New lead follow-up (3 touches)", steps=[
+    dict(day=0, subject="Thanks for reaching out to {{ firm_name }}",
+         body="Hi {{ first_name }},\n\nThank you for contacting {{ firm_name }} about your {{ matter_type }} "
+              "question. I have your details and will review them today.\n\n"
+              "{% if booking_url %}If you would like to talk sooner, you can pick a time here: {{ booking_url }}\n\n{% endif %}"
+              "{{ attorney_name }}\n{{ firm_name }}{% if firm_phone %}\n{{ firm_phone }}{% endif %}"),
+    dict(day=3, subject="Following up on your {{ matter_type }} question",
+         body="Hi {{ first_name }},\n\nI wanted to check whether you still need help with your {{ matter_type }} "
+              "matter. If so, reply to this email or call {{ firm_phone or 'the office' }} and we will find a time.\n\n"
+              "{{ attorney_name }}\n{{ firm_name }}"),
+    dict(day=7, subject="Last note from {{ firm_name }}",
+         body="Hi {{ first_name }},\n\nThis is my last follow-up. If the timing is not right, no problem at all; "
+              "keep this email and reach out whenever you are ready.\n\n{{ attorney_name }}\n{{ firm_name }}"),
+])
+
+
+def merge_context(lead):
+    firm = Firm.get()
+    first = (lead.name or "").strip().split()[0] if (lead.name or "").strip() else ""
+    attorney = lead.assigned_user or (lead.matter.responsible if lead.matter else None)
+    return dict(name=lead.name or "", first_name=first, firm_name=firm.name or "", firm_phone=firm.phone or "",
+                firm_email=firm.email or "", matter_type=lead.matter_type or "your legal",
+                attorney_name=attorney.name if attorney else (firm.name or ""),
+                booking_url=current_app.config.get("BOOKING_URL", "") or "")
+
+
+def render_step(lead, step):
+    """Return (subject, body) with merge fields filled in. A broken template falls back to the raw text."""
+    ctx = merge_context(lead)
+    out = []
+    for key in ("subject", "body"):
+        raw = str(step.get(key) or "")
+        try:
+            out.append(_jinja.from_string(raw).render(**ctx).strip())
+        except TemplateError:
+            out.append(raw)
+    return out[0], out[1]
+
+
+def _validate_steps(steps):
+    for s in steps:
+        for key in ("subject", "body"):
+            try:
+                _jinja.from_string(str(s.get(key) or ""))
+            except TemplateError as e:
+                return f"Step on day {s.get('day')} has a template syntax error in its {key}: {e}"
+    return None
+
+
+def _steps_from_form(f):
+    steps = []
+    for i in range(MAX_STEPS):
+        subj = (f.get(f"step_subject_{i}") or "").strip()
+        body = (f.get(f"step_body_{i}") or "").strip()
+        if not subj and not body:
+            continue
+        try:
+            day = max(0, int(f.get(f"step_day_{i}") or 0))
+        except ValueError:
+            day = 0
+        steps.append(dict(day=day, subject=subj[:300], body=body[:20000]))
+    steps.sort(key=lambda s: s["day"])
+    return steps
+
+
+def _ensure_sample_sequence():
+    if FollowUpSequence.query.count() == 0:
+        db.session.add(FollowUpSequence(name=SAMPLE_SEQUENCE["name"], steps_json=json.dumps(SAMPLE_SEQUENCE["steps"])))
+        db.session.commit()
+
+
+@bp.route("/sequences")
+@login_required
+def sequences():
+    _ensure_sample_sequence()
+    rows = FollowUpSequence.query.order_by(FollowUpSequence.is_active.desc(), FollowUpSequence.name).all()
+    running = {r.id: LeadSequence.query.filter_by(sequence_id=r.id, status="active").count() for r in rows}
+    return render_template("intake/sequences.html", rows=rows, running=running, firm_settings=Firm.get(),
+                           booking_url=current_app.config.get("BOOKING_URL", ""))
+
+
+def _sequence_form(seq, is_new):
+    return render_template("intake/sequence_form.html", seq=seq, is_new=is_new, steps=seq.steps if seq else [],
+                           merge_fields=MERGE_FIELDS, max_steps=MAX_STEPS)
+
+
+@bp.route("/sequences/new", methods=["GET", "POST"])
+@login_required
+def sequence_new():
+    if request.method == "POST":
+        f = request.form
+        steps = _steps_from_form(f)
+        name = f.get("name", "").strip()[:200]
+        err = None if name else "Give the sequence a name."
+        err = err or (None if steps else "Add at least one step.") or _validate_steps(steps)
+        seq = FollowUpSequence(name=name, steps_json=json.dumps(steps), is_active=f.get("is_active", "1") == "1")
+        if err:
+            flash(err, "error")
+            return _sequence_form(seq, True), 400
+        db.session.add(seq)
+        db.session.flush()
+        audit("create", "follow_up_sequence", seq.id, f"{seq.name}, {len(steps)} steps", current_user().id)
+        db.session.commit()
+        flash(f"Sequence {seq.name} created.", "ok")
+        return redirect(url_for("intake.sequences"))
+    return _sequence_form(None, True)
+
+
+@bp.route("/sequences/<int:id>/edit", methods=["GET", "POST"])
+@login_required
+def sequence_edit(id):
+    seq = db.session.get(FollowUpSequence, id) or abort(404)
+    if request.method == "POST":
+        f = request.form
+        steps = _steps_from_form(f)
+        name = f.get("name", "").strip()[:200]
+        err = None if name else "Give the sequence a name."
+        err = err or (None if steps else "Add at least one step.") or _validate_steps(steps)
+        if err:
+            flash(err, "error")
+            seq.name, seq.steps_json = name, json.dumps(steps)
+            return _sequence_form(seq, False), 400
+        seq.name, seq.steps_json, seq.is_active = name, json.dumps(steps), f.get("is_active") == "1"
+        audit("update", "follow_up_sequence", seq.id, f"{seq.name}, {len(steps)} steps", current_user().id)
+        db.session.commit()
+        flash("Sequence saved. Leads already on it keep counting from their start date.", "ok")
+        return redirect(url_for("intake.sequences"))
+    return _sequence_form(seq, False)
+
+
+@bp.route("/sequences/<int:id>/delete", methods=["POST"])
+@login_required
+def sequence_delete(id):
+    seq = db.session.get(FollowUpSequence, id) or abort(404)
+    used = LeadSequence.query.filter_by(sequence_id=seq.id).count()
+    if used:
+        seq.is_active = False
+        for ls in LeadSequence.query.filter_by(sequence_id=seq.id, status="active").all():
+            ls.status = "stopped"
+        audit("update", "follow_up_sequence", seq.id, f"{seq.name} deactivated, {used} lead(s) stopped",
+              current_user().id)
+        db.session.commit()
+        flash(f"{seq.name} was used by {used} lead(s), so it was deactivated and those runs stopped.", "ok")
+        return redirect(url_for("intake.sequences"))
+    name = seq.name
+    db.session.delete(seq)
+    audit("delete", "follow_up_sequence", id, name, current_user().id)
+    db.session.commit()
+    flash(f"Deleted {name}.", "ok")
+    return redirect(url_for("intake.sequences"))
+
+
+@bp.route("/<int:id>/sequence/start", methods=["POST"])
+@login_required
+def sequence_start(id):
+    lead = db.session.get(IntakeLead, id) or abort(404)
+    seq = db.session.get(FollowUpSequence, request.form.get("sequence_id", type=int) or 0)
+    if not seq or not seq.is_active:
+        flash("Pick an active sequence.", "error")
+        return redirect(url_for("intake.detail", id=lead.id))
+    if not lead.email:
+        flash("This lead has no email address, so a sequence cannot be started.", "error")
+        return redirect(url_for("intake.detail", id=lead.id))
+    if LeadSequence.query.filter_by(lead_id=lead.id, sequence_id=seq.id, status="active").first():
+        flash(f"{lead.name} is already on {seq.name}.", "error")
+        return redirect(url_for("intake.detail", id=lead.id))
+    ls = LeadSequence(lead_id=lead.id, sequence_id=seq.id, started_on=parse_date(request.form.get("started_on"),
+                                                                               date.today()), next_step=0)
+    db.session.add(ls)
+    db.session.flush()
+    audit("start", "lead_sequence", ls.id, f"{seq.name} on lead #{lead.id}", current_user().id)
+    db.session.commit()
+    auto = Firm.get().sequences_auto_send
+    flash(f"Started {seq.name}. The day-0 step is {'sent' if auto else 'drafted for your review'} the next time "
+          f"python -m app.cli sequences runs.", "ok")
+    return redirect(url_for("intake.detail", id=lead.id))
+
+
+@bp.route("/<int:id>/sequence/<int:lsid>/stop", methods=["POST"])
+@login_required
+def sequence_stop(id, lsid):
+    ls = db.session.get(LeadSequence, lsid) or abort(404)
+    if ls.lead_id != id:
+        abort(404)
+    ls.status = "stopped"
+    audit("stop", "lead_sequence", ls.id, f"stopped at step {ls.next_step}", current_user().id)
+    db.session.commit()
+    flash("Sequence stopped.", "ok")
+    return redirect(url_for("intake.detail", id=id))
+
+
+def _step_key(ls, index):
+    return f"lead-seq:{ls.id}:{index}"
+
+
+def _body_html(body):
+    return "".join(f"<p>{escape(p).replace(chr(10), '<br>')}</p>" for p in body.split("\n\n") if p.strip())
+
+
+def process_lead_sequence(ls, today, auto_send):
+    """Send or draft every step of one lead's sequence whose date has arrived. Returns (sent, drafted).
+
+    Idempotent: next_step only moves forward and each step's Message carries a unique provider_id key.
+    """
+    lead = ls.lead
+    steps = sorted(ls.sequence.steps if ls.sequence else [], key=lambda s: int(s.get("day", 0) or 0))
+    if ls.status != "active":
+        return 0, 0
+    if lead is None or lead.stage in ("won", "lost") or lead.status in ("converted", "declined"):
+        ls.status = "stopped"
+        audit("stop", "lead_sequence", ls.id, f"lead is {lead.stage if lead else 'gone'}")
+        db.session.commit()
+        return 0, 0
+    firm = Firm.get()
+    sent = drafted = 0
+    while ls.next_step < len(steps):
+        step = steps[ls.next_step]
+        due = (ls.started_on or today) + timedelta(days=int(step.get("day", 0) or 0))
+        if due > today:
+            break
+        if not lead.email:
+            ls.status = "stopped"
+            audit("stop", "lead_sequence", ls.id, "lead has no email")
+            break
+        key = _step_key(ls, ls.next_step)
+        if not Message.query.filter_by(provider_id=key).first():
+            subject, body = render_step(lead, step)
+            msg = Message(contact_id=lead.contact_id, matter_id=lead.matter_id, direction="out", channel="email",
+                          to_addr=lead.email, from_addr=firm.email or current_app.config["MAIL_FROM"],
+                          subject=subject, body=body, provider_id=key, status="draft")
+            db.session.add(msg)
+            db.session.flush()
+            if auto_send:
+                send_email(lead.email, subject, _body_html(body), text=body, reply_to=firm.email or None)
+                msg.status = "sent"
+                audit("send", "message", msg.id, f"sequence step {ls.next_step} to {lead.email} (auto-send on)")
+                sent += 1
+            else:
+                audit("draft", "message", msg.id, f"sequence step {ls.next_step} drafted for {lead.email}")
+                drafted += 1
+        ls.next_step += 1
+        db.session.commit()
+    if ls.status == "active" and ls.next_step >= len(steps):
+        ls.status = "done"
+    db.session.commit()
+    return sent, drafted
+
+
+# ---------------------------------------------------------------------------
+# Drafts (sequence steps waiting for a human to send)
+# ---------------------------------------------------------------------------
+def _draft_lead(msg):
+    """Find the lead behind a sequence draft via its provider_id key."""
+    pid = msg.provider_id or ""
+    if pid.startswith("lead-seq:"):
+        try:
+            ls = db.session.get(LeadSequence, int(pid.split(":")[1]))
+            return ls.lead if ls else None
+        except (ValueError, IndexError):
+            return None
+    return None
+
+
+@bp.route("/drafts")
+@login_required
+def drafts():
+    rows = Message.query.filter_by(status="draft", direction="out", channel="email").order_by(
+        Message.created_at.desc()).all()
+    recent = Message.query.filter(Message.provider_id.like("lead-seq:%"), Message.status == "sent").order_by(
+        Message.created_at.desc()).limit(20).all()
+    firm = Firm.get()
+    return render_template("intake/drafts.html", rows=[(m, _draft_lead(m)) for m in rows],
+                           recent=[(m, _draft_lead(m)) for m in recent], auto=firm.sequences_auto_send)
+
+
+@bp.route("/drafts/<int:id>/send", methods=["POST"])
+@login_required
+def draft_send(id):
+    msg = db.session.get(Message, id) or abort(404)
+    if msg.status != "draft":
+        flash("This message is not a draft.", "error")
+        return redirect(url_for("intake.drafts"))
+    subject = request.form.get("subject", msg.subject or "").strip()[:300] or msg.subject
+    body = request.form.get("body", msg.body or "").strip() or msg.body
+    to = request.form.get("to", msg.to_addr or "").strip()[:200] or msg.to_addr
+    if not to:
+        flash("No recipient address.", "error")
+        return redirect(url_for("intake.drafts"))
+    firm = Firm.get()
+    send_email(to, subject, _body_html(body), text=body, reply_to=firm.email or None)
+    msg.subject, msg.body, msg.to_addr, msg.status = subject, body, to, "sent"
+    msg.created_at = now()
+    audit("send", "message", msg.id, f"draft sent to {to}", current_user().id)
+    db.session.commit()
+    flash(f"Sent to {to}.", "ok")
+    return redirect(url_for("intake.drafts"))
+
+
+@bp.route("/drafts/<int:id>/delete", methods=["POST"])
+@login_required
+def draft_delete(id):
+    msg = db.session.get(Message, id) or abort(404)
+    if msg.status != "draft":
+        flash("This message is not a draft.", "error")
+        return redirect(url_for("intake.drafts"))
+    audit("delete", "message", msg.id, f"draft to {msg.to_addr} discarded", current_user().id)
+    db.session.delete(msg)
+    db.session.commit()
+    flash("Draft discarded. The sequence moves on to its next step.", "ok")
+    return redirect(url_for("intake.drafts"))
 
 
 def _next_matter_number():
@@ -198,8 +610,16 @@ def detail(id):
         practice_area=lead.matter_type, responsible_user_id=current_user().id,
         hourly_rate=f"{firm.default_rate_cents / 100:.2f}", scope=lead.description,
     )
+    seqs = FollowUpSequence.query.filter_by(is_active=True).order_by(FollowUpSequence.name).all()
+    runs = LeadSequence.query.filter_by(lead_id=lead.id).order_by(LeadSequence.created_at.desc()).all()
+    step_msgs = {m.provider_id: m for m in Message.query.filter(Message.provider_id.like("lead-seq:%")).all()}
+    run_rows = []
+    for r in runs:
+        steps = r.sequence.steps if r.sequence else []
+        run_rows.append(dict(run=r, steps=[(i, s, step_msgs.get(_step_key(r, i))) for i, s in enumerate(steps)]))
     return render_template("intake/detail.html", lead=lead, hits=hits, email_match=email_match, users=users,
-                           templates=templates, defaults=defaults, age=age_str, types=MATTER_TYPES)
+                           templates=templates, defaults=defaults, age=age_str, types=MATTER_TYPES,
+                           stages=STAGES, sequences=seqs, run_rows=run_rows, today=date.today())
 
 
 @bp.route("/<int:id>/convert", methods=["POST"])
@@ -293,6 +713,8 @@ def convert(id):
 
     # 7. lead
     lead.status = "converted"
+    lead.stage = "won"
+    lead.lost_reason = ""
     lead.contact_id = contact.id
     lead.matter_id = matter.id
     lead.conflict_check_id = check.id
@@ -329,8 +751,14 @@ def convert(id):
 @login_required
 def decline(id):
     lead = db.session.get(IntakeLead, id) or abort(404)
+    reason = request.form.get("reason", "").strip()[:200]
     lead.status = "declined"
-    audit("decline", "intake_lead", lead.id, request.form.get("reason", "")[:200], current_user().id)
+    lead.stage = "lost"
+    if reason:
+        lead.lost_reason = reason
+    for ls in LeadSequence.query.filter_by(lead_id=lead.id, status="active").all():
+        ls.status = "stopped"
+    audit("decline", "intake_lead", lead.id, reason, current_user().id)
     db.session.commit()
     flash(f"Declined {lead.name}.", "ok")
     return redirect(url_for("intake.index"))
@@ -348,6 +776,12 @@ def status(id):
         flash("Converted leads keep their status.", "error")
         return redirect(url_for("intake.detail", id=lead.id))
     lead.status = s
+    if s == "declined":
+        lead.stage = "lost"
+    elif s == "new":
+        lead.stage = "new"
+    elif lead.stage in ("new", "lost"):
+        lead.stage = "contacted"
     db.session.commit()
     flash(f"Marked {lead.name} as {s}.", "ok")
     return redirect(url_for("intake.detail", id=lead.id))

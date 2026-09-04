@@ -1,0 +1,21 @@
+body { width: 340px; margin: 0; padding: 12px; font: 13px/1.4 -apple-system, Segoe UI, Helvetica, Arial, sans-serif; color: #1c2430; background: #fff; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+label { display: block; margin: 6px 0; font-weight: 600; }
+input { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; padding: 6px 8px; border: 1px solid #c8d0da; border-radius: 6px; font: inherit; }
+button { padding: 7px 12px; border: 0; border-radius: 6px; background: #1f5f8b; color: #fff; font: inherit; cursor: pointer; }
+button.secondary { background: #e6ebf1; color: #1c2430; }
+button.danger { background: #b23a3a; }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.row input { width: 70px; margin: 0; }
+.muted { color: #6b7684; font-weight: normal; }
+.msg { padding: 6px 8px; border-radius: 6px; background: #fff3cd; margin-bottom: 8px; }
+.msg.ok { background: #e2f3e6; }
+.msg.err { background: #f8d7da; }
+#results { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow: auto; }
+#results li { padding: 5px 6px; border-bottom: 1px solid #eef1f5; cursor: pointer; }
+#results li:hover { background: #f2f6fa; }
+.picked { padding: 6px 8px; border-radius: 6px; background: #eef4fa; margin: 6px 0; }
+details { margin-bottom: 8px; }
+summary { cursor: pointer; color: #1f5f8b; }
+section { margin-top: 8px; }

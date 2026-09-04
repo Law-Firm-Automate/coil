@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% block title %}{{ rs.name }}{% endblock %}{% block content %}
+<div class="topbar"><div><h1>{{ rs.name }}{% if not rs.is_active %} <span class="badge closed">inactive</span>{% endif %}</h1>{% if rs.jurisdiction %}<div class="small muted">{{ rs.jurisdiction }}</div>{% endif %}</div>
+<div class="actions" style="margin:0">{% if is_owner %}<a class="btn small secondary" href="/settings/rules/{{ rs.id }}/edit">Edit set</a>{% endif %}<a class="btn small secondary" href="/settings/rules/{{ rs.id }}/export.json">Export JSON</a><a class="btn small secondary" href="/settings/rules">All rule sets</a></div></div>
+{% if rs.description %}<p class="muted">{{ rs.description }}</p>{% endif %}
+<div class="card">
+<h2>Rules <span class="muted small">{{ rs.rules|length }}{% if usage %} &middot; {{ usage }} task(s) created from this set{% endif %}</span></h2>
+{% if rs.rules %}
+<table><tr><th>Trigger</th><th>Deadline</th><th>Counting</th><th>Kind</th><th>Notes</th><th></th></tr>
+{% for r in rs.rules %}<tr>
+  <td>{{ r.trigger }}</td>
+  <td>{{ r.title }}</td>
+  <td class="nowrap">{{ r.offset_days }} {{ dict(day_types).get(r.day_type, r.day_type) }} {{ r.direction }}{% if not r.roll %}<br><span class="small muted">no rolling</span>{% endif %}</td>
+  <td>{{ r.kind.replace('_', ' ') }}</td>
+  <td class="small muted">{{ r.notes }}</td>
+  <td class="right nowrap">{% if is_owner %}<a class="btn small secondary" href="/settings/rules/{{ rs.id }}/rules/{{ r.id }}/edit">Edit</a> <form method="post" action="/settings/rules/{{ rs.id }}/rules/{{ r.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Remove {{ r.title }}?">Remove</button></form>{% endif %}</td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No rules in this set yet.</div>{% endif %}
+</div>
+{% if is_owner %}
+<form method="post" action="/settings/rules/{{ rs.id }}/rules" class="card" style="max-width:860px">{{ csrf() }}
+  <h2>Add a rule</h2>
+  <div class="row">
+    <div><label>Trigger event</label><input type="text" name="trigger" value="{{ r.trigger or '' }}" required placeholder="Service of complaint" list="triggers"><datalist id="triggers">{% for t in rs.rules|map(attribute='trigger')|unique %}<option value="{{ t }}">{% endfor %}</datalist></div>
+    <div><label>Deadline title</label><input type="text" name="title" value="{{ r.title or '' }}" required placeholder="Answer due"></div>
+  </div>
+  <div class="row">
+    <div><label>Days</label><input type="number" name="offset_days" value="{{ r.offset_days or 0 }}" min="0"></div>
+    <div><label>Counted as</label><select name="day_type">{% for k, label in day_types %}<option value="{{ k }}" {{ 'selected' if k == r.day_type }}>{{ label }}</option>{% endfor %}</select></div>
+    <div><label>Direction</label><select name="direction">{% for d in directions %}<option value="{{ d }}" {{ 'selected' if d == r.direction }}>{{ d }} the trigger</option>{% endfor %}</select></div>
+    <div><label>Creates a</label><select name="kind">{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == r.kind }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select></div>
+  </div>
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="roll" value="1" checked> Roll off weekends and holidays to the next court day (backwards for "before")</label>
+  <div><label>Notes (shown on every task this rule creates)</label><input type="text" name="notes" value="{{ r.notes or '' }}" placeholder="Where this comes from and what to double check"></div>
+  <input type="hidden" name="sort" value="{{ r.sort }}">
+  <div class="actions"><button class="btn small">Add rule</button></div>
+</form>
+{% endif %}
+{% endblock %}

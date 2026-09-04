@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}{{ 'New sequence' if is_new else seq.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New follow-up sequence' if is_new else 'Edit: ' ~ seq.name }}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/intake/sequences">Back</a></div></div>
+<form method="post">{{ csrf() }}
+<div class="card">
+  <div class="row">
+    <div><label>Name</label><input type="text" name="name" value="{{ seq.name if seq else '' }}" required></div>
+    <div><label>&nbsp;</label><label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if is_new or (seq and seq.is_active) }}> Active (can be started on leads)</label></div>
+  </div>
+  <p class="small muted">Merge fields: {% for f in merge_fields %}<code>{{ '{{ ' ~ f ~ ' }}' }}</code> {% endfor %}. Plain text; blank lines separate paragraphs in the email. Day 0 = the day the sequence is started on a lead.</p>
+</div>
+<div id="steps">
+{% set rows = steps if steps else [{'day': 0, 'subject': '', 'body': ''}] %}
+{% for st in rows %}
+<div class="card step">
+  <div class="row">
+    <div style="flex:0 0 120px"><label>Send on day</label><input type="number" name="step_day_{{ loop.index0 }}" value="{{ st.day }}" min="0"></div>
+    <div><label>Subject</label><input type="text" name="step_subject_{{ loop.index0 }}" value="{{ st.subject }}"></div>
+  </div>
+  <label>Body</label><textarea name="step_body_{{ loop.index0 }}" style="min-height:120px">{{ st.body }}</textarea>
+  <div class="actions" style="margin-top:6px"><button type="button" class="btn small secondary" data-remove>Remove step</button></div>
+</div>
+{% endfor %}
+</div>
+<div class="actions"><button type="button" class="btn secondary" id="add">Add step</button><button class="btn">Save sequence</button></div>
+</form>
+<script>
+(function(){
+  var wrap=document.getElementById('steps'),max={{ max_steps }};
+  function renumber(){wrap.querySelectorAll('.step').forEach(function(card,i){card.querySelectorAll('input,textarea').forEach(function(el){el.name=el.name.replace(/_\d+$/,'_'+i);});});}
+  document.getElementById('add').addEventListener('click',function(){
+    var cards=wrap.querySelectorAll('.step');if(cards.length>=max){alert('At most '+max+' steps.');return;}
+    var last=cards[cards.length-1],c=last.cloneNode(true);
+    var day=parseInt(last.querySelector('input[type=number]').value||'0',10)+3;
+    c.querySelector('input[type=number]').value=day;c.querySelector('input[type=text]').value='';c.querySelector('textarea').value='';
+    wrap.appendChild(c);renumber();bind(c);
+  });
+  function bind(card){card.querySelector('[data-remove]').addEventListener('click',function(){if(wrap.querySelectorAll('.step').length<=1){card.querySelector('input[type=text]').value='';card.querySelector('textarea').value='';return;}card.remove();renumber();});}
+  wrap.querySelectorAll('.step').forEach(bind);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block title %}Import bank CSV{% endblock %}{% block content %}
+<div class="topbar"><h1>Import a bank statement</h1><a class="btn small secondary" href="{{ url_for('accounting.index') }}">Ledger</a></div>
+<div class="grid c2">
+  <div class="card"><h2>Upload CSV</h2>
+    <p class="small muted">Export the operating account activity from your bank as CSV. The importer looks for Date, Description and either an Amount column (negative for money out) or separate Debit and Credit columns. You get a preview before anything is written.</p>
+    <form method="post" enctype="multipart/form-data">{{ csrf() }}
+      <label>CSV file</label><input type="file" name="file" accept=".csv,text/csv" required>
+      <div class="actions"><button class="btn">Preview</button></div>
+    </form>
+    <p class="small muted">Rows that match an existing ledger entry by amount within 3 days are marked cleared. Everything else becomes a new entry that needs a category.</p>
+  </div>
+  <div class="card"><h2>Past imports</h2>
+    {% if past %}<table><tr><th>When</th><th>File</th><th class="num">Rows</th><th class="num">Matched</th><th class="num">New</th></tr>
+    {% for i in past %}<tr><td class="nowrap">{{ i.imported_at|dt }}</td><td>{{ i.filename }}</td><td class="num">{{ i.rows }}</td><td class="num">{{ i.matched }}</td><td class="num">{{ i.created }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">No imports yet.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

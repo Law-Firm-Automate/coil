@@ -1,18 +1,21 @@
 {% extends "base.html" %}{% block title %}Intake{% endblock %}{% block content %}
 <div class="topbar"><h1>Intake leads</h1>
-<div class="actions" style="margin:0"><a class="btn small secondary" href="/intake/embed">Embed form</a><a class="btn small secondary" href="/intake/form" target="_blank">Open public form</a></div></div>
+<div class="actions" style="margin:0"><a class="btn small" href="/intake/pipeline">Pipeline</a><a class="btn small secondary" href="/intake/sequences">Sequences</a><a class="btn small secondary" href="/intake/drafts">Drafts{% if drafts %} ({{ drafts }}){% endif %}</a><a class="btn small secondary" href="/intake/embed">Embed form</a><a class="btn small secondary" href="/intake/form" target="_blank">Open public form</a></div></div>
 <div class="tabs">
   {% for s in ['new','contacted','converted','declined'] %}<a class="{{ 'active' if status == s }}" href="/intake?status={{ s }}">{{ s|capitalize }} ({{ counts[s] }})</a>{% endfor %}
   <a class="{{ 'active' if status == 'all' }}" href="/intake?status=all">All</a>
 </div>
 <div class="card">
 {% if rows %}
-<table><tr><th>Name</th><th>Matter type</th><th>Contact</th><th>Other party</th><th>Source</th><th>Status</th><th>Age</th></tr>
+<table><tr><th>Name</th><th>Matter type</th><th>Contact</th><th>Other party</th><th>Source</th><th>Status</th><th>Stage</th><th class="num">Value</th><th>Follow-up</th><th>Age</th></tr>
 {% for l in rows %}<tr>
   <td><a href="/intake/{{ l.id }}">{{ l.name }}</a></td><td>{{ l.matter_type }}</td>
   <td class="small">{{ l.email }}{% if l.email and l.phone %}<br>{% endif %}{{ l.phone }}</td>
   <td class="small">{{ l.adverse_party }}</td><td class="small muted">{{ l.source }}</td>
   <td><span class="badge {{ l.status }}">{{ l.status }}</span>{% if l.matter_id %} <a class="small" href="/matters/{{ l.matter_id }}">matter</a>{% endif %}</td>
+  <td class="small">{{ stages.get(l.stage, l.stage) }}{% if l.assigned_user %}<br><span class="muted">{{ l.assigned_user.initials or l.assigned_user.name }}</span>{% endif %}</td>
+  <td class="num small">{{ l.value_cents|money if l.value_cents else '' }}</td>
+  <td class="nowrap small">{{ l.next_follow_up_on|d }}</td>
   <td class="nowrap small muted" title="{{ l.created_at|dt }}">{{ age(l.created_at) }}</td>
 </tr>{% endfor %}</table>
 {% else %}<div class="empty">No {{ status if status != 'all' else '' }} leads. Share the <a href="/intake/embed">intake form</a> to get some.</div>{% endif %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Dates in {{ doc.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Dates found in <span style="font-weight:500">{{ doc.name }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/matters/{{ doc.matter_id }}?tab=documents">Back to {{ doc.matter.number }}</a><a class="btn small secondary" href="/documents?matter_id={{ doc.matter_id }}">Documents</a></div></div>
+{% include "ai/_notice.html" %}
+{% if cut %}<div class="flash">Only the first 10,500 characters of the file text were scanned. Dates further in were not seen.</div>{% endif %}
+{% if found is not none %}
+<form method="post" action="/ai/document/{{ doc.id }}/dates/create">{{ csrf() }}<input type="hidden" name="n" value="{{ found|length }}">
+<div class="card">
+  {% if found %}
+  <p class="small muted">Tick the ones to add to {{ doc.matter.label }}. Deadlines, court dates and tasks become tasks on the matter (assigned to the responsible attorney); events go on the calendar. Check each date against the document before relying on it.</p>
+  <table><tr><th style="width:24px"><input type="checkbox" checked onclick="document.querySelectorAll('input[name^=sel_]').forEach(function(c){c.checked=this.checked}.bind(this))" aria-label="Select all"></th><th>Date</th><th>Description</th><th>Kind</th></tr>
+  {% for r in found %}<tr>
+    <td><input type="checkbox" name="sel_{{ loop.index0 }}" value="1" checked></td>
+    <td><input type="date" name="date_{{ loop.index0 }}" value="{{ r.date|iso }}" style="width:auto;margin:0"></td>
+    <td><input type="text" name="desc_{{ loop.index0 }}" value="{{ r.description }}" style="margin:0"></td>
+    <td><select name="kind_{{ loop.index0 }}" style="width:auto;margin:0">{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == r.kind }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select></td>
+  </tr>{% endfor %}</table>
+  <div class="actions"><button class="btn">Create selected</button><a class="btn secondary" href="/matters/{{ doc.matter_id }}?tab=documents">Cancel</a></div>
+  {% else %}<div class="empty">No actionable dates were found in this document.</div>{% endif %}
+</div>
+</form>
+{% endif %}
+{% endblock %}

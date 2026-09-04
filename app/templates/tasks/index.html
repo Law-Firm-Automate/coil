@@ -13,7 +13,7 @@
 {% macro rows(items) %}
 <table>{% for t in items %}<tr>
   <td style="width:1%"><form method="post" action="/tasks/{{ t.id }}/done" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small {{ 'ok' if t.done else 'secondary' }}" title="Toggle done">{{ 'Undo' if t.done else 'Done' }}</button></form></td>
-  <td><a href="/tasks/{{ t.id }}" {% if t.done %}class="muted"{% endif %}>{{ t.title }}</a>{% if t.kind != 'task' %} <span class="badge {{ 'overdue' if t.kind == 'court_date' else 'pending' }}">{{ t.kind.replace('_', ' ') }}</span>{% endif %}{% if t.priority == 'high' %} <span class="badge conflict">high</span>{% elif t.priority == 'low' %} <span class="badge">low</span>{% endif %}{% if t.matter %}<br><a class="small muted" href="/matters/{{ t.matter_id }}">{{ t.matter.label }}</a>{% endif %}</td>
+  <td><a href="/tasks/{{ t.id }}" {% if t.done %}class="muted"{% endif %}>{{ t.title }}</a>{% if t.kind != 'task' %} <span class="badge {{ 'overdue' if t.kind == 'court_date' else 'pending' }}">{{ t.kind.replace('_', ' ') }}</span>{% endif %}{% if t.priority == 'high' %} <span class="badge conflict">high</span>{% elif t.priority == 'low' %} <span class="badge">low</span>{% endif %}{% if t.rule_id %} <span class="badge open" title="{{ t.rule_trigger }} on {{ t.trigger_date|d }}">rule</span>{% endif %}{% if t.matter %}<br><a class="small muted" href="/matters/{{ t.matter_id }}">{{ t.matter.label }}</a>{% endif %}</td>
   <td class="nowrap">{{ t.due_on|d }}</td>
   <td class="nowrap small muted">{{ t.assignee.name if t.assignee else '' }}</td>
 </tr>{% endfor %}</table>
@@ -33,6 +33,19 @@
       {% for m in sol_matters %}{% set days = (m.sol_date - today).days %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a>{% if m.sol_basis %}<br><span class="small muted">{{ m.sol_basis }}</span>{% endif %}</td><td class="nowrap"><strong>{{ m.sol_date|d }}</strong></td><td class="num">{% if days < 0 %}<span class="badge overdue">passed</span>{% elif days <= 30 %}<span class="badge conflict">{{ days }}</span>{% else %}{{ days }}{% endif %}</td></tr>{% endfor %}</table>
       {% else %}<div class="empty">No open matters with a limitations date in the next {{ sol_window }} days.</div>{% endif %}
     </div>
+    {# ---- Agent E: deadlines produced by court rule sets ---- #}
+    <div class="card"><h2>From court rules <span class="muted small">{{ rule_tasks|length }} open</span></h2>
+      {% if rule_tasks %}<table><tr><th>Deadline</th><th>Trigger</th><th>Due</th></tr>
+      {% for t in rule_tasks %}<tr><td><a href="/tasks/{{ t.id }}">{{ t.title }}</a>{% if t.matter %}<br><a class="small muted" href="/matters/{{ t.matter_id }}">{{ t.matter.label }}</a>{% endif %}</td><td class="small muted">{{ t.rule_trigger }}{% if t.trigger_date %} on {{ t.trigger_date|d }}{% endif %}</td><td class="nowrap">{% if t.is_overdue %}<span class="badge overdue">overdue</span> {% endif %}{{ t.due_on|d }}</td></tr>{% endfor %}</table>
+      {% else %}<div class="empty">No deadlines from rule sets yet.</div>{% endif %}
+      <form method="get" class="searchbar" style="margin-top:10px" onsubmit="var v=this.matter_id.value; if(v){location.href='/rules/matters/'+v+'/apply';} return false;">
+        <select name="matter_id" style="width:auto"><option value="">Pick a matter</option>{% for m in open_matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}</option>{% endfor %}</select>
+        <button class="btn small secondary">Court deadlines</button>
+        <a class="small" href="/settings/rules">Rule sets</a>
+      </form>
+      <p class="small muted">Rule sets are generic starting points. Check every date against the current rules and the court's local rules.</p>
+    </div>
+    {# ---- end Agent E block ---- #}
   </div>
 </div>
 {% endblock %}

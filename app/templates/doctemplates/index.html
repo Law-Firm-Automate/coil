@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}Document templates{% endblock %}{% block content %}
+<div class="topbar"><div><h1>Document templates</h1>{% if matter %}<div class="small muted">Generating for <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></div>{% endif %}</div>
+<div class="actions" style="margin:0"><a class="btn small" href="/doctemplates/new?kind=html">New HTML template</a><a class="btn small secondary" href="/doctemplates/new?kind=docx">Upload a Word template</a>{% if matter %}<a class="btn small secondary" href="/matters/{{ matter.id }}?tab=documents">Back to matter</a>{% endif %}</div></div>
+<div class="card">
+{% if rows %}
+<table><tr><th>Template</th><th>Type</th><th>Practice area</th><th>Merge fields</th><th class="num">Generated</th><th></th></tr>
+{% for t in rows %}<tr>
+  <td><a href="/doctemplates/{{ t.id }}/edit">{{ t.name }}</a>{% if not t.is_active %} <span class="badge closed">inactive</span>{% endif %}{% if t.description %}<br><span class="small muted">{{ t.description }}</span>{% endif %}</td>
+  <td class="nowrap">{{ 'Word (.docx)' if t.kind == 'docx' else 'HTML to PDF' }}</td>
+  <td>{{ t.practice_area }}</td>
+  <td class="small muted">{{ t.fields|join(', ') or 'none detected' }}</td>
+  <td class="num">{{ usage.get(t.id, 0) }}</td>
+  <td class="right nowrap">
+    {% if t.is_active %}{% if matter %}<a class="btn small" href="/doctemplates/{{ t.id }}/generate?matter_id={{ matter.id }}">Generate for {{ matter.number }}</a>{% else %}<a class="btn small" href="/doctemplates/{{ t.id }}/generate">Generate</a>{% endif %}{% endif %}
+    {% if t.kind == 'docx' %}<a class="btn small secondary" href="/doctemplates/{{ t.id }}/download">Download</a>{% endif %}
+    <a class="btn small secondary" href="/doctemplates/{{ t.id }}/edit">Edit</a>
+    <form method="post" action="/doctemplates/{{ t.id }}/delete" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="{{ 'Deactivate' if usage.get(t.id, 0) else 'Delete' }} {{ t.name }}?">{{ 'Deactivate' if usage.get(t.id, 0) else 'Delete' }}</button></form>
+  </td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No templates yet.</div>{% endif %}
+</div>
+<div class="card"><h2>Merge fields</h2>
+  <p class="small muted">Write fields as <code>{{ '{{ client_name }}' }}</code> in an HTML template or in the body of a Word document (keep each field in one run: type it without changing formatting part way through). Plain <code>{CLIENT_NAME}</code> style is listed too but is not filled in; rewrite those as <code>{{ '{{ client_name }}' }}</code>. Fields the app does not know are left blank on the generate page for you to type. Matter custom fields are available as <code>cf_&lt;field_name&gt;</code> and client custom fields as <code>ccf_&lt;field_name&gt;</code> (lowercase, spaces to underscores).</p>
+  <table>{% for k, label in standard_fields %}<tr><td class="nowrap"><code>{{ '{{ ' ~ k ~ ' }}' }}</code></td><td class="small muted">{{ label }}</td></tr>{% endfor %}</table>
+</div>
+{% endblock %}

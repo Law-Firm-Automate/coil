@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Follow-up drafts{% endblock %}{% block content %}
+<div class="topbar"><h1>Follow-up drafts</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/intake/pipeline">Pipeline</a><a class="btn small secondary" href="/intake/sequences">Sequences</a></div></div>
+<p class="small muted">{% if auto %}Auto-send is on, so new sequence steps go out by themselves. Anything below was drafted before that was turned on.{% else %}Sequence steps land here when their day arrives. Nothing is emailed until you press Send. Edit the text first if you like.{% endif %} Run <code>python -m app.cli sequences</code> (daily cron) to produce the next steps.</p>
+{% if rows %}
+{% for m, lead in rows %}
+<form method="post" action="/intake/drafts/{{ m.id }}/send" class="card">{{ csrf() }}
+  <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">{% if lead %}<a href="/intake/{{ lead.id }}">{{ lead.name }}</a>{% else %}Draft{% endif %} <span class="badge draft">draft</span></h2><span class="small muted">created {{ m.created_at|dt }}</span></div>
+  <div class="row">
+    <div><label>To</label><input type="email" name="to" value="{{ m.to_addr }}" required></div>
+    <div><label>Subject</label><input type="text" name="subject" value="{{ m.subject }}" required></div>
+  </div>
+  <label>Body</label><textarea name="body" style="min-height:140px">{{ m.body }}</textarea>
+  <div class="actions"><button class="btn">Send</button><button class="btn secondary" formaction="/intake/drafts/{{ m.id }}/delete" data-confirm="Discard this draft? The sequence continues with its next step.">Discard</button></div>
+</form>
+{% endfor %}
+{% else %}<div class="card"><div class="empty">No drafts waiting.</div></div>{% endif %}
+{% if recent %}
+<div class="card"><h2>Recently sent sequence emails</h2>
+<table><tr><th>Sent</th><th>Lead</th><th>To</th><th>Subject</th></tr>
+{% for m, lead in recent %}<tr><td class="nowrap">{{ m.created_at|dt }}</td><td>{% if lead %}<a href="/intake/{{ lead.id }}">{{ lead.name }}</a>{% endif %}</td><td>{{ m.to_addr }}</td><td>{{ m.subject }}</td></tr>{% endfor %}</table></div>
+{% endif %}
+{% endblock %}

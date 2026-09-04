@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}{{ 'New template' if is_new else t.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New document template' if is_new else 'Edit template' }}</h1><div class="actions" style="margin:0">{% if not is_new and t.is_active %}<a class="btn small" href="/doctemplates/{{ t.id }}/generate">Generate</a>{% endif %}<a class="btn small secondary" href="/doctemplates">All templates</a></div></div>
+<form method="post" enctype="multipart/form-data" class="card">{{ csrf() }}
+  <div class="row">
+    <div><label>Name</label><input type="text" name="name" value="{{ t.name or '' }}" required></div>
+    <div><label>Practice area</label><select name="practice_area"><option value="">Any</option>{% for p in practice_areas %}<option value="{{ p }}" {{ 'selected' if p == t.practice_area }}>{{ p }}</option>{% endfor %}</select></div>
+    <div><label>Type</label><select name="kind" {% if not is_new %}disabled{% endif %}>{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == t.kind }}>{{ 'Word (.docx) upload' if k == 'docx' else 'HTML, rendered to PDF' }}</option>{% endfor %}</select>{% if not is_new %}<input type="hidden" name="kind" value="{{ t.kind }}">{% endif %}</div>
+  </div>
+  <div><label>Description</label><input type="text" name="description" value="{{ t.description or '' }}" placeholder="When to use this"></div>
+  {% if t.kind == 'docx' %}
+  <div><label>Word file{% if t.path %} <span class="muted">(leave empty to keep the current file)</span>{% endif %}</label><input type="file" name="file" accept=".docx" {{ 'required' if not t.path }}>
+    {% if t.path %}<div class="small muted" style="margin-top:4px">Current file: <a href="/doctemplates/{{ t.id }}/download">download</a></div>{% endif %}</div>
+  {% else %}
+  <div><label>Body (HTML with {{ '{{ merge_fields }}' }})</label><textarea name="body_html" style="min-height:360px;font-family:ui-monospace,monospace">{{ t.body_html or '' }}</textarea>
+    <div class="small muted">Supported when printing to PDF: p, br, h1 to h3, strong, em, ul and ol lists. Other tags are stripped.</div></div>
+  {% endif %}
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if t.is_active or is_new }}> Active</label>
+  {% if not is_new %}<p class="small muted">Merge fields detected: {{ t.fields|join(', ') or 'none' }}. Saving re-scans the template.</p>{% endif %}
+  <div class="actions"><button class="btn">{{ 'Save template' if is_new else 'Save' }}</button><a class="btn secondary" href="/doctemplates">Cancel</a></div>
+</form>
+<details class="card" style="max-width:860px"><summary>Available merge fields</summary>
+  <table style="margin-top:8px">{% for k, label in standard_fields %}<tr><td class="nowrap"><code>{{ '{{ ' ~ k ~ ' }}' }}</code></td><td class="small muted">{{ label }}</td></tr>{% endfor %}
+  <tr><td class="nowrap"><code>{{ '{{ cf_<name> }}' }}</code></td><td class="small muted">A matter custom field, lowercase with underscores</td></tr>
+  <tr><td class="nowrap"><code>{{ '{{ ccf_<name> }}' }}</code></td><td class="small muted">A client custom field</td></tr></table>
+</details>
+{% endblock %}

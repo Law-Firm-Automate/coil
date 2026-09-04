@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Court holidays{% endblock %}{% block content %}
+<div class="topbar"><h1>Court holidays</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/rules">Court rules</a></div></div>
+<div class="grid c2">
+  <div class="card">
+    <div class="topbar" style="margin-bottom:10px"><h2>{{ year }}</h2>
+      <form method="get" class="searchbar" style="margin:0"><select name="year" style="width:auto" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select><noscript><button class="btn small secondary">Go</button></noscript></form></div>
+    {% if rows %}<table><tr><th>Date</th><th>Holiday</th><th></th></tr>
+    {% for h in rows %}<tr><td class="nowrap">{{ h.date|d }} <span class="small muted">{{ h.date.strftime('%a') }}</span></td><td>{{ h.name }}</td><td class="right">{% if is_owner %}<form method="post" action="/settings/holidays/{{ h.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary">Remove</button></form>{% endif %}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">No holidays for {{ year }}. Court-day counting will only skip weekends until you add some.</div>{% endif %}
+    {% if is_owner %}<form method="post" action="/settings/holidays/load" style="margin-top:12px">{{ csrf() }}<input type="hidden" name="year" value="{{ year }}"><button class="btn small secondary">Load US federal holidays for {{ year }}</button> <span class="small muted">Eleven dates, moved to the observed weekday when they fall on a weekend. Add your court's own closures by hand.</span></form>{% endif %}
+  </div>
+  {% if is_owner %}<div class="card"><h2>Add a holiday</h2>
+    <form method="post" action="/settings/holidays">{{ csrf() }}
+      <div><label>Date</label><input type="date" name="date" required></div>
+      <div><label>Name</label><input type="text" name="name" placeholder="Courthouse closed"></div>
+      <div class="actions"><button class="btn small">Add</button></div>
+    </form>
+    <p class="small muted">Holidays are skipped when counting court days, and calendar-day deadlines that land on one roll to the next court day when the rule allows rolling.</p>
+  </div>{% endif %}
+</div>
+{% endblock %}
