@@ -68,4 +68,4 @@ echo "  Files:   $DIR   (back up the data folder; it is your whole practice)"
 echo "  Update:  cd $DIR && docker compose pull && docker compose up -d"
 echo "  Stop:    cd $DIR && docker compose down"
 echo
-echo "First visit creates the owner account and asks for your free install key from https://coil.legal/download."
+echo "First visit creates the owner account and asks for your free install key from https://lawfirmautomate.com/coil/download."

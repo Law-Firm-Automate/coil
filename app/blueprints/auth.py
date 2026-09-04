@@ -25,12 +25,12 @@ def login():
 
 
 def verify_install_key(key, email, firm_name):
-    """Check a free install key against coil.legal. Returns (ok, message)."""
+    """Check a free install key against lawfirmautomate.com. Returns (ok, message)."""
     import requests
     from flask import current_app
     key = (key or "").strip().upper()
     if not key:
-        return False, "Enter your install key. It is free: get one at https://coil.legal/download."
+        return False, "Enter your install key. It is free: get one at https://lawfirmautomate.com/coil/download."
     try:
         r = requests.post(current_app.config["COIL_KEY_VERIFY_URL"], json={
             "key": key, "email": email, "firm": firm_name, "base_url": current_app.config["BASE_URL"],
@@ -41,7 +41,7 @@ def verify_install_key(key, email, firm_name):
         return False, data.get("error") or "That key could not be verified. Check the key and the email it was issued to."
     except Exception as e:  # noqa: BLE001
         current_app.logger.warning("install key check failed: %s", e)
-        return False, "Could not reach coil.legal to check the key. Check your internet connection and try again."
+        return False, "Could not reach lawfirmautomate.com to check the key. Check your internet connection and try again."
 
 
 @bp.route("/setup", methods=["GET", "POST"])
