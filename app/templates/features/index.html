@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Feature map{% endblock %}{% block content %}
+<div class="topbar"><h1>Feature map</h1><span class="muted">{{ built }} of {{ total }} built</span></div>
+<p class="muted">Every feature, filed under the company whose feature it mirrors. The last group is what no competitor does.</p>
+<div class="grid c2">
+{% for g in groups %}
+<div class="card"><h2>{{ g.company }}</h2><p class="small muted">{{ g.blurb }}</p>
+{% if g.features %}<table>{% for name, url, status in g.features %}<tr><td>{% if url %}<a href="{{ url }}">{{ name }}</a>{% else %}{{ name }}{% endif %}</td><td class="nowrap"><span class="badge {{ 'open' if status == 'built' else ('draft' if status == 'partial' else 'closed') }}">{{ status }}</span></td></tr>{% endfor %}</table>{% else %}<div class="empty">Nothing yet.</div>{% endif %}
+</div>
+{% endfor %}
+</div>
+{% endblock %}

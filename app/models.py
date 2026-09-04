@@ -75,6 +75,20 @@ class Firm(db.Model):
     # Client-facing language default: en | es
     default_language = db.Column(db.String(5), default="en")
     install_key = db.Column(db.String(40), default="")  # free key from lawfirmautomate.com, recorded at first-run setup
+    # Invoice template (Clio complaint: "tried to modify your invoice template? LOL")
+    invoice_logo_path = db.Column(db.String(400), default="")  # relative to UPLOAD_DIR
+    invoice_accent = db.Column(db.String(7), default="#1f5f8b")
+    invoice_title = db.Column(db.String(60), default="INVOICE")
+    invoice_columns_json = db.Column(db.Text, default='["date","description","qty","rate","amount"]')
+    invoice_labels_json = db.Column(db.Text, default="{}")  # {"bill_to": "Bill to", "matter": "Matter", ...}
+    invoice_show_timekeeper = db.Column(db.Boolean, default=False)
+    invoice_show_activity_codes = db.Column(db.Boolean, default=False)
+    invoice_payment_instructions = db.Column(db.Text, default="")  # blank = the built-in text
+    statement_footer = db.Column(db.Text, default="")
+    # Monthly invoicing run (Clio Manage AI parity): day of month, 0 = off. Matters opt in individually.
+    monthly_billing_day = db.Column(db.Integer, default=0)
+    monthly_billing_send = db.Column(db.Boolean, default=False)  # send automatically, otherwise leave as drafts
+    courtlistener_token = db.Column(db.String(120), default="")  # optional, raises the research rate limit
     ai_enabled = db.Column(db.Boolean, default=False)  # AI features also need an API key in the environment
     sequences_auto_send = db.Column(db.Boolean, default=False)  # follow-up sequences send only when this is on; otherwise drafts
 
@@ -181,6 +195,7 @@ class Matter(db.Model):
     trust_replenish_to_cents = db.Column(db.Integer, default=0)
     ledes_matter_id = db.Column(db.String(40), default="")  # CLIENT_MATTER_ID the carrier assigns
     template_id = db.Column(db.Integer, db.ForeignKey("matter_templates.id"))
+    auto_invoice_monthly = db.Column(db.Boolean, default=False)  # include in the monthly invoicing run
 
     client = db.relationship("Contact", back_populates="matters", foreign_keys=[client_id])
     responsible = db.relationship("User", foreign_keys=[responsible_user_id])
@@ -1046,6 +1061,117 @@ class WebhookDelivery(db.Model):
     last_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=now)
     webhook = db.relationship("Webhook")
+
+
+class PiCase(db.Model):
+    """Personal-injury facts for a matter (Filevine lane)."""
+    __tablename__ = "pi_cases"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), unique=True, nullable=False)
+    date_of_loss = db.Column(db.Date)
+    incident_type = db.Column(db.String(60), default="")  # auto | premises | dog_bite | medmal | product | other
+    incident_description = db.Column(db.Text, default="")
+    injuries = db.Column(db.Text, default="")
+    treatment_status = db.Column(db.String(30), default="treating")  # treating | mmi | released
+    insurer = db.Column(db.String(200), default="")
+    claim_number = db.Column(db.String(100), default="")
+    adjuster_name = db.Column(db.String(200), default="")
+    adjuster_phone = db.Column(db.String(50), default="")
+    adjuster_email = db.Column(db.String(200), default="")
+    policy_limits_cents = db.Column(db.Integer, default=0)
+    um_uim_limits_cents = db.Column(db.Integer, default=0)
+    liability_notes = db.Column(db.Text, default="")
+    demand_sent_on = db.Column(db.Date)
+    demand_amount_cents = db.Column(db.Integer, default=0)
+    offer_cents = db.Column(db.Integer, default=0)
+    stage = db.Column(db.String(30), default="intake")  # intake | treating | records | demand | negotiation | litigation | settled | closed
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+
+class MedicalProvider(db.Model):
+    """A treating provider on a PI matter, with records and bills tracking."""
+    __tablename__ = "medical_providers"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    specialty = db.Column(db.String(120), default="")
+    phone = db.Column(db.String(50), default="")
+    fax = db.Column(db.String(50), default="")
+    email = db.Column(db.String(200), default="")
+    address = db.Column(db.Text, default="")
+    first_visit_on = db.Column(db.Date)
+    last_visit_on = db.Column(db.Date)
+    records_requested_on = db.Column(db.Date)
+    records_received_on = db.Column(db.Date)
+    bills_requested_on = db.Column(db.Date)
+    bills_received_on = db.Column(db.Date)
+    total_billed_cents = db.Column(db.Integer, default=0)
+    notes = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+
+class Lien(db.Model):
+    __tablename__ = "liens"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    holder = db.Column(db.String(200), nullable=False)
+    type = db.Column(db.String(30), default="medical")  # medical | health_plan | medicare | medicaid | erisa | workers_comp | attorney | other
+    original_cents = db.Column(db.Integer, default=0)
+    reduced_cents = db.Column(db.Integer)  # NULL = no reduction negotiated yet
+    status = db.Column(db.String(20), default="open")  # open | negotiating | resolved | paid
+    contact = db.Column(db.String(200), default="")
+    notes = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+    @property
+    def payable_cents(self):
+        return self.reduced_cents if self.reduced_cents is not None else self.original_cents
+
+
+class SettlementWorksheet(db.Model):
+    """Gross-to-net for a settled matter. One current worksheet per matter; older ones kept for the file."""
+    __tablename__ = "settlement_worksheets"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    gross_cents = db.Column(db.Integer, default=0)
+    fee_pct = db.Column(db.Float, default=33.33)
+    fee_cents = db.Column(db.Integer, default=0)
+    costs_cents = db.Column(db.Integer, default=0)
+    liens_cents = db.Column(db.Integer, default=0)
+    other_deductions_cents = db.Column(db.Integer, default=0)
+    net_to_client_cents = db.Column(db.Integer, default=0)
+    detail_json = db.Column(db.Text, default="{}")  # line items snapshot
+    status = db.Column(db.String(20), default="draft")  # draft | approved | disbursed
+    approved_on = db.Column(db.Date)
+    disbursed_on = db.Column(db.Date)
+    pdf_path = db.Column(db.String(400), default="")
+    is_current = db.Column(db.Boolean, default=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+
+class SavedAuthority(db.Model):
+    """A case or statute saved from research to a matter (Clio Work lane, on CourtListener)."""
+    __tablename__ = "saved_authorities"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"))
+    source = db.Column(db.String(30), default="courtlistener")
+    source_id = db.Column(db.String(60), default="")  # cluster/opinion id
+    citation = db.Column(db.String(200), default="")
+    case_name = db.Column(db.String(400), default="")
+    court = db.Column(db.String(200), default="")
+    decided_on = db.Column(db.Date)
+    url = db.Column(db.String(500), default="")
+    snippet = db.Column(db.Text, default="")
+    notes = db.Column(db.Text, default="")
+    saved_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+    saved_by = db.relationship("User")
 
 
 class AuditLog(db.Model):

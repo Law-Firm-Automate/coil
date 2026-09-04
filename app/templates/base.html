@@ -32,8 +32,11 @@
     <a class="nav {{ 'active' if _path.startswith('/documents') }}" href="/documents">Documents</a>
     <a class="nav {{ 'active' if _path.startswith('/doctemplates') }}" href="/doctemplates">Document templates</a>
     <a class="nav {{ 'active' if _path.startswith('/ai') }}" href="/ai/search">Ask Coil</a>
+    <a class="nav {{ 'active' if _path.startswith('/research') }}" href="/research">Research</a>
+    <a class="nav {{ 'active' if _path.startswith('/pi') }}" href="/pi">Personal injury</a>
     <div class="sec">Money</div>
     <a class="nav {{ 'active' if _path.startswith('/invoices') }}" href="/invoices">Invoices</a>
+    <a class="nav {{ 'active' if _path.startswith('/statements') }}" href="/statements">Client statements</a>
     <a class="nav {{ 'active' if _path.startswith('/payments') }}" href="/payments">Payments</a>
     <a class="nav {{ 'active' if _path.startswith('/trust') }}" href="/trust">Trust accounting</a>
     <a class="nav {{ 'active' if _path.startswith('/accounting') }}" href="/accounting">Accounting</a>
@@ -44,6 +47,7 @@
     <a class="nav {{ 'active' if _path.startswith('/settings/audit') }}" href="/settings/audit">Audit log</a>
     <a class="nav {{ 'active' if _path.startswith('/settings/rules') or _path.startswith('/settings/holidays') }}" href="/settings/rules">Court rules</a>
     <a class="nav {{ 'active' if _path.startswith('/exports') }}" href="/exports">Exports</a>
+    <a class="nav {{ 'active' if _path.startswith('/features') }}" href="/features">Feature map</a>
     {% if u %}
     <div class="user">{{ u.name }}<br>
       <form method="post" action="{{ url_for('auth.logout') }}" class="inline">{{ csrf() }}<button class="btn small secondary" style="margin-top:6px">Log out</button></form>
