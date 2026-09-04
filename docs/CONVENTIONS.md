@@ -1,4 +1,4 @@
-# Build conventions (read fully before writing code)
+# Coil build conventions (read fully before writing code)
 
 Repo: `~/General/solo-practice`. Flask 3 + Flask-SQLAlchemy + SQLite + Jinja. Python venv at `.venv` (use `.venv/bin/python`).
 Run seed + smoke test: `.venv/bin/python seed.py` (creates owner@example.com / password123 and demo data; safe to re-run).

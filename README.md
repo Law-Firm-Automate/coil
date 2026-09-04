@@ -1,6 +1,6 @@
-# Solo Practice
+# Coil
 
-Practice management for solo and small law firms. Built after reading what solos actually use in
+Coil is practice management for solo and small law firms. Built after reading what solos actually use in
 practice-management software: intake, an engagement letter that gets signed, billing (flat fee first),
 collecting payment, and a trust ledger that reconciles. Everything else is deliberately left out.
 
