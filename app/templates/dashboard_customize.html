@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Customize dashboard{% endblock %}{% block content %}
+<div class="topbar"><h1>Customize dashboard</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('dashboard.index') }}">Back to dashboard</a></div></div>
+<div class="card">
+<p class="muted small">Tick the cards you want and give each a position number. Lower numbers come first. Small stat cards sit four to a row, list cards two to a row.</p>
+<form method="post">
+{{ csrf() }}
+<table>
+<tr><th>Show</th><th>Order</th><th>Card</th><th>What it shows</th></tr>
+{% for r in rows %}
+<tr><td><input type="checkbox" name="card_{{ r.key }}" value="1" id="card_{{ r.key }}" {% if r.on %}checked{% endif %}></td>
+  <td><input type="number" name="order_{{ r.key }}" value="{{ r.order }}" min="1" max="99" style="width:70px"></td>
+  <td><label for="card_{{ r.key }}"><strong>{{ r.label }}</strong></label> <span class="small muted">{{ r.kind }}</span></td>
+  <td class="small muted">{{ r.desc }}</td></tr>
+{% endfor %}
+</table>
+<div class="actions"><button class="btn">Save dashboard</button>
+  <button class="btn secondary" name="reset" value="1" formnovalidate>Reset to default</button>
+  {% if customized %}<span class="small muted">You are using a custom set.</span>{% else %}<span class="small muted">You are on the default set: {{ default_keys|join(', ') }}.</span>{% endif %}</div>
+</form>
+</div>
+{% endblock %}

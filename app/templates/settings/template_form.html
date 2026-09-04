@@ -1,0 +1,89 @@
+{% extends "base.html" %}{% block title %}{{ 'New template' if is_new else 'Edit ' ~ t.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'New matter template' if is_new else 'Edit template' }}</h1><div class="actions" style="margin:0">{% if not is_new %}<form method="post" action="/settings/templates/{{ t.id }}/duplicate" class="inline">{{ csrf() }}<button class="btn small secondary">Duplicate</button></form>{% endif %}<a class="btn small secondary" href="/settings/templates">All templates</a></div></div>
+<form method="post" class="card" style="max-width:960px">
+  {{ csrf() }}
+  <div class="row">
+    <div><label>Template name</label><input type="text" name="name" value="{{ t.name or '' }}" required placeholder="Personal injury (contingency)"></div>
+    <div><label>Practice area</label><input type="text" name="practice_area" list="areas" value="{{ t.practice_area or '' }}"><datalist id="areas">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist></div>
+    <div><label>&nbsp;</label><label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if t.is_active }}> Active (offered on new matters)</label></div>
+  </div>
+  <div><label>Description (shown when picking a template)</label><textarea name="description" style="min-height:50px">{{ t.description or '' }}</textarea></div>
+
+  <h3 style="margin-top:18px">Billing defaults</h3>
+  <div class="row">
+    <div><label>Billing type</label><select name="billing_type" id="billing_type">{% for b in billing_types %}<option value="{{ b }}" {{ 'selected' if b == t.billing_type }}>{{ b }}</option>{% endfor %}</select></div>
+    <div data-fee="flat hybrid"><label>Flat fee (total)</label><input type="text" name="flat_fee" value="{{ (t.flat_fee_cents / 100)|round(2) if t.flat_fee_cents else '' }}" placeholder="2,500.00"></div>
+    <div data-fee="hourly hybrid"><label>Hourly rate (blank = attorney or firm default)</label><input type="text" name="hourly_rate" value="{{ (t.hourly_rate_cents / 100)|round(2) if t.hourly_rate_cents else '' }}"></div>
+    <div data-fee="contingency hybrid"><label>Contingency %</label><input type="number" name="contingency_pct" step="0.01" min="0" max="100" value="{{ t.contingency_pct or '' }}"></div>
+  </div>
+  <div data-fee="flat hybrid" style="margin-top:10px">
+    <label>Flat fee milestones (due offset counts days from the matter's opened date; blank = no due date)</label>
+    <table id="ms_table"><tr><th>Description</th><th style="width:140px">Amount</th><th style="width:150px">Due offset (days)</th><th style="width:70px"></th></tr>
+    {% for ms in t.milestones %}<tr>
+      <td><input type="text" name="ms_description" value="{{ ms.description }}"></td>
+      <td><input type="text" name="ms_amount" value="{{ ((ms.amount_cents or 0) / 100)|round(2) }}"></td>
+      <td><input type="number" name="ms_offset" value="{{ ms.due_offset_days if ms.due_offset_days is not none else '' }}"></td>
+      <td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td>
+    </tr>{% endfor %}
+    <tr>
+      <td><input type="text" name="ms_description" placeholder="Retainer on signing"></td>
+      <td><input type="text" name="ms_amount" placeholder="0.00"></td>
+      <td><input type="number" name="ms_offset" placeholder="0"></td>
+      <td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td>
+    </tr>
+    </table>
+    <div class="actions" style="margin-top:6px"><button type="button" class="btn small secondary" data-add-row="ms_table">Add milestone</button></div>
+  </div>
+
+  <h3 style="margin-top:18px">Tasks and deadlines</h3>
+  <table id="t_table"><tr><th>Title</th><th style="width:120px">Kind</th><th style="width:110px">Offset (days)</th><th style="width:100px">Priority</th><th style="width:150px">Assign to</th><th style="width:70px"></th></tr>
+  {% for tk in t.tasks %}<tr>
+    <td><input type="text" name="t_title" value="{{ tk.title }}"></td>
+    <td><select name="t_kind">{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == tk.kind }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select></td>
+    <td><input type="number" name="t_offset" value="{{ tk.offset_days or 0 }}"></td>
+    <td><select name="t_priority">{% for p in priorities %}<option value="{{ p }}" {{ 'selected' if p == tk.priority }}>{{ p }}</option>{% endfor %}</select></td>
+    <td><select name="t_assignee"><option value="responsible" {{ 'selected' if tk.assignee != 'none' }}>Responsible attorney</option><option value="none" {{ 'selected' if tk.assignee == 'none' }}>Nobody</option></select></td>
+    <td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td>
+  </tr>{% endfor %}
+  <tr>
+    <td><input type="text" name="t_title" placeholder="Send intake questionnaire"></td>
+    <td><select name="t_kind">{% for k in kinds %}<option value="{{ k }}">{{ k.replace('_', ' ') }}</option>{% endfor %}</select></td>
+    <td><input type="number" name="t_offset" placeholder="7"></td>
+    <td><select name="t_priority">{% for p in priorities %}<option value="{{ p }}" {{ 'selected' if p == 'normal' }}>{{ p }}</option>{% endfor %}</select></td>
+    <td><select name="t_assignee"><option value="responsible">Responsible attorney</option><option value="none">Nobody</option></select></td>
+    <td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td>
+  </tr>
+  </table>
+  <div class="actions" style="margin-top:6px"><button type="button" class="btn small secondary" data-add-row="t_table">Add task</button><span class="small muted">Due date = opened date + offset.</span></div>
+
+  <h3 style="margin-top:18px">Custom fields</h3>
+  <table id="cf_table"><tr><th style="width:35%">Field</th><th>Default value (blank is fine)</th><th style="width:70px"></th></tr>
+  {% for k, v in t.custom_fields.items() %}<tr><td><input type="text" name="cf_key" value="{{ k }}"></td><td><input type="text" name="cf_value" value="{{ v }}"></td><td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td></tr>{% endfor %}
+  <tr><td><input type="text" name="cf_key" placeholder="Claim number"></td><td><input type="text" name="cf_value"></td><td><button type="button" class="btn small secondary" data-remove-row>Remove</button></td></tr>
+  </table>
+  <div class="actions" style="margin-top:6px"><button type="button" class="btn small secondary" data-add-row="cf_table">Add field</button><span class="small muted">Defaults never overwrite a value already on the matter.</span></div>
+
+  <h3 style="margin-top:18px">Limitations and retainer</h3>
+  <div class="row">
+    <div><label>Statute of limitations (years from opened date, 0 = do not set)</label><input type="number" name="sol_years" step="0.5" min="0" value="{{ t.sol_years or '' }}"></div>
+    <div><label>SOL basis</label><input type="text" name="sol_basis" value="{{ t.sol_basis or '' }}" placeholder="2-year PI, TX CPRC 16.003"></div>
+    <div><label>Evergreen trust minimum</label><input type="text" name="trust_minimum" value="{{ (t.trust_minimum_cents / 100)|round(2) if t.trust_minimum_cents else '' }}" placeholder="0.00"></div>
+    <div><label>Replenish trust to</label><input type="text" name="trust_replenish_to" value="{{ (t.trust_replenish_to_cents / 100)|round(2) if t.trust_replenish_to_cents else '' }}" placeholder="0.00"></div>
+  </div>
+
+  <div class="actions" style="margin-top:20px"><button class="btn">{{ 'Create template' if is_new else 'Save' }}</button><a class="btn secondary" href="/settings/templates">Cancel</a></div>
+</form>
+<script>
+(function(){
+  var sel=document.getElementById('billing_type');
+  function sync(){var v=sel.value;document.querySelectorAll('[data-fee]').forEach(function(el){el.style.display=el.getAttribute('data-fee').split(' ').indexOf(v)>=0?'':'none';});}
+  sel.addEventListener('change',sync);sync();
+  document.addEventListener('click',function(e){
+    var add=e.target.closest('[data-add-row]');
+    if(add){var t=document.getElementById(add.getAttribute('data-add-row'));var rows=t.querySelectorAll('tr');var last=rows[rows.length-1];var clone=last.cloneNode(true);clone.style.display='';clone.querySelectorAll('input').forEach(function(i){i.value='';});t.appendChild(clone);}
+    var rm=e.target.closest('[data-remove-row]');
+    if(rm){var tr=rm.closest('tr');tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.style.display='none';}
+  });
+})();
+</script>
+{% endblock %}

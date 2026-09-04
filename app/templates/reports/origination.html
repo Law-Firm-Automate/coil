@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block title %}Origination{% endblock %}{% block content %}
+<div class="topbar"><h1>Origination</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.origination', format='csv', **{'from': d_from|iso, 'to': d_to|iso}) }}">Download CSV</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<div class="card">
+<form method="get" class="row">
+  <div><label>From</label><input type="date" name="from" value="{{ d_from|iso }}"></div>
+  <div><label>To</label><input type="date" name="to" value="{{ d_to|iso }}"></div>
+  <div><label>&nbsp;</label><button class="btn secondary">Update</button></div>
+</form>
+</div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Collected into operating</div><div class="value">{{ totals.cents|money }}</div><div class="small muted">{{ totals.count }} payment{{ '' if totals.count == 1 else 's' }}, {{ d_from|d }} to {{ d_to|d }}</div></div>
+  <div class="card stat"><div class="label">Matters paying</div><div class="value">{{ totals.matter_count }}</div></div>
+  <div class="card stat"><div class="label">Missing originator</div><div class="value" {% if totals.flagged_count %}style="color:var(--warn)"{% endif %}>{{ totals.flagged_count }}</div><div class="small muted">Matters with no originating attorney are credited to the responsible attorney and flagged below.</div></div>
+</div>
+<div class="card"><h2>Collected by originating attorney</h2>
+{% if rows %}
+<table>
+<tr><th>Attorney</th><th class="num">Matters</th><th class="num">Payments</th><th class="num">Collected</th><th class="num">Share</th><th>Flags</th></tr>
+{% for r in rows %}
+<tr><td><strong>{{ r.user.name if r.user else '(no attorney)' }}</strong>
+  <details><summary class="small">per matter</summary>
+  <table class="small">{% for m in r.matters %}<tr><td>{% if m.matter %}<a href="/matters/{{ m.matter.id }}">{{ m.matter.label }}</a>{% else %}<span class="muted">(no matter)</span>{% endif %}</td><td>{{ m.matter.client.display_name if m.matter else '' }}</td><td class="num">{{ m.count }}</td><td class="num">{{ m.cents|money }}</td><td>{% if m.flagged %}<span class="badge draft">no originator</span>{% endif %}</td></tr>{% endfor %}</table></details></td>
+  <td class="num">{{ r.matter_count }}</td><td class="num">{{ r.count }}</td><td class="num"><strong>{{ r.cents|money }}</strong></td>
+  <td class="num">{% if totals.cents %}{{ '%.1f'|format(100.0 * r.cents / totals.cents) }}%{% else %}-{% endif %}</td>
+  <td>{% if r.flagged_count %}<span class="badge draft">{{ r.flagged_count }} without originator</span>{% endif %}</td></tr>
+{% endfor %}
+<tr><th>Total</th><th class="num">{{ totals.matter_count }}</th><th class="num">{{ totals.count }}</th><th class="num">{{ totals.cents|money }}</th><th class="num">100%</th><th>{% if totals.flagged_count %}{{ totals.flagged_count }} flagged{% endif %}</th></tr>
+</table>
+{% else %}<div class="empty">No payments in this range.</div>{% endif %}
+</div>
+<p class="small muted">Set the originating attorney on the matter form to stop a matter being flagged. Payments applied from trust count here because they move money into operating.</p>
+{% endblock %}

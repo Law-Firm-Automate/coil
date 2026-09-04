@@ -1,18 +1,18 @@
 {% extends "base.html" %}{% block title %}Messages{% endblock %}{% block content %}
-<div class="topbar"><h1>Messages</h1>
+<div class="topbar"><h1>Messages{% if unread_total %} <span class="badge new" title="Portal messages nobody has opened yet">{{ unread_total }} unread portal</span>{% endif %}</h1>
 <form method="get" action="/messages" class="actions" style="margin:0" id="newthread">
-  <select name="to" style="width:auto" onchange="if(this.value)location.href='/messages/'+this.value"><option value="">Start a thread with...</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }} {{ c.phone }}</option>{% endfor %}</select>
+  <select name="to" style="width:auto" onchange="if(this.value)location.href='/messages/'+this.value"><option value="">Start a thread with...</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }} {{ c.phone or c.email }}</option>{% endfor %}</select>
 </form></div>
 <div class="card">
 {% if threads %}
 <table><tr><th></th><th>Contact</th><th>Latest</th><th>When</th></tr>
-{% for t in threads %}<tr>
-  <td class="nowrap">{% if t.recent_in %}<span class="badge new" title="Inbound in the last 24 hours">{{ t.recent_in }} new</span>{% endif %}</td>
-  <td><a href="/messages/{{ t.contact.id }}">{{ t.contact.display_name }}</a><br><span class="small muted">{{ t.contact.phone }}</span></td>
-  <td class="small"><span class="muted">{{ 'They:' if t.latest.direction == 'in' else 'You:' }}</span> {{ t.latest.body[:120] }}{% if t.latest.body|length > 120 %}...{% endif %}</td>
-  <td class="nowrap small muted">{{ t.latest.created_at|dt }}</td>
+{% for th in threads %}<tr>
+  <td class="nowrap">{% if th.unread_portal %}<span class="badge new" title="Portal messages not yet opened">{{ th.unread_portal }} portal unread</span>{% endif %}{% if th.recent_in %} <span class="badge new" title="Inbound texts in the last 24 hours">{{ th.recent_in }} new</span>{% endif %}</td>
+  <td><a href="/messages/{{ th.contact.id }}">{{ th.contact.display_name }}</a><br><span class="small muted">{{ th.contact.phone or th.contact.email }}</span></td>
+  <td class="small">{% if th.latest.channel == 'portal' %}<span class="badge">portal</span> {% endif %}<span class="muted">{{ 'They:' if th.latest.direction == 'in' else 'You:' }}</span> {{ th.latest.body[:120] }}{% if th.latest.body|length > 120 %}...{% endif %}</td>
+  <td class="nowrap small muted">{{ th.latest.created_at|dt }}</td>
 </tr>{% endfor %}</table>
-{% else %}<div class="empty">No conversations yet. Pick a contact above to send the first text.</div>{% endif %}
+{% else %}<div class="empty">No conversations yet. Pick a contact above to send the first text or portal message.</div>{% endif %}
 </div>
 {% if unmatched %}
 <div class="card"><h2>Inbound from unknown numbers</h2>

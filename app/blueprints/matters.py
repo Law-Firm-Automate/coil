@@ -1,9 +1,9 @@
 """Matters: the hub of the app. Every other module links back here."""
-from datetime import date
+from datetime import date, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from ..extensions import db
-from ..models import (Matter, MatterParty, FlatFeeMilestone, Contact, User, Firm, Note, TimeEntry, Expense,
-                      Invoice, TrustTransaction, Task, Document, Engagement, AuditLog, audit)
+from ..models import (Matter, MatterParty, MatterPayer, FlatFeeMilestone, Contact, User, Firm, Note, TimeEntry, Expense,
+                      Invoice, TrustTransaction, Task, Document, Engagement, AuditLog, Office, MatterTemplate, audit)
 from ..helpers import login_required, current_user, parse_money, parse_date
 
 bp = Blueprint("matters", __name__, url_prefix="/matters")
@@ -13,6 +13,7 @@ PRACTICE_AREAS = ["Estate Planning", "Litigation", "Business", "Real Estate", "F
 BILLING_TYPES = ["flat", "hourly", "contingency", "hybrid"]
 STATUSES = ["pending", "open", "closed"]
 PARTY_ROLES = ["adverse", "witness", "co_counsel", "opposing_counsel", "other"]
+CURRENCIES = ["USD", "CAD", "GBP", "EUR", "AUD", "MXN"]  # Agent A: matter currency select
 TABS = [("overview", "Overview"), ("time", "Time & expenses"), ("invoices", "Invoices"), ("trust", "Trust"),
         ("tasks", "Tasks"), ("documents", "Documents"), ("engagements", "Engagement letters"),
         ("activity", "Activity")]
@@ -57,6 +58,17 @@ def _fill(m, form):
     m.court = form.get("court", "").strip()
     m.case_number = form.get("case_number", "").strip()
     m.description = form.get("description", "").strip()
+    m.office_id = _int(form.get("office_id"))  # offices: Agent B
+    # ---- Agent A: billing fields (currency, originator, evergreen retainer, LEDES id) ----
+    cur = (form.get("currency") or "").strip().upper()
+    m.currency = cur if cur in CURRENCIES else ""
+    m.originating_user_id = _int(form.get("originating_user_id"))
+    m.trust_minimum_cents = max(0, parse_money(form.get("trust_minimum")))
+    m.trust_replenish_to_cents = max(0, parse_money(form.get("trust_replenish_to")))
+    if m.trust_replenish_to_cents and m.trust_replenish_to_cents < m.trust_minimum_cents:
+        m.trust_replenish_to_cents = m.trust_minimum_cents
+    m.ledes_matter_id = (form.get("ledes_matter_id") or "").strip()[:40]
+    # ---- end Agent A block ----
     keys = form.getlist("cf_key")
     vals = form.getlist("cf_value")
     cf = {}
@@ -109,7 +121,110 @@ def _form_context(m):
                                      Contact.company_name).all()
     users = User.query.filter_by(is_active=True).order_by(User.name).all()
     areas = sorted(set(PRACTICE_AREAS) | {a for (a,) in db.session.query(Matter.practice_area).distinct() if a})
-    return dict(m=m, clients=clients, users=users, areas=areas, billing_types=BILLING_TYPES, statuses=STATUSES)
+    return dict(m=m, clients=clients, users=users, areas=areas, billing_types=BILLING_TYPES, statuses=STATUSES,
+                currencies=CURRENCIES,
+                offices=Office.query.order_by(Office.is_default.desc(), Office.name).all(),
+                templates=MatterTemplate.query.filter_by(is_active=True).order_by(MatterTemplate.name).all())
+
+
+# ---------------------------------------------------------------- matter templates (Agent B)
+def _add_years(d, years):
+    """opened_on + N years. Whole years keep the calendar day; a fraction adds days on top."""
+    whole = int(years)
+    frac = years - whole
+    try:
+        out = d.replace(year=d.year + whole)
+    except ValueError:  # Feb 29
+        out = d.replace(year=d.year + whole, day=28)
+    if frac:
+        out += timedelta(days=int(round(frac * 365.25)))
+    return out
+
+
+def prefill_from_template(m, t):
+    """Copy a template's defaults onto an unsaved matter for the new-matter form. Rows (milestones, tasks) and the
+    SOL date are created by apply_template() after the matter exists, so opened_on can still change in the form."""
+    if not m.practice_area:
+        m.practice_area = t.practice_area
+    m.billing_type = t.billing_type if t.billing_type in BILLING_TYPES else "flat"
+    m.hourly_rate_cents = t.hourly_rate_cents
+    m.flat_fee_cents = t.flat_fee_cents
+    m.contingency_pct = t.contingency_pct
+    if not m.description:
+        m.description = t.description
+    if not m.sol_basis:
+        m.sol_basis = t.sol_basis
+    m.trust_minimum_cents = t.trust_minimum_cents
+    m.trust_replenish_to_cents = t.trust_replenish_to_cents
+    cf = m.custom_fields
+    for k, v in t.custom_fields.items():
+        if not cf.get(k):
+            cf[k] = v
+    m.custom_fields = cf
+
+
+def apply_template(matter, template, user):
+    """Add a template's milestones, tasks, custom field defaults, SOL date and evergreen values to a saved matter.
+    Never overwrites: existing custom field values win, an existing SOL date stays, and a milestone or open task
+    with the same description/title is not created twice. Sets matter.template_id. Caller commits."""
+    base = matter.opened_on or date.today()
+    added_ms = added_tasks = 0
+    existing_ms = {ms.description.strip().lower() for ms in matter.milestones}
+    sort = len(matter.milestones)
+    for row in template.milestones:
+        desc = (row.get("description") or "").strip()
+        if not desc or desc.lower() in existing_ms:
+            continue
+        off = row.get("due_offset_days")
+        db.session.add(FlatFeeMilestone(matter=matter, description=desc, amount_cents=int(row.get("amount_cents") or 0),
+                                        due_on=base + timedelta(days=int(off)) if off is not None else None, sort=sort))
+        existing_ms.add(desc.lower())
+        sort += 1
+        added_ms += 1
+    open_titles = {t.title.strip().lower() for t in Task.query.filter_by(matter_id=matter.id, done=False).all()}
+    for row in template.tasks:
+        title = (row.get("title") or "").strip()
+        if not title or title.lower() in open_titles:
+            continue
+        kind = row.get("kind") or "task"
+        prio = row.get("priority") or "normal"
+        assignee_id = matter.responsible_user_id if (row.get("assignee") or "responsible") == "responsible" else None
+        db.session.add(Task(matter_id=matter.id, title=title, kind=kind if kind in ("task", "deadline", "court_date") else "task",
+                            due_on=base + timedelta(days=int(row.get("offset_days") or 0)),
+                            priority=prio if prio in ("low", "normal", "high") else "normal", assignee_id=assignee_id))
+        open_titles.add(title.lower())
+        added_tasks += 1
+    cf = matter.custom_fields
+    for k, v in template.custom_fields.items():
+        if k not in cf or cf[k] in ("", None):
+            cf[k] = v
+    matter.custom_fields = cf
+    if template.sol_years and not matter.sol_date:
+        matter.sol_date = _add_years(base, float(template.sol_years))
+        if not matter.sol_basis:
+            matter.sol_basis = template.sol_basis
+    if template.trust_minimum_cents and not matter.trust_minimum_cents:
+        matter.trust_minimum_cents = template.trust_minimum_cents
+    if template.trust_replenish_to_cents and not matter.trust_replenish_to_cents:
+        matter.trust_replenish_to_cents = template.trust_replenish_to_cents
+    matter.template_id = template.id
+    audit("apply_template", "matter", matter.id, f"{template.name}: {added_ms} milestones, {added_tasks} tasks",
+          user.id if user else None)
+    return added_ms, added_tasks
+
+
+@bp.route("/<int:id>/apply-template", methods=["POST"])
+@login_required
+def apply_template_route(id):
+    m = db.session.get(Matter, id) or abort(404)
+    t = db.session.get(MatterTemplate, _int(request.form.get("template_id")) or 0)
+    if not t:
+        flash("Pick a template.", "error")
+        return redirect(url_for("matters.detail", id=m.id))
+    added_ms, added_tasks = apply_template(m, t, current_user())
+    db.session.commit()
+    flash(f"Applied {t.name}: {added_ms} milestone(s) and {added_tasks} task(s) added.", "ok")
+    return redirect(url_for("matters.detail", id=m.id))
 
 
 @bp.route("")
@@ -151,12 +266,20 @@ def new():
         if client and not client.is_client:
             client.is_client = True
         audit("create", "matter", m.id, f"{m.number} {m.name}", current_user().id)
+        tpl = db.session.get(MatterTemplate, _int(request.form.get("template_id")) or 0)  # templates: Agent B
+        if tpl:
+            apply_template(m, tpl, current_user())
         db.session.commit()
         flash(f"Matter {m.number} opened.", "ok")
         return redirect(url_for("matters.detail", id=m.id))
     m.client_id = _int(request.args.get("contact_id"))
     m.responsible_user_id = current_user().id
-    return render_template("matters/form.html", is_new=True, **_form_context(m))
+    default_office = Office.query.filter_by(is_default=True).first()
+    m.office_id = default_office.id if default_office else None
+    tpl = db.session.get(MatterTemplate, _int(request.args.get("template_id")) or 0)  # templates: Agent B
+    if tpl:
+        prefill_from_template(m, tpl)
+    return render_template("matters/form.html", is_new=True, template=tpl, **_form_context(m))
 
 
 @bp.route("/<int:id>/edit", methods=["GET", "POST"])
@@ -211,7 +334,8 @@ def detail(id):
                            trust=m.trust_balance_cents(), outstanding=m.outstanding_cents(),
                            milestones_total=milestones_total, milestones_invoiced=milestones_invoiced,
                            contacts=Contact.query.order_by(Contact.last_name, Contact.first_name,
-                                                           Contact.company_name).all())
+                                                           Contact.company_name).all(),
+                           templates=MatterTemplate.query.filter_by(is_active=True).order_by(MatterTemplate.name).all())
 
 
 @bp.route("/<int:id>/close", methods=["POST"])
@@ -266,6 +390,50 @@ def delete_party(id, pid):
     if not p or p.matter_id != id:
         abort(404)
     audit("remove_party", "matter", id, p.name, current_user().id)
+    db.session.delete(p)
+    db.session.commit()
+    return redirect(url_for("matters.detail", id=id))
+
+
+# ---------------------------------------------------------------- split billing payers (Agent A)
+@bp.route("/<int:id>/payers", methods=["POST"])
+@login_required
+def add_payer(id):
+    m = db.session.get(Matter, id) or abort(404)
+    contact = db.session.get(Contact, _int(request.form.get("contact_id")) or 0)
+    if not contact:
+        flash("Pick a contact to bill.", "error")
+        return redirect(url_for("matters.detail", id=m.id))
+    try:
+        pct = float((request.form.get("percent") or "").replace("%", "").strip() or 0)
+    except ValueError:
+        pct = 0.0
+    if pct <= 0 or pct > 100:
+        flash("Percent must be between 0 and 100.", "error")
+        return redirect(url_for("matters.detail", id=m.id))
+    if any(p.contact_id == contact.id for p in m.payers):
+        flash(f"{contact.display_name} is already a payer on this matter. Remove and re-add to change the share.",
+              "error")
+        return redirect(url_for("matters.detail", id=m.id))
+    p = MatterPayer(matter_id=m.id, contact_id=contact.id, percent=round(pct, 2),
+                    label=(request.form.get("label") or "").strip()[:120])
+    db.session.add(p)
+    audit("add_payer", "matter", m.id, f"{contact.display_name} {p.percent:g}%", current_user().id)
+    db.session.commit()
+    total = sum(x.percent or 0 for x in m.payers)
+    if abs(total - 100) > 0.005:
+        flash(f"Payers now total {total:g}%. Invoices for this matter cannot be built until they total 100%.", "error")
+    return redirect(url_for("matters.detail", id=m.id))
+
+
+@bp.route("/<int:id>/payers/<int:pid>/delete", methods=["POST"])
+@login_required
+def delete_payer(id, pid):
+    p = db.session.get(MatterPayer, pid)
+    if not p or p.matter_id != id:
+        abort(404)
+    audit("remove_payer", "matter", id, f"{p.contact.display_name if p.contact else p.contact_id} {p.percent:g}%",
+          current_user().id)
     db.session.delete(p)
     db.session.commit()
     return redirect(url_for("matters.detail", id=id))

@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% block title %}Bulk invoicing{% endblock %}{% block content %}
+<div class="topbar"><h1>Bulk invoicing</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('invoices.index') }}">Back to invoices</a></div></div>
+<p class="muted">Every open matter with unbilled time or expenses, or a flat fee milestone due on or before {{ today|d }}. Tick the ones to bill and one draft invoice is built per matter with everything listed here. Matters with split payers get one draft per payer. Drafts can still be edited before sending.</p>
+<form method="post" action="{{ url_for('invoices.bulk') }}" id="bulk">{{ csrf() }}
+<div class="card">
+{% if rows %}
+<table>
+<tr><th><input type="checkbox" checked data-toggle="matter_ids"></th><th>Matter</th><th>Client</th><th>Billing</th><th class="num">Time</th><th class="num">Expenses</th><th class="num">Milestones due</th><th class="num">Total</th></tr>
+{% for r in rows %}
+<tr>
+  <td><input type="checkbox" name="matter_ids" value="{{ r.matter.id }}" class="pick" data-amt="{{ r.total }}" {{ 'checked' if r.payers_ok }} {{ 'disabled' if not r.payers_ok }}></td>
+  <td><a href="/matters/{{ r.matter.id }}">{{ r.matter.number }}</a> <span class="small muted">{{ r.matter.name }}</span>{% if r.payers %}<br><span class="small {{ 'muted' if r.payers_ok else 'badge overdue' }}">split {{ r.payers|length }} payers{% if not r.payers_ok %}, percentages do not total 100{% endif %}</span>{% endif %}{% if r.matter.currency_code != 'USD' %} <span class="badge">{{ r.matter.currency_code }}</span>{% endif %}</td>
+  <td><a href="/contacts/{{ r.matter.client_id }}">{{ r.matter.client.display_name }}</a></td>
+  <td>{{ r.matter.billing_type }}</td>
+  <td class="num">{% if r.time %}{{ r.time_total|cur(r.matter.currency_code) }} <span class="small muted">({{ r.time|length }})</span>{% endif %}</td>
+  <td class="num">{% if r.expenses %}{{ r.expense_total|cur(r.matter.currency_code) }} <span class="small muted">({{ r.expenses|length }})</span>{% endif %}</td>
+  <td class="num">{% if r.milestones %}{{ r.milestone_total|cur(r.matter.currency_code) }} <span class="small muted">({{ r.milestones|length }})</span>{% endif %}</td>
+  <td class="num"><strong>{{ r.total|cur(r.matter.currency_code) }}</strong></td>
+</tr>
+{% endfor %}
+<tr><th colspan="7">{{ rows|length }} matter{{ '' if rows|length == 1 else 's' }} with something to bill</th><th class="num">{{ grand_total|money }}</th></tr>
+</table>
+{% else %}<div class="empty">Nothing to bill. Every open matter is fully invoiced.</div>{% endif %}
+</div>
+{% if rows %}
+<div class="grid c2">
+<div class="card">
+  <div class="row">
+    <div><label>Issue date</label><input type="date" name="issued_on" value="{{ issued_on|iso }}" required></div>
+    <div><label>Due date</label><input type="date" name="due_on" value="{{ due_on|iso }}" required><div class="small muted">Default: {{ firm_settings.invoice_terms_days }} days</div></div>
+  </div>
+</div>
+<div class="card stat">
+  <div class="label">Selected total</div>
+  <div class="value" id="total">$0.00</div>
+  <div class="small muted">Sum of the ticked matters, before any per-invoice edits.{% if rows|map(attribute='matter')|map(attribute='currency_code')|unique|list|length > 1 %} Mixed currencies are added without conversion.{% endif %}</div>
+  <div class="actions"><button class="btn">Build draft invoices</button> <a class="btn secondary" href="{{ url_for('invoices.index') }}">Cancel</a></div>
+</div>
+</div>
+{% endif %}
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  function fmt(c){var neg=c<0;c=Math.abs(c);var s='$'+Math.floor(c/100).toLocaleString()+'.'+('0'+(c%100)).slice(-2);return neg?'('+s+')':s;}
+  function total(){var t=0;document.querySelectorAll('.pick:checked').forEach(function(b){t+=parseInt(b.getAttribute('data-amt'),10)||0;});
+    var el=document.getElementById('total');if(el)el.textContent=fmt(t);}
+  var f=document.getElementById('bulk');
+  f.addEventListener('change',total);
+  document.querySelectorAll('[data-toggle]').forEach(function(m){m.addEventListener('change',function(){
+    document.querySelectorAll('input[name="'+m.getAttribute('data-toggle')+'"]:not(:disabled)').forEach(function(b){b.checked=m.checked;});total();});});
+  total();
+})();
+</script>
+{% endblock %}

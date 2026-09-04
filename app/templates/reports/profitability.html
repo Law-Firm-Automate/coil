@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Matter profitability{% endblock %}{% block content %}
+<div class="topbar"><h1>Matter profitability</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.profitability', format='csv', status=status, **{'from': d_from|iso, 'to': d_to|iso}) }}">Download CSV</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<div class="card">
+<form method="get" class="row">
+  <div><label>From</label><input type="date" name="from" value="{{ d_from|iso }}"></div>
+  <div><label>To</label><input type="date" name="to" value="{{ d_to|iso }}"></div>
+  <div><label>Matter status</label><select name="status"><option value="">All</option>{% for s in statuses %}<option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}</select></div>
+  <div><label>&nbsp;</label><button class="btn secondary">Update</button></div>
+</form>
+</div>
+{% macro pct(v) %}{% if v is none %}<span class="muted">-</span>{% else %}{{ '%.1f'|format(v) }}%{% endif %}{% endmacro %}
+<div class="grid c4">
+  <div class="card stat"><div class="label">Revenue collected</div><div class="value">{{ totals.revenue|money }}</div><div class="small muted">{{ d_from|d }} to {{ d_to|d }}</div></div>
+  <div class="card stat"><div class="label">Cost</div><div class="value">{{ totals.cost|money }}</div><div class="small muted">{{ totals.minutes|hours }} hours at cost rates plus {{ totals.expense_cost|money }} non-billable expenses</div></div>
+  <div class="card stat"><div class="label">Margin</div><div class="value" {% if totals.margin < 0 %}style="color:var(--bad)"{% endif %}>{{ totals.margin|money }}</div><div class="small muted">{{ pct(totals.margin_pct) }} of revenue</div></div>
+  <div class="card stat"><div class="label">Cost rate not set</div><div class="value" {% if totals.flagged %}style="color:var(--warn)"{% endif %}>{{ totals.flagged }}</div><div class="small muted">Matters whose cost is understated because a timekeeper has no cost rate. Set it under Settings, Users.</div></div>
+</div>
+<div class="card"><h2>By matter</h2>
+{% if rows %}
+<table>
+<tr><th>Matter</th><th>Client</th><th>Status</th><th class="num">Revenue</th><th class="num">Hours</th><th class="num">Time cost</th><th class="num">Expenses</th><th class="num">Cost</th><th class="num">Margin</th><th class="num">Margin %</th><th>Cost rate</th></tr>
+{% for r in rows %}
+<tr><td>{% if r.matter %}<a href="/matters/{{ r.matter.id }}">{{ r.matter.label }}</a>{% else %}<span class="muted">(no matter)</span>{% endif %}</td><td>{{ r.matter.client.display_name if r.matter else '' }}</td><td>{% if r.matter %}<span class="badge {{ r.matter.status }}">{{ r.matter.status }}</span>{% endif %}</td>
+  <td class="num">{{ r.revenue|money }}</td><td class="num">{{ r.minutes|hours }}</td><td class="num">{{ r.time_cost|money }}</td><td class="num">{{ r.expense_cost|money }}</td><td class="num">{{ r.cost|money }}</td>
+  <td class="num" {% if r.margin < 0 %}style="color:var(--bad)"{% endif %}><strong>{{ r.margin|money }}</strong></td><td class="num">{{ pct(r.margin_pct) }}</td>
+  <td>{% if r.cost_rate_missing %}<span class="badge draft" title="{{ r.missing_rate_users|join(', ') }}">cost rate not set</span> <span class="small muted">{{ r.missing_rate_users|join(', ') }}</span>{% else %}<span class="small muted">ok</span>{% endif %}</td></tr>
+{% endfor %}
+<tr><th colspan="3">Total</th><th class="num">{{ totals.revenue|money }}</th><th class="num">{{ totals.minutes|hours }}</th><th class="num">{{ totals.time_cost|money }}</th><th class="num">{{ totals.expense_cost|money }}</th><th class="num">{{ totals.cost|money }}</th><th class="num">{{ totals.margin|money }}</th><th class="num">{{ pct(totals.margin_pct) }}</th><th>{% if totals.flagged %}{{ totals.flagged }} flagged{% endif %}</th></tr>
+</table>
+{% else %}<div class="empty">Nothing collected, logged or spent in this range{% if status %} on {{ status }} matters{% endif %}.</div>{% endif %}
+</div>
+<p class="small muted">Revenue is payments into operating dated in the range. Cost is time in the range at each user's cost rate (Settings, Users) plus non-billable expenses. Billable expenses are passed through to the client and are not a cost here.</p>
+{% endblock %}

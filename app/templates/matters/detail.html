@@ -31,9 +31,19 @@
       <dt>Court</dt><dd>{{ m.court or '' }}</dd>
       <dt>Case number</dt><dd>{{ m.case_number or '' }}</dd>
       <dt>Limitations</dt><dd>{% if m.sol_date %}<strong>{{ m.sol_date|d }}</strong>{% if m.sol_basis %} <span class="muted">{{ m.sol_basis }}</span>{% endif %}{% else %}<span class="muted">not set</span>{% endif %}</dd>
+      {# ---- Agent B: office, template, custom fields ---- #}
+      {% if m.office %}<dt>Office</dt><dd>{{ m.office.name }}</dd>{% endif %}
+      <dt>Template</dt><dd>{% if m.template %}{{ m.template.name }}{% else %}<span class="muted">none</span>{% endif %}</dd>
       {% for k, v in m.custom_fields.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
+      {# ---- end Agent B block ---- #}
     </dl>
     {% if m.description %}<h3 style="margin-top:12px">Description</h3><p style="white-space:pre-line">{{ m.description }}</p>{% endif %}
+    {# ---- Agent B: apply a template to an existing matter ---- #}
+    {% if templates %}<form method="post" action="/matters/{{ m.id }}/apply-template" class="searchbar" style="margin-top:12px">{{ csrf() }}
+      <select name="template_id" style="width:auto"><option value="">Apply a template</option>{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
+      <button class="btn small secondary" data-confirm="Add this template's milestones, tasks and fields to the matter? Nothing already on the matter is overwritten.">Apply</button>
+    </form>{% endif %}
+    {# ---- end Agent B block ---- #}
   </div>
   <div class="card"><h2>Parties</h2>
     {% if m.parties %}<table><tr><th>Name</th><th>Role</th><th></th></tr>{% for p in m.parties %}<tr><td>{% if p.contact_id %}<a href="/contacts/{{ p.contact_id }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if p.notes %}<br><span class="small muted">{{ p.notes }}</span>{% endif %}</td><td>{{ p.role.replace('_', ' ') }}</td><td class="right"><form method="post" action="/matters/{{ m.id }}/parties/{{ p.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Remove {{ p.name }}?">Remove</button></form></td></tr>{% endfor %}</table>
@@ -48,6 +58,26 @@
     </form>
   </div>
 </div>
+{# ---- Agent A: split billing payers + billing settings ---- #}
+{% set payer_total = m.payers|sum(attribute='percent') %}
+<div class="card"><h2>Split billing</h2>
+  <p class="small muted">Currency <strong>{{ m.currency_code }}</strong>{% if m.originator %} &middot; originated by {{ m.originator.name }}{% endif %}{% if m.ledes_matter_id %} &middot; LEDES matter id {{ m.ledes_matter_id }}{% endif %}{% if m.trust_minimum_cents %} &middot; evergreen retainer: top up to {{ (m.trust_replenish_to_cents or m.trust_minimum_cents)|money }} when trust falls below {{ m.trust_minimum_cents|money }}{% if trust < m.trust_minimum_cents %} <span class="badge overdue">below minimum</span>{% endif %}{% endif %}</p>
+  {% if m.payers %}
+  <table><tr><th>Payer</th><th>Label</th><th class="num">Share</th><th></th></tr>
+  {% for p in m.payers %}<tr><td><a href="/contacts/{{ p.contact_id }}">{{ p.contact.display_name }}</a></td><td>{{ p.label }}</td><td class="num">{{ p.percent|round(2) }}%</td><td class="right"><form method="post" action="/matters/{{ m.id }}/payers/{{ p.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Remove {{ p.contact.display_name }} as a payer?">Remove</button></form></td></tr>{% endfor %}
+  <tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>{{ payer_total|round(2) }}%</strong> {% if (payer_total - 100)|abs > 0.005 %}<span class="badge overdue">must be 100%</span>{% else %}<span class="badge paid">ok</span>{% endif %}</td><td></td></tr></table>
+  <p class="small muted">Each invoice build creates one invoice per payer with the lines shared by percentage. Voiding one voids the group.</p>
+  {% else %}<div class="empty">No split. {{ m.client.display_name }} is billed for 100%. Add payers below to split invoices between, say, a client and an insurer.</div>{% endif %}
+  <form method="post" action="/matters/{{ m.id }}/payers" style="margin-top:10px">{{ csrf() }}
+    <div class="row">
+      <div><label>Contact</label><select name="contact_id" required><option value="">Choose a contact</option>{% for c in contacts %}<option value="{{ c.id }}" {{ 'selected' if c.id == m.client_id and not m.payers }}>{{ c.display_name }}</option>{% endfor %}</select></div>
+      <div><label>Percent</label><input type="text" name="percent" placeholder="60" inputmode="decimal" required></div>
+      <div><label>Label (optional)</label><input type="text" name="label" placeholder="Insurer, co-defendant"></div>
+    </div>
+    <div class="actions" style="margin-top:8px"><button class="btn small">Add payer</button></div>
+  </form>
+</div>
+{# ---- end Agent A block ---- #}
 <div class="grid c2">
   <div class="card"><h2>Flat fee milestones</h2>
     {% if m.milestones %}<table><tr><th>Milestone</th><th>Due</th><th class="num">Amount</th><th></th></tr>{% for ms in m.milestones %}<tr><td>{{ ms.description }}</td><td class="nowrap">{{ ms.due_on|d }}</td><td class="num">{{ ms.amount_cents|money }}</td><td class="right nowrap">{% if ms.invoiced %}<span class="badge paid">invoiced</span> <a class="small" href="/invoices/{{ ms.invoice_id }}">{{ ms.invoice.number if ms.invoice else '' }}</a>{% else %}<form method="post" action="/matters/{{ m.id }}/milestones/{{ ms.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary">Remove</button></form>{% endif %}</td></tr>{% endfor %}
@@ -106,7 +136,7 @@
 {% else %}<div class="empty">No engagement letters yet.</div>{% endif %}</div>
 
 {% elif tab == 'activity' %}
-<div class="card"><h2>Activity</h2>
+<div class="card"><div class="topbar" style="margin-bottom:10px"><h2>Activity</h2><div class="actions" style="margin:0">{% if current_user().role == 'owner' %}<a class="btn small secondary" href="/settings/audit?entity=matter&entity_id={{ m.id }}">See full log</a>{% endif %}</div></div>
 {% if activity %}<ul class="timeline">{% for a in activity %}<li><span class="muted">{{ a.created_at|dt }}</span> &middot; <strong>{{ a.action.replace('_', ' ') }}</strong>{% if a.user %} by {{ a.user.name }}{% endif %}{% if a.detail %} <span class="muted">{{ a.detail }}</span>{% endif %}</li>{% endfor %}</ul>
 {% else %}<div class="empty">No activity recorded.</div>{% endif %}</div>
 {% endif %}

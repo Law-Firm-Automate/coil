@@ -28,6 +28,17 @@ def _fill(c, form):
     c.aliases = "\n".join(a.strip() for a in form.get("aliases", "").splitlines() if a.strip())
     c.is_client = bool(form.get("is_client"))
     c.notes = form.get("notes", "").strip()
+    lang = form.get("language", "")
+    c.language = lang if lang in ("en", "es") else ""
+    c.ledes_client_id = form.get("ledes_client_id", "").strip()[:40]
+    keys = form.getlist("cf_key")
+    vals = form.getlist("cf_value")
+    cf = {}
+    for i, k in enumerate(keys):
+        k = k.strip()
+        if k:
+            cf[k] = (vals[i] if i < len(vals) else "").strip()
+    c.custom_fields = cf
 
 
 def _valid(c):

@@ -1,0 +1,8 @@
+{% extends "public.html" %}{% block title %}{{ t('sign.done.title', lang) }}{% endblock %}{% block content %}
+<div class="card">
+  <h1 style="font-size:1.3rem;margin:0 0 12px">{{ t('sign.done.thanks', lang, name=s.signer_name) }}</h1>
+  <p>{{ t('sign.done.recorded_doc', lang, when=s.signed_at|dt, email=(s.signer_email or s.contact.email or t('sign.done.you', lang)), firm=firm().name) }}</p>
+  <p><a class="btn" href="/sign/doc/{{ s.token }}/certificate">{{ t('sign.done.download_cert', lang) }}</a> <a class="btn secondary" href="/sign/doc/{{ s.token }}/file">{{ t('sign.doc.download', lang) }}</a></p>
+  <dl class="kv" style="margin-top:14px"><dt>{{ t('sign.done.doc_hash', lang) }}</dt><dd class="small" style="word-break:break-all">{{ s.document_hash }}</dd><dt>{{ t('sign.done.sig_hash', lang) }}</dt><dd class="small" style="word-break:break-all">{{ s.signature_hash }}</dd></dl>
+</div>
+{% endblock %}

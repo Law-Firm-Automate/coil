@@ -1,0 +1,26 @@
+{% extends "public.html" %}{% block title %}{{ t('portal.msgs.title', lang) }}{% endblock %}
+{% block head %}<style>.bubbles{display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow:auto;padding:4px}.bubble{max-width:75%;padding:8px 12px;border-radius:12px;font-size:.95rem;white-space:pre-wrap}.bubble.firm{background:#e8ecf1;align-self:flex-start}.bubble.me{background:#1f5f8b;color:#fff;align-self:flex-end}.bubble .meta{display:block;font-size:.72rem;opacity:.75;margin-top:3px}</style>{% endblock %}
+{% block content %}
+{% include "portal/_nav.html" %}
+<h1>{{ t('portal.msgs.title', lang) }}</h1>
+<p class="muted">{{ t('portal.msgs.intro', lang) }}</p>
+<div class="tabs">
+  <a class="{{ 'active' if not thread }}" href="{{ url_for('portal.messages') }}">{{ t('portal.msgs.all', lang) }}</a>
+  <a class="{{ 'active' if thread == 'general' }}" href="{{ url_for('portal.messages', thread='general') }}">{{ t('portal.msgs.general', lang) }}{% if unread_by_thread.get('general') %} <span class="badge new">{{ unread_by_thread['general'] }}</span>{% endif %}</a>
+  {% for m in matters %}<a class="{{ 'active' if selected_matter == m.id }}" href="{{ url_for('portal.messages', thread=m.id) }}">{{ m.number }} {{ m.name }}{% if unread_by_thread.get(m.id) %} <span class="badge new">{{ unread_by_thread[m.id] }}</span>{% endif %}</a>{% endfor %}
+</div>
+<div class="card">
+  <div class="bubbles" id="bubbles">
+    {% for m in msgs %}<div class="bubble {{ 'me' if m.direction == 'in' else 'firm' }}">{{ m.body }}<span class="meta">{{ t('portal.msgs.you', lang) if m.direction == 'in' else (m.user.name if m.user else firm().name) }} · {{ m.created_at|dt }}{% if m.matter %} · {{ m.matter.number }}{% endif %}{% if m.direction == 'in' and m.read_at %} · {{ t('portal.msgs.read', lang) }}{% endif %}</span></div>
+    {% else %}<div class="empty">{{ t('portal.msgs.empty', lang) }}</div>{% endfor %}
+  </div>
+  <form method="post" action="{{ url_for('portal.messages_send') }}" style="margin-top:12px">{{ csrf() }}
+    <div class="row">
+      <div><label>{{ t('portal.msgs.regarding', lang) }}</label><select name="matter_id"><option value="">{{ t('portal.msgs.general', lang) }}</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if selected_matter == m.id }}>{{ m.number }} {{ m.name }}</option>{% endfor %}</select></div>
+    </div>
+    <label>{{ t('portal.msgs.new', lang) }}</label><textarea name="body" required placeholder="{{ t('portal.msgs.placeholder', lang) }}" style="min-height:90px"></textarea>
+    <div class="actions"><button class="btn">{{ t('portal.msgs.send', lang) }}</button></div>
+  </form>
+</div>
+<script>var b=document.getElementById('bubbles');if(b)b.scrollTop=b.scrollHeight;</script>
+{% endblock %}

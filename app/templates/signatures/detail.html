@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}Signature request{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ title }} <span class="badge {{ s.status }}">{{ s.status }}</span></h1>
+<div class="actions" style="margin:0">
+  {% if s.status == 'draft' %}<form method="post" action="/signatures/{{ s.id }}/send" class="inline">{{ csrf() }}<button class="btn small">Send</button></form>{% endif %}
+  {% if s.status in ['sent','viewed'] %}<form method="post" action="/signatures/{{ s.id }}/remind" class="inline">{{ csrf() }}<button class="btn small">Send reminder</button></form>{% endif %}
+  {% if s.status != 'signed' and s.status != 'void' %}<form method="post" action="/signatures/{{ s.id }}/void" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Void this request? The sign link will stop working.">Void</button></form>{% endif %}
+  {% if s.status == 'signed' %}<a class="btn small secondary" href="/signatures/{{ s.id }}/certificate">Certificate PDF</a>{% endif %}
+  <a class="btn small secondary" href="/documents/{{ s.document_id }}/download">Original file</a>
+  <a class="btn small secondary" href="/signatures">All requests</a>
+</div></div>
+<div class="grid c2">
+  <div class="card">
+    <h2>Details</h2>
+    <dl class="kv">
+      <dt>Document</dt><dd>{{ s.document.name }} <span class="small muted">{{ s.document.mime }}</span></dd>
+      <dt>Signer</dt><dd><a href="/contacts/{{ s.contact_id }}">{{ s.contact.display_name }}</a>{% if s.contact.email %} <span class="small muted">{{ s.contact.email }}</span>{% endif %}</dd>
+      <dt>Matter</dt><dd>{% if s.document.matter %}<a href="/matters/{{ s.document.matter_id }}">{{ s.document.matter.label }}</a>{% endif %}</dd>
+      <dt>Requested by</dt><dd>{{ s.created_by.name if s.created_by else '' }} <span class="small muted">{{ s.created_at|dt }}</span></dd>
+      {% if s.message %}<dt>Message</dt><dd class="small">{{ s.message }}</dd>{% endif %}
+      <dt>Sent</dt><dd>{{ s.sent_at|dt if s.sent_at else 'not yet' }}{% if s.sent_to %} to {{ s.sent_to }}{% endif %}</dd>
+      <dt>Views</dt><dd>{{ s.view_count or 0 }}{% if s.first_viewed_at %}, first {{ s.first_viewed_at|dt }}{% endif %}</dd>
+      {% if s.status == 'signed' %}
+      <dt>Signed</dt><dd>{{ s.signed_at|dt }} UTC by {{ s.signer_name }}{% if s.signer_email %} ({{ s.signer_email }}){% endif %}</dd>
+      <dt>Signer IP</dt><dd>{{ s.signer_ip }}</dd>
+      <dt>User agent</dt><dd class="small">{{ s.signer_ua }}</dd>
+      <dt>Signature hash</dt><dd class="small" style="word-break:break-all">{{ s.signature_hash }}</dd>
+      {% endif %}
+      {% if s.document_hash %}<dt>Document SHA-256</dt><dd class="small" style="word-break:break-all">{{ s.document_hash }}</dd>{% endif %}
+    </dl>
+    {% if s.status not in ['draft','void'] %}
+    <label>Public sign link</label>
+    <div class="searchbar"><input type="text" readonly value="{{ sign_url }}"><button type="button" class="btn small secondary" data-copy="{{ sign_url }}">Copy</button></div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Timeline</h2>
+    {% if s.events %}<ul class="timeline">
+    {% for ev in s.events %}<li><strong>{{ ev.event|replace('_',' ')|capitalize }}</strong> <span class="muted">{{ ev.created_at|dt }}</span>
+      {% if ev.event == 'viewed' %}<span class="muted small">{{ ev.ip }} {{ ev.detail }}</span>
+      {% elif ev.event == 'signed' %}<br><span class="small">{{ ev.detail }}, IP {{ ev.ip }}<br>{{ ev.ua }}</span>
+      {% elif ev.detail %}<span class="muted small">{{ ev.detail }}</span>{% endif %}</li>{% endfor %}
+    </ul>
+    {% if summary.views %}<p class="small muted" style="margin-top:8px">Viewed {{ summary.views }} time{{ 's' if summary.views != 1 }}, first at {{ summary.first_view|dt }}.</p>{% endif %}
+    {% else %}<div class="empty">No events yet.</div>{% endif %}
+    {% if s.status == 'signed' %}<p class="small muted" style="margin-top:8px">The certificate PDF lists the document hash, signer block, and every event above. It was emailed to the signer and the firm with the original file attached.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

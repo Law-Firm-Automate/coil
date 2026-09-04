@@ -1,0 +1,40 @@
+{% extends "base.html" %}{% block title %}Request a signature{% endblock %}{% block content %}
+<div class="topbar"><h1>Request a signature</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/signatures">All requests</a></div></div>
+{% if not doc %}
+<div class="card" style="max-width:640px">
+  <p class="muted">Pick the uploaded document you want signed. You can also use the Request signature link next to any file on the <a href="/documents">Documents</a> page.</p>
+  <form method="get" action="/signatures/new">
+    <label>Document</label>
+    <select name="document_id" required><option value="">Choose</option>{% for d in docs %}<option value="{{ d.id }}">{{ d.name }} ({{ d.matter.label if d.matter else 'no matter' }})</option>{% endfor %}</select>
+    <div class="actions"><button class="btn">Continue</button></div>
+  </form>
+  {% if not docs %}<div class="empty">No documents uploaded yet. <a href="/documents">Upload one</a> first.</div>{% endif %}
+</div>
+{% else %}
+<div class="grid c2">
+  <div class="card">
+    <form method="post" action="/signatures/new">{{ csrf() }}
+      <input type="hidden" name="document_id" value="{{ doc.id }}">
+      <label>Title shown to the signer</label><input type="text" name="title" value="{{ title }}" maxlength="300" required>
+      <label>Signer</label>
+      <select name="contact_id" required>{% for c, role in choices %}<option value="{{ c.id }}" {{ 'selected' if c.id == contact_id }}>{{ c.display_name }} ({{ role }}){% if not c.email %}, no email{% endif %}</option>{% endfor %}</select>
+      {% if not choices %}<p class="small muted">This matter has no client or party with a contact record, so there is nobody to send to.</p>{% endif %}
+      <label>Message to the signer (optional)</label><textarea name="message" style="min-height:90px" placeholder="Please review and sign by Friday.">{{ message }}</textarea>
+      <div class="actions">
+        <button class="btn" name="action" value="send" {{ 'disabled' if not choices }}>Send now</button>
+        <button class="btn secondary" name="action" value="draft" {{ 'disabled' if not choices }}>Save as draft</button>
+      </div>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Document</h2>
+    <dl class="kv">
+      <dt>File</dt><dd><a href="/documents/{{ doc.id }}/download">{{ doc.name }}</a><br><span class="small muted">{{ doc.mime }}, {% if doc.size >= 1048576 %}{{ (doc.size / 1048576)|round(1) }} MB{% else %}{{ (doc.size / 1024)|round(1) }} KB{% endif %}</span></dd>
+      <dt>Matter</dt><dd>{% if doc.matter %}<a href="/matters/{{ doc.matter_id }}">{{ doc.matter.label }}</a>{% endif %}</dd>
+      <dt>Uploaded</dt><dd>{{ doc.created_at|dt }}</dd>
+    </dl>
+    <p class="small muted">The signer gets an email with a link, types their name, and clicks Sign. PDFs and images show inline on the sign page; other file types are offered as a download. The file's SHA-256 is computed when you send, and the signature record binds the signer's name, IP address, and timestamp to that hash.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

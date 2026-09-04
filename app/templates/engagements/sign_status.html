@@ -1,15 +1,17 @@
 {% extends "public.html" %}{% block title %}{{ e.subject or 'Engagement letter' }}{% endblock %}{% block content %}
+{% set lang = lang_for(e.contact) %}
+{% set contact = t('sign.contact_at', lang, firm=firm().name, phone=firm().phone) if firm().phone else firm().name %}
 <div class="card">
   <h1 style="font-size:1.3rem;margin:0 0 12px">{{ e.subject or 'Engagement letter' }}</h1>
   {% if e.status == 'signed' %}
-    <p>This letter was signed by <strong>{{ e.signer_name }}</strong> on {{ e.signed_at|dt }} UTC.</p>
-    <p><a class="btn" href="/sign/{{ e.token }}/pdf">Download the signed PDF</a></p>
+    <p>{{ t('sign.status.signed_letter', lang, name=e.signer_name, when=e.signed_at|dt) }}</p>
+    <p><a class="btn" href="/sign/{{ e.token }}/pdf">{{ t('sign.done.download_pdf', lang) }}</a></p>
   {% elif e.status == 'declined' %}
-    <p>This letter was declined. If that was a mistake, contact {{ firm().name }}{% if firm().phone %} at {{ firm().phone }}{% endif %}.</p>
+    <p>{{ t('sign.status.declined_letter', lang, contact=contact) }}</p>
   {% elif e.status == 'void' %}
-    <p>This letter is no longer available. Contact {{ firm().name }}{% if firm().phone %} at {{ firm().phone }}{% endif %} if you were expecting to sign it.</p>
+    <p>{{ t('sign.status.void_letter', lang, contact=contact) }}</p>
   {% else %}
-    <p>This letter has not been sent yet.</p>
+    <p>{{ t('sign.status.not_sent_letter', lang) }}</p>
   {% endif %}
 </div>
 {% endblock %}

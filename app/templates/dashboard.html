@@ -1,28 +1,67 @@
 {% extends "base.html" %}{% block title %}Dashboard{% endblock %}{% block content %}
+<style>.dash>.card{margin-bottom:0}.dash .span2{grid-column:span 2}.dash .span4{grid-column:span 4}@media(max-width:1000px){.dash .span2,.dash .span4{grid-column:span 1}}.dash h2{margin-top:0}</style>
 <div class="topbar"><h1>Dashboard</h1>
 <div class="actions" style="margin:0">
   {% if timer %}<span class="timerbar">Timer: <strong data-timer-seconds="{{ timer.elapsed_seconds() }}" data-timer-running="{{ 0 if timer.paused else 1 }}"></strong> {{ timer.matter.label if timer.matter else '' }} <a href="/time/timer">manage</a></span>{% else %}<a class="btn secondary small" href="/time/timer">Start timer</a>{% endif %}
-  <a class="btn small" href="/time/new">Log time</a><a class="btn small secondary" href="/time/expenses/new" title="Snap a receipt with your phone">Receipt</a><a class="btn small secondary" href="/matters/new">New matter</a>
+  <a class="btn small" href="/time/new">Log time</a><a class="btn small secondary" href="/time/expenses/new" title="Snap a receipt with your phone">Receipt</a><a class="btn small secondary" href="/matters/new">New matter</a><a class="btn small secondary" href="{{ url_for('dashboard.customize') }}" title="Pick and order the cards on this page">Customize</a>
 </div></div>
-<div class="grid c4">
-  <div class="card stat"><div class="label">Open matters</div><div class="value">{{ open_matters }}</div></div>
-  <div class="card stat"><div class="label">Outstanding A/R</div><div class="value">{{ ar|money }}</div><div class="small muted">{{ overdue|length }} overdue</div></div>
-  <div class="card stat"><div class="label">Unbilled time</div><div class="value">{{ wip|money }}</div></div>
-  <div class="card stat"><div class="label">Trust balance</div><div class="value">{{ trust_total|money }}</div></div>
-</div>
-<div class="grid c2">
-  <div class="card"><h2>Tasks and deadlines</h2>
+<div class="grid c4 dash">
+{% for key in cards %}{% set kind = card_defs[key][1] %}
+{% if key == 'open_matters' %}
+  <div class="card stat" data-card="open_matters"><div class="label">Open matters</div><div class="value">{{ open_matters }}</div></div>
+{% elif key == 'ar' %}
+  <div class="card stat" data-card="ar"><div class="label">Outstanding A/R</div><div class="value">{{ ar|money }}</div><div class="small muted">{{ ar_overdue_count }} overdue</div></div>
+{% elif key == 'wip' %}
+  <div class="card stat" data-card="wip"><div class="label">Unbilled time</div><div class="value">{{ wip|money }}</div></div>
+{% elif key == 'trust' %}
+  <div class="card stat" data-card="trust"><div class="label">Trust balance</div><div class="value">{{ trust_total|money }}</div></div>
+{% elif key == 'my_hours_week' %}
+  <div class="card stat" data-card="my_hours_week"><div class="label">My hours this week</div><div class="value">{{ week_minutes|hours }}</div><div class="small muted">logged in the last 7 days</div></div>
+{% elif key == 'pending_approvals' %}
+  <div class="card span2" data-card="pending_approvals"><h2>Invoices awaiting approval{% if pending_approvals_count %} <span class="badge pending">{{ pending_approvals_count }}</span>{% endif %}</h2>
+    {% if pending_approvals %}<table>{% for i in pending_approvals %}<tr><td><a href="/invoices/{{ i.id }}">{{ i.number }}</a> {{ i.client.display_name }}{% if i.created_by %} <span class="small muted">by {{ i.created_by.name }}</span>{% endif %}</td><td class="num">{{ i.total_cents|money }}</td></tr>{% endfor %}</table>
+    {% if pending_approvals_count > pending_approvals|length %}<a class="small" href="/invoices?status=pending">See all {{ pending_approvals_count }}</a>{% endif %}
+    {% else %}<div class="empty">Nothing waiting for approval.</div>{% endif %}
+  </div>
+{% elif key == 'tasks' %}
+  <div class="card span2" data-card="tasks"><h2>Tasks</h2>
     {% if tasks %}<table>{% for t in tasks %}<tr><td>{% if t.is_overdue %}<span class="badge overdue">overdue</span> {% endif %}<a href="/tasks/{{ t.id }}">{{ t.title }}</a>{% if t.matter %} <span class="muted small">{{ t.matter.number }}</span>{% endif %}</td><td class="nowrap">{{ t.due_on|d }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">Nothing due.</div>{% endif %}
-    {% if deadlines %}<h3 style="margin-top:14px">Limitations periods within 90 days</h3><table>{% for m in deadlines %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td class="nowrap"><strong>{{ m.sol_date|d }}</strong></td></tr>{% endfor %}</table>{% endif %}
   </div>
-  <div class="card"><h2>Waiting on clients</h2>
-    {% if leads %}<h3>New intake leads</h3><table>{% for l in leads %}<tr><td><a href="/intake/{{ l.id }}">{{ l.name }}</a> <span class="muted small">{{ l.matter_type }}</span></td><td class="nowrap small muted">{{ l.created_at|dt }}</td></tr>{% endfor %}</table>{% endif %}
-    {% if engagements %}<h3 style="margin-top:10px">Engagement letters out</h3><table>{% for e in engagements %}<tr><td><a href="/engagements/{{ e.id }}">{{ e.contact.display_name }}</a> <span class="badge {{ e.status }}">{{ e.status }}</span>{% if e.view_count %} <span class="small muted">viewed {{ e.view_count }}x</span>{% endif %}</td><td class="nowrap small muted">{{ e.sent_at|dt }}</td></tr>{% endfor %}</table>{% endif %}
-    {% if overdue %}<h3 style="margin-top:10px">Overdue invoices</h3><table>{% for i in overdue %}<tr><td><a href="/invoices/{{ i.id }}">{{ i.number }}</a> {{ i.client.display_name }}</td><td class="num">{{ i.balance_cents|money }}</td></tr>{% endfor %}</table>{% endif %}
-    {% if not leads and not engagements and not overdue %}<div class="empty">Nothing waiting.</div>{% endif %}
+{% elif key == 'deadlines' %}
+  <div class="card span2" data-card="deadlines"><h2>Limitations periods within 90 days</h2>
+    {% if deadlines %}<table>{% for m in deadlines %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td class="nowrap"><strong>{{ m.sol_date|d }}</strong></td></tr>{% endfor %}</table>{% else %}<div class="empty">No limitations deadlines in the next 90 days.</div>{% endif %}
   </div>
-</div>
-<div class="card"><h2>Recent matters</h2>{% if recent_matters %}<table><tr><th>Matter</th><th>Client</th><th>Billing</th><th>Status</th><th class="num">Unbilled</th><th class="num">Trust</th></tr>
+{% elif key == 'leads' %}
+  <div class="card span2" data-card="leads"><h2>New intake leads</h2>
+    {% if leads %}<table>{% for l in leads %}<tr><td><a href="/intake/{{ l.id }}">{{ l.name }}</a> <span class="muted small">{{ l.matter_type }}</span></td><td class="nowrap small muted">{{ l.created_at|dt }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">No new leads.</div>{% endif %}
+  </div>
+{% elif key == 'engagements' %}
+  <div class="card span2" data-card="engagements"><h2>Engagement letters out</h2>
+    {% if engagements %}<table>{% for e in engagements %}<tr><td><a href="/engagements/{{ e.id }}">{{ e.contact.display_name }}</a> <span class="badge {{ e.status }}">{{ e.status }}</span>{% if e.view_count %} <span class="small muted">viewed {{ e.view_count }}x</span>{% endif %}</td><td class="nowrap small muted">{{ e.sent_at|dt }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">No engagement letters waiting.</div>{% endif %}
+  </div>
+{% elif key == 'overdue' %}
+  <div class="card span2" data-card="overdue"><h2>Overdue invoices</h2>
+    {% if overdue %}<table>{% for i in overdue %}<tr><td><a href="/invoices/{{ i.id }}">{{ i.number }}</a> {{ i.client.display_name }} <span class="small muted">due {{ i.due_on|d }}</span></td><td class="num">{{ i.balance_cents|money }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">Nothing overdue.</div>{% endif %}
+  </div>
+{% elif key == 'evergreen' %}
+  <div class="card span2" data-card="evergreen"><h2>Evergreen retainers</h2>
+    {% if evergreen is none %}<div class="empty">No data. The evergreen check is not available yet.</div>
+    {% elif evergreen %}<table><tr><th>Matter</th><th class="num">In trust</th><th class="num">Short by</th></tr>{% for m, bal, short in evergreen %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a> <span class="small muted">min {{ m.trust_minimum_cents|money }}</span></td><td class="num">{{ bal|money }}</td><td class="num" style="color:var(--warn)">{{ short|money }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">Every evergreen retainer is at or above its minimum.</div>{% endif %}
+  </div>
+{% elif key == 'unsigned_documents' %}
+  <div class="card span2" data-card="unsigned_documents"><h2>Documents awaiting signature</h2>
+    {% if unsigned_documents %}<table>{% for s in unsigned_documents %}<tr><td><a href="/signatures/{{ s.id }}">{{ s.title or s.document.name }}</a> <span class="small muted">{{ s.contact.display_name }}</span> <span class="badge {{ s.status }}">{{ s.status }}</span></td><td class="nowrap small muted">{{ s.sent_at|dt }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">No signature requests out.</div>{% endif %}
+  </div>
+{% elif key == 'portal_messages' %}
+  <div class="card span2" data-card="portal_messages"><h2>Unread portal messages{% if portal_messages_count %} <span class="badge new">{{ portal_messages_count }}</span>{% endif %}</h2>
+    {% if portal_messages %}<table>{% for msg in portal_messages %}<tr><td><a href="/messages/{{ msg.contact_id }}">{{ msg.contact.display_name if msg.contact else '(unknown)' }}</a>{% if msg.matter %} <span class="small muted">{{ msg.matter.number }}</span>{% endif %}<div class="small muted">{{ msg.body[:120] }}{% if msg.body|length > 120 %}...{% endif %}</div></td><td class="nowrap small muted">{{ msg.created_at|dt }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">No unread portal messages.</div>{% endif %}
+  </div>
+{% elif key == 'recent_matters' %}
+  <div class="card span4" data-card="recent_matters"><h2>Recent matters</h2>{% if recent_matters %}<table><tr><th>Matter</th><th>Client</th><th>Billing</th><th>Status</th><th class="num">Unbilled</th><th class="num">Trust</th></tr>
 {% for m in recent_matters %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td>{{ m.client.display_name }}</td><td>{{ m.billing_type }}</td><td><span class="badge {{ m.status }}">{{ m.status }}</span></td><td class="num">{{ (m.unbilled_time_cents() + m.unbilled_expense_cents())|money }}</td><td class="num">{{ m.trust_balance_cents()|money }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">No matters yet. <a href="/matters/new">Create one</a> or <a href="/intake">convert an intake lead</a>.</div>{% endif %}</div>
-<p class="small muted">This week you logged {{ week_minutes|hours }} hours.</p>
+{% endif %}
+{% endfor %}
+</div>
+<p class="small muted" style="margin-top:14px">{% if customized %}Showing your own card selection.{% else %}Showing the default cards.{% endif %} <a href="{{ url_for('dashboard.customize') }}">Customize</a></p>
 {% endblock %}

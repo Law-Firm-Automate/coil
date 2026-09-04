@@ -1,10 +1,10 @@
-{% extends "public.html" %}{% block title %}Client portal{% endblock %}{% block content %}
+{% extends "public.html" %}{% block title %}{{ t('portal.title', lang) }}{% endblock %}{% block content %}
 <div class="card" style="max-width:480px">
-  <h1>Client portal</h1>
-  <p class="muted">Enter the email address we have on file and we will send you a sign-in link. No password needed.</p>
+  <h1>{{ t('portal.title', lang) }}</h1>
+  <p class="muted">{{ t('portal.login.intro', lang) }}</p>
   <form method="post">{{ csrf() }}
-    <label>Email</label><input type="email" name="email" required autofocus>
-    <div class="actions"><button class="btn">Send me a sign-in link</button></div>
+    <label>{{ t('portal.login.email', lang) }}</label><input type="email" name="email" required autofocus>
+    <div class="actions"><button class="btn">{{ t('portal.login.button', lang) }}</button></div>
   </form>
 </div>
 {% endblock %}

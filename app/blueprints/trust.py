@@ -291,26 +291,22 @@ def reconcile_report(recon_id):
 
 
 # ==== request an online deposit ====
-@bp.route("/request-deposit", methods=["POST"])
-@login_required
-def request_deposit():
-    cid = request.form.get("client_id", "")
-    mid = request.form.get("matter_id", "")
-    client = db.session.get(Contact, int(cid)) if cid.isdigit() else None
-    matter = db.session.get(Matter, int(mid)) if mid.isdigit() else None
-    amount = parse_money(request.form.get("amount"))
+def send_deposit_request(client, matter, amount_cents, user_id=None):
+    """Email the client a trust deposit request for amount_cents: a Stripe checkout link when Stripe is
+    configured, otherwise check and mailing instructions. Adds an audit row; the caller commits.
+
+    Returns "stripe" or "mail" on success. Raises ValueError with a plain message when nothing was sent.
+    Shared by the /trust/request-deposit route and the evergreen retainer reminder in app/cli.py.
+    """
     if not client:
-        flash("Pick a client.", "error")
-        return redirect(url_for("trust.index"))
+        raise ValueError("Pick a client.")
     if not client.email:
-        flash(f"{client.display_name} has no email address on file.", "error")
-        return redirect(url_for("trust.index"))
+        raise ValueError(f"{client.display_name} has no email address on file.")
     if matter and matter.client_id != client.id:
-        flash("That matter does not belong to the selected client.", "error")
-        return redirect(url_for("trust.index"))
+        raise ValueError("That matter does not belong to the selected client.")
+    amount = int(amount_cents or 0)
     if amount <= 0:
-        flash("Enter a positive amount.", "error")
-        return redirect(url_for("trust.index"))
+        raise ValueError("Enter a positive amount.")
     firm = Firm.get()
     base_url = current_app.config["BASE_URL"]
     purpose = f"{matter.label}" if matter else "your matters with us"
@@ -331,8 +327,7 @@ def request_deposit():
             )
         except Exception as e:  # network or Stripe error; nothing was written
             current_app.logger.exception("stripe checkout for trust deposit failed")
-            flash(f"Stripe could not create a checkout link: {e}", "error")
-            return redirect(url_for("trust.index"))
+            raise ValueError(f"Stripe could not create a checkout link: {e}")
         url = sess["url"] if hasattr(sess, "__getitem__") else sess.url
         html = (f"<p>{firm.name} is asking for a deposit of <strong>{amt}</strong> to our client trust account "
                 f"for {purpose}.</p>"
@@ -344,31 +339,67 @@ def request_deposit():
                 f"Pay securely here: {url}\n\nDeposited money stays in trust and belongs to you until it is applied "
                 f"to an invoice for completed work. Unused funds are returned.")
         send_email(client.email, f"Trust deposit request from {firm.name}: {amt}", html, text)
-        audit("trust_request_deposit", "contact", client.id, f"{amt} stripe link emailed to {client.email}",
-              current_user().id)
-        db.session.commit()
+        audit("trust_request_deposit", "contact", client.id, f"{amt} stripe link emailed to {client.email}", user_id)
+        return "stripe"
+    acct = firm.trust_bank_name or "our client trust account"
+    last4 = f" (account ending {firm.trust_account_last4})" if firm.trust_account_last4 else ""
+    memo = matter.number if matter else client.display_name
+    addr = (firm.address or "").replace("\n", "<br>")
+    html = (f"<p>{firm.name} is asking for a deposit of <strong>{amt}</strong> to our client trust account "
+            f"for {purpose}.</p>"
+            f"<p>Please make a check payable to <strong>{firm.name}, {acct}</strong>{last4} and write "
+            f"<strong>{memo}</strong> in the memo line. Mail or bring it to:</p><p>{addr}</p>"
+            f"<p>If you prefer to send a wire, reply to this email and we will send the routing details "
+            f"by phone.</p>"
+            f"<p>Money you deposit stays in the trust account and belongs to you until it is applied to an "
+            f"invoice for work already done. Any unused balance is returned to you.</p>")
+    text = (f"{firm.name} is asking for a deposit of {amt} to our client trust account for {purpose}.\n\n"
+            f"Make a check payable to {firm.name}, {acct}{last4}, memo: {memo}.\nMail to:\n{firm.address}\n\n"
+            f"Deposited money stays in trust and belongs to you until it is applied to an invoice for "
+            f"completed work. Unused funds are returned.")
+    send_email(client.email, f"Trust deposit request from {firm.name}: {amt}", html, text)
+    audit("trust_request_deposit", "contact", client.id, f"{amt} mailing instructions emailed to {client.email}",
+          user_id)
+    return "mail"
+
+
+def evergreen_shortfalls():
+    """Open matters whose trust balance is below their evergreen minimum.
+
+    Returns [(matter, balance_cents, shortfall_cents)] where shortfall = replenish_to - balance (or
+    minimum - balance when no replenish target is set). Used by the reminders CLI and the dashboard card.
+    """
+    out = []
+    mbal = matter_balances()
+    q = Matter.query.filter(Matter.status != "closed", Matter.trust_minimum_cents > 0).order_by(Matter.number)
+    for m in q.all():
+        bal = mbal.get(m.id, 0)
+        if bal < (m.trust_minimum_cents or 0):
+            target = m.trust_replenish_to_cents or m.trust_minimum_cents or 0
+            shortfall = max(0, target - bal)
+            if shortfall > 0:
+                out.append((m, bal, shortfall))
+    return out
+
+
+@bp.route("/request-deposit", methods=["POST"])
+@login_required
+def request_deposit():
+    cid = request.form.get("client_id", "")
+    mid = request.form.get("matter_id", "")
+    client = db.session.get(Contact, int(cid)) if cid.isdigit() else None
+    matter = db.session.get(Matter, int(mid)) if mid.isdigit() else None
+    amount = parse_money(request.form.get("amount"))
+    try:
+        mode = send_deposit_request(client, matter, amount, user_id=current_user().id)
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("trust.index"))
+    db.session.commit()
+    amt = cents_to_str(amount)
+    if mode == "stripe":
         flash(f"Emailed {client.email} a secure Stripe link for a {amt} trust deposit.", "ok")
     else:
-        acct = firm.trust_bank_name or "our client trust account"
-        last4 = f" (account ending {firm.trust_account_last4})" if firm.trust_account_last4 else ""
-        memo = matter.number if matter else client.display_name
-        addr = (firm.address or "").replace("\n", "<br>")
-        html = (f"<p>{firm.name} is asking for a deposit of <strong>{amt}</strong> to our client trust account "
-                f"for {purpose}.</p>"
-                f"<p>Please make a check payable to <strong>{firm.name}, {acct}</strong>{last4} and write "
-                f"<strong>{memo}</strong> in the memo line. Mail or bring it to:</p><p>{addr}</p>"
-                f"<p>If you prefer to send a wire, reply to this email and we will send the routing details "
-                f"by phone.</p>"
-                f"<p>Money you deposit stays in the trust account and belongs to you until it is applied to an "
-                f"invoice for work already done. Any unused balance is returned to you.</p>")
-        text = (f"{firm.name} is asking for a deposit of {amt} to our client trust account for {purpose}.\n\n"
-                f"Make a check payable to {firm.name}, {acct}{last4}, memo: {memo}.\nMail to:\n{firm.address}\n\n"
-                f"Deposited money stays in trust and belongs to you until it is applied to an invoice for "
-                f"completed work. Unused funds are returned.")
-        send_email(client.email, f"Trust deposit request from {firm.name}: {amt}", html, text)
-        audit("trust_request_deposit", "contact", client.id, f"{amt} mailing instructions emailed to {client.email}",
-              current_user().id)
-        db.session.commit()
         flash(f"Stripe is not configured, so {client.email} was emailed check and mailing instructions for a "
               f"{amt} trust deposit.", "ok")
     return redirect(url_for("trust.index"))

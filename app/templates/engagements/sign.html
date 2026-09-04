@@ -1,23 +1,24 @@
 {% extends "public.html" %}{% block title %}{{ e.subject or 'Engagement letter' }}{% endblock %}{% block content %}
+{% set lang = lang_for(e.contact) %}
 <h1 style="font-size:1.3rem;margin:0 0 12px">{{ e.subject or 'Engagement letter' }}</h1>
 <div class="letter">{{ e.body_html|safe }}</div>
 <div class="card" style="margin-top:18px">
-  <h2>Sign this letter</h2>
+  <h2>{{ t('sign.letter.section', lang) }}</h2>
   {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
   <form method="post" action="/sign/{{ e.token }}">
     <div class="row">
-      <div><label>Your full name (this is your signature)</label><input type="text" name="signer_name" value="{{ name }}" required autocomplete="name"></div>
-      <div><label>Email</label><input type="email" name="signer_email" value="{{ email }}" autocomplete="email"></div>
+      <div><label>{{ t('sign.name', lang) }}</label><input type="text" name="signer_name" value="{{ name }}" required autocomplete="name"></div>
+      <div><label>{{ t('sign.email', lang) }}</label><input type="email" name="signer_email" value="{{ email }}" autocomplete="email"></div>
     </div>
-    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin-top:14px"><input type="checkbox" name="agree" value="1" style="margin-top:4px"> I have read this letter and agree to its terms. I agree to sign it electronically.</label>
-    <div class="actions"><button class="btn">Sign</button></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin-top:14px"><input type="checkbox" name="agree" value="1" style="margin-top:4px"> {{ t('sign.agree_letter', lang) }}</label>
+    <div class="actions"><button class="btn">{{ t('sign.button', lang) }}</button></div>
   </form>
-  <details style="margin-top:14px"><summary class="small">I do not wish to sign</summary>
+  <details style="margin-top:14px"><summary class="small">{{ t('sign.decline_summary', lang) }}</summary>
     <form method="post" action="/sign/{{ e.token }}/decline" style="margin-top:8px">
-      <label>Reason (optional)</label><input type="text" name="reason" maxlength="300">
-      <div class="actions"><button class="btn secondary small" data-confirm="Decline this engagement letter?">Decline</button></div>
+      <label>{{ t('sign.reason', lang) }}</label><input type="text" name="reason" maxlength="300">
+      <div class="actions"><button class="btn secondary small" data-confirm="{{ t('sign.decline_confirm_letter', lang) }}">{{ t('sign.decline', lang) }}</button></div>
     </form>
   </details>
 </div>
-<p class="small muted">Your name, IP address, browser, and the time of signing are recorded and attached to the signed copy.</p>
+<p class="small muted">{{ t('sign.record_note', lang) }}</p>
 {% endblock %}

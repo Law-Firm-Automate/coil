@@ -1,13 +1,15 @@
 {% extends "base.html" %}{% block title %}Users{% endblock %}{% block content %}
-<div class="topbar"><h1>Users</h1><div class="actions" style="margin:0"><a class="btn small" href="/settings/users/new">Add user</a><a class="btn small secondary" href="/settings">Settings</a></div></div>
+<div class="topbar"><h1>Users</h1><div class="actions" style="margin:0"><a class="btn small" href="/settings/users/new">Add user</a><a class="btn small secondary" href="/settings/offices">Offices</a><a class="btn small secondary" href="/settings">Settings</a></div></div>
 <div class="card">
-<table><tr><th>Name</th><th>Email</th><th>Role</th><th class="num">Rate</th><th>Initials</th><th>Status</th><th></th></tr>
+<table><tr><th>Name</th><th>Email</th><th>Role</th><th>Office</th><th class="num">Rate</th><th class="num">Cost rate</th><th>Initials</th><th>Status</th><th></th></tr>
 {% for u in rows %}<tr>
-  <td><a href="/settings/users/{{ u.id }}/edit">{{ u.name }}</a></td><td>{{ u.email }}</td><td>{{ u.role }}</td>
-  <td class="num">{{ u.hourly_rate_cents|money }}</td><td>{{ u.initials }}</td>
+  <td><a href="/settings/users/{{ u.id }}/edit">{{ u.name }}</a></td><td>{{ u.email }}</td>
+  <td>{{ canonical_role(u.role) }}{% if u.role == 'staff' %} <span class="small muted">(legacy staff)</span>{% endif %}</td>
+  <td>{{ u.office.name if u.office else '' }}</td>
+  <td class="num">{{ u.hourly_rate_cents|money }}</td><td class="num">{{ (u.cost_rate_cents or 0)|money }}</td><td>{{ u.initials }}</td>
   <td>{% if u.is_active %}<span class="badge open">active</span>{% else %}<span class="badge closed">inactive</span>{% endif %}</td>
   <td class="small"><a href="/settings/users/{{ u.id }}/edit">Edit</a></td>
 </tr>{% endfor %}</table>
-<p class="small muted">Users are deactivated rather than deleted so their time entries and audit history stay intact.</p>
+<p class="small muted">Users are deactivated rather than deleted so their time entries and audit history stay intact. Roles: owner (everything), attorney, paralegal, billing, readonly. Open a user to see what each role covers.</p>
 </div>
 {% endblock %}

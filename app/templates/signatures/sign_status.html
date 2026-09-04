@@ -1,0 +1,16 @@
+{% extends "public.html" %}{% block title %}{{ title }}{% endblock %}{% block content %}
+{% set contact = t('sign.contact_at', lang, firm=firm().name, phone=firm().phone) if firm().phone else firm().name %}
+<div class="card">
+  <h1 style="font-size:1.3rem;margin:0 0 12px">{{ title }}</h1>
+  {% if s.status == 'signed' %}
+    <p>{{ t('sign.status.signed_doc', lang, name=s.signer_name, when=s.signed_at|dt) }}</p>
+    <p><a class="btn" href="/sign/doc/{{ s.token }}/certificate">{{ t('sign.done.download_cert', lang) }}</a> <a class="btn secondary" href="/sign/doc/{{ s.token }}/file">{{ t('sign.doc.download', lang) }}</a></p>
+  {% elif s.status == 'declined' %}
+    <p>{{ t('sign.status.declined_doc', lang, contact=contact) }}</p>
+  {% elif s.status == 'void' %}
+    <p>{{ t('sign.status.void_doc', lang, contact=contact) }}</p>
+  {% else %}
+    <p>{{ t('sign.status.not_sent_doc', lang) }}</p>
+  {% endif %}
+</div>
+{% endblock %}

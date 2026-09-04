@@ -23,7 +23,7 @@
 <tr>
   <td class="nowrap">{{ e.date|d }}</td>
   <td><a href="/matters/{{ e.matter_id }}">{{ e.matter.number }}</a> <span class="small muted">{{ e.matter.name }}</span></td>
-  <td>{{ e.description }}{% if e.activity_code %} <span class="small muted">{{ e.activity_code }}</span>{% endif %}</td>
+  <td>{{ e.description }}{% if e.task_code or e.activity_code %} <span class="small muted">{{ e.task_code }} {{ e.activity_code }}</span>{% endif %}</td>
   <td>{{ e.user.initials or e.user.name }}</td>
   <td class="num">{{ e.minutes|hours }}</td>
   <td class="num">{{ e.rate_cents|money }}</td>

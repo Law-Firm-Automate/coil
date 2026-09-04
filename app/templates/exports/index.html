@@ -20,4 +20,15 @@
   <p class="small muted" style="margin-top:12px">Amounts are in dollars with two decimals. Dates in the dumps are YYYY-MM-DD; the QuickBooks files use MM/DD/YYYY. Generated {{ today|d }}.</p>
 </div>
 </div>
+<div class="card"><h2>LEDES 1998B e-billing</h2>
+  <p class="small">Insurance carriers and corporate legal departments often require invoices as a LEDES 1998B file instead of a PDF. The file is pipe-delimited with one record per time entry and per expense, carrying the UTBMS task, activity and expense codes from your entries, hours to two decimals, the timekeeper, and the ids the client assigned: your firm id (Settings), the client id (contact), and the matter id (matter). Only sent invoices in the date range are included, and the export refuses and tells you what is missing when any of those ids is blank. Each invoice is stamped with the export time so you can see what has already gone out.</p>
+  {% if ledes_problems %}<ul class="small" style="color:var(--bad);margin:6px 0 10px 18px">{% for p in ledes_problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  <form method="get" action="/exports/ledes" class="row">
+    <div><label>From (issue date)</label><input type="date" name="from" value="{{ ledes_from|iso }}" required></div>
+    <div><label>To</label><input type="date" name="to" value="{{ ledes_to|iso }}" required></div>
+    <div><label>Client</label><select name="client_id"><option value="">All clients</option>{% for c in clients %}<option value="{{ c.id }}" {{ 'selected' if ledes_client_id == c.id }}>{{ c.display_name }}{% if not c.ledes_client_id %} (no LEDES id){% endif %}</option>{% endfor %}</select></div>
+    <div><label>&nbsp;</label><button class="btn secondary">Download LEDES file</button></div>
+  </form>
+  <p class="small muted" style="margin-top:8px">Firm LEDES id: {% if firm_settings.ledes_firm_id %}<strong>{{ firm_settings.ledes_firm_id }}</strong>{% else %}<span style="color:var(--bad)">not set</span>, add it under <a href="/settings">Settings</a>{% endif %}. Rates and totals are written in each invoice's currency without a currency column, as the 1998B layout has none.</p>
+</div>
 {% endblock %}

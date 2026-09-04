@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Settings{% endblock %}{% block content %}
 {% set u = current_user() %}
 <div class="topbar"><h1>Settings</h1>
-<div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/users">Users</a><a class="btn small secondary" href="/settings/integrations">Integrations</a><a class="btn small secondary" href="/engagements/templates">Letter templates</a>{% if u.role == 'owner' %}<a class="btn small secondary" href="/dev/outbox">Dev outbox</a>{% endif %}</div></div>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/users">Users</a><a class="btn small secondary" href="/settings/offices">Offices</a><a class="btn small secondary" href="/settings/templates">Matter templates</a><a class="btn small secondary" href="/settings/audit">Audit log</a><a class="btn small secondary" href="/settings/integrations">Integrations</a><a class="btn small secondary" href="/engagements/templates">Letter templates</a>{% if u.role == 'owner' %}<a class="btn small secondary" href="/dev/outbox">Dev outbox</a>{% endif %}</div></div>
 {% if u.role != 'owner' %}<div class="flash">Only the owner can change settings. You can read them here.</div>{% endif %}
 <form method="post" {% if u.role != 'owner' %}onsubmit="return false"{% endif %}>
   {{ csrf() }}<input type="hidden" name="_form" value="1">
@@ -16,6 +16,10 @@
       <div class="row">
         <div><label>Website</label><input type="text" name="website" value="{{ f.website }}"></div>
         <div><label>Timezone</label><input type="text" name="timezone" value="{{ f.timezone }}"></div>
+      </div>
+      <div class="row">
+        <div><label>Client-facing language</label><select name="default_language">{% for code, label in languages %}<option value="{{ code }}" {{ 'selected' if code == (f.default_language or 'en') }}>{{ label }}</option>{% endfor %}</select><div class="small muted">Used for the portal, invoice pages and client emails unless a contact sets their own.</div></div>
+        <div><label>Currency</label><select name="currency">{% for c in currencies %}<option value="{{ c }}" {{ 'selected' if c == (f.currency or 'USD') }}>{{ c }}</option>{% endfor %}</select><div class="small muted">Default for new matters. A matter can override it.</div></div>
       </div>
       <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="daily_agenda_email" value="1" {{ 'checked' if f.daily_agenda_email }}> Send each user a daily agenda email (python -m app.cli agenda)</label>
     </div>
@@ -43,6 +47,18 @@
       <label>Trust (IOLTA) account name</label><input type="text" name="trust_bank_name" value="{{ f.trust_bank_name }}">
       <label>Trust account last 4 digits</label><input type="text" name="trust_account_last4" value="{{ f.trust_account_last4 }}" maxlength="4">
       <label>Operating account name</label><input type="text" name="operating_bank_name" value="{{ f.operating_bank_name }}">
+    </div>
+    <div class="card"><h2>Invoice approval and interest</h2>
+      <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="require_invoice_approval" value="1" {{ 'checked' if f.require_invoice_approval }}> Invoices built by anyone other than the owner or billing staff need approval before sending</label>
+      <div class="row" style="margin-top:8px">
+        <div><label>Interest on overdue invoices (annual %)</label><input type="number" name="interest_apr" step="0.01" min="0" max="100" value="{{ (f.interest_apr_bps / 100)|round(2) }}"></div>
+        <div><label>Grace days after the due date</label><input type="number" name="interest_grace_days" value="{{ f.interest_grace_days }}" min="0"></div>
+      </div>
+      <p class="small muted">0% turns interest off. When on, python -m app.cli interest adds one interest line per overdue invoice per month.</p>
+    </div>
+    <div class="card"><h2>LEDES billing</h2>
+      <label>Law firm id (LAW_FIRM_ID, usually your tax id)</label><input type="text" name="ledes_firm_id" value="{{ f.ledes_firm_id }}">
+      <p class="small muted">Needed for LEDES 1998B exports to insurers and corporate clients. Each client and matter also carries its own carrier-assigned id.</p>
     </div>
   </div>
   {% if u.role == 'owner' %}<div class="actions"><button class="btn">Save settings</button></div>{% endif %}

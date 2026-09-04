@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% block title %}Audit log{% endblock %}{% block content %}
+<div class="topbar"><h1>Audit log</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/settings">Settings</a></div></div>
+<div class="card">
+  <form method="get" class="searchbar" style="flex-wrap:wrap">
+    <select name="user_id" style="width:auto"><option value="">Any user</option>{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == f.user_id }}>{{ u.name }}</option>{% endfor %}</select>
+    <select name="action" style="width:auto"><option value="">Any action</option>{% for a in actions %}<option value="{{ a }}" {{ 'selected' if a == f.action }}>{{ a.replace('_', ' ') }}</option>{% endfor %}</select>
+    <select name="entity" style="width:auto"><option value="">Any record type</option>{% for e in entities %}<option value="{{ e }}" {{ 'selected' if e == f.entity }}>{{ e.replace('_', ' ') }}</option>{% endfor %}</select>
+    <input type="number" name="entity_id" value="{{ f.entity_id }}" placeholder="Record id" style="max-width:110px">
+    <input type="date" name="from" value="{{ f['from'] }}" style="max-width:160px">
+    <input type="date" name="to" value="{{ f['to'] }}" style="max-width:160px">
+    <input type="text" name="q" value="{{ f.q }}" placeholder="Search details">
+    <button class="btn secondary">Filter</button>
+    {% if f.user_id or f.action or f.entity or f.entity_id or f['from'] or f['to'] or f.q %}<a class="small" href="/settings/audit">Clear</a>{% endif %}
+  </form>
+</div>
+<div class="card">
+<p class="small muted">{{ total }} entr{{ 'y' if total == 1 else 'ies' }}{% if pages > 1 %}, page {{ page }} of {{ pages }}{% endif %}.</p>
+{% if rows %}
+<table><tr><th>When</th><th>Who</th><th>Action</th><th>Record</th><th>Detail</th></tr>
+{% for a in rows %}<tr>
+  <td class="nowrap">{{ a.created_at|dt }}</td>
+  <td>{{ a.user.name if a.user else '<span class="muted">system</span>'|safe }}</td>
+  <td>{{ a.action.replace('_', ' ') if a.action else '' }}</td>
+  <td class="nowrap">{% set link = {'matter': '/matters/', 'contact': '/contacts/', 'invoice': '/invoices/', 'user': '/settings/users/', 'engagement': '/engagements/', 'task': '/tasks/', 'document': '/documents/', 'office': '/settings/offices/', 'matter_template': '/settings/templates/'}.get(a.entity) %}
+    {% if a.entity_id and link %}<a href="{{ link }}{{ a.entity_id }}{{ '/edit' if a.entity in ('user', 'office', 'matter_template') }}">{{ a.entity.replace('_', ' ') }} #{{ a.entity_id }}</a>{% else %}{{ (a.entity or '').replace('_', ' ') }}{% if a.entity_id %} #{{ a.entity_id }}{% endif %}{% endif %}</td>
+  <td class="small">{{ a.detail }}</td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">Nothing matches.</div>{% endif %}
+{% if pages > 1 %}
+{% set qs = 'user_id=' ~ f.user_id ~ '&action=' ~ f.action|urlencode ~ '&entity=' ~ f.entity|urlencode ~ '&entity_id=' ~ f.entity_id ~ '&from=' ~ f['from'] ~ '&to=' ~ f['to'] ~ '&q=' ~ f.q|urlencode %}
+<div class="actions">
+  {% if page > 1 %}<a class="btn small secondary" href="/settings/audit?{{ qs }}&page={{ page - 1 }}">Newer</a>{% endif %}
+  {% if page < pages %}<a class="btn small secondary" href="/settings/audit?{{ qs }}&page={{ page + 1 }}">Older</a>{% endif %}
+  <span class="small muted">{{ per_page }} per page</span>
+</div>
+{% endif %}
+</div>
+{% endblock %}

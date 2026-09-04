@@ -1,19 +1,39 @@
 {% extends "base.html" %}{% block title %}{{ 'Add user' if is_new else 'Edit user' }}{% endblock %}{% block content %}
-<div class="topbar"><h1>{{ 'Add user' if is_new else 'Edit ' ~ u.name }}</h1></div>
-<form method="post" class="card" style="max-width:640px">
+<div class="topbar"><h1>{{ 'Add user' if is_new else ('My account' if self_only else 'Edit ' ~ u.name) }}</h1></div>
+{% if self_only %}<div class="flash">You can change your name, email, initials and password here. Role, rates and office are set by the owner.</div>{% endif %}
+<form method="post" class="card" style="max-width:720px">
   {{ csrf() }}
   <div class="row">
     <div><label>Name</label><input type="text" name="name" value="{{ u.name or '' }}" required></div>
     <div><label>Email</label><input type="email" name="email" value="{{ u.email or '' }}" required></div>
-  </div>
-  <div class="row">
-    <div><label>Role</label><select name="role"><option value="staff" {{ 'selected' if u.role != 'owner' }}>Staff</option><option value="owner" {{ 'selected' if u.role == 'owner' }}>Owner</option></select></div>
-    <div><label>Hourly rate</label><input type="text" name="hourly_rate" value="{{ ((u.hourly_rate_cents or 0) / 100)|round(2) }}"></div>
     <div><label>Initials</label><input type="text" name="initials" value="{{ u.initials or '' }}" maxlength="6"></div>
   </div>
+  {% if not self_only %}
+  <label>Role</label>
+  <select name="role" id="role_select">{% for value, label, desc in roles %}<option value="{{ value }}" data-desc="{{ desc }}" {{ 'selected' if value == display_role }}>{{ label }}</option>{% endfor %}</select>
+  <div class="small muted" id="role_desc" style="margin:-4px 0 10px"></div>
+  <details style="margin-bottom:10px"><summary class="small">What each role can do</summary>
+    <table style="margin-top:6px">{% for value, label, desc in roles %}<tr><td class="nowrap"><strong>{{ label }}</strong></td><td class="small">{{ desc }}</td></tr>{% endfor %}</table>
+  </details>
+  <div class="row">
+    <div><label>Hourly rate (billed to clients)</label><input type="text" name="hourly_rate" value="{{ ((u.hourly_rate_cents or 0) / 100)|round(2) }}"></div>
+    <div><label>Cost rate (cost per hour to the firm)</label><input type="text" name="cost_rate" value="{{ ((u.cost_rate_cents or 0) / 100)|round(2) }}"><div class="small muted">Salary plus overhead per hour. Drives the matter profitability report.</div></div>
+    <div><label>Office</label><select name="office_id"><option value="">None</option>{% for o in offices %}<option value="{{ o.id }}" {{ 'selected' if o.id == u.office_id }}>{{ o.name }}{% if o.is_default %} (default){% endif %}</option>{% endfor %}</select>{% if not offices %}<div class="small muted"><a href="/settings/offices/new">Add an office</a> first.</div>{% endif %}</div>
+  </div>
+  {% endif %}
   <label>{{ 'Password (at least 8 characters)' if is_new else 'New password (leave blank to keep the current one)' }}</label>
   <input type="password" name="password" autocomplete="new-password" {{ 'required' if is_new }}>
-  {% if not is_new %}<label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if u.is_active }}> Active (untick to deactivate; users are never deleted)</label>{% endif %}
-  <div class="actions"><button class="btn">{{ 'Add user' if is_new else 'Save' }}</button><a class="btn secondary" href="/settings/users">Cancel</a></div>
+  {% if not is_new and not self_only %}<label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if u.is_active }}> Active (untick to deactivate; users are never deleted)</label>{% endif %}
+  <div class="actions"><button class="btn">{{ 'Add user' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/' if self_only else '/settings/users' }}">Cancel</a></div>
 </form>
+{% if not self_only %}
+<script>
+(function(){
+  var s=document.getElementById('role_select'),d=document.getElementById('role_desc');
+  if(!s)return;
+  function sync(){var o=s.options[s.selectedIndex];d.textContent=o?o.getAttribute('data-desc'):'';}
+  s.addEventListener('change',sync);sync();
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}{{ 'Add office' if is_new else 'Edit ' ~ o.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'Add office' if is_new else 'Edit office' }}</h1></div>
+<form method="post" class="card" style="max-width:640px">
+  {{ csrf() }}
+  <label>Office name</label><input type="text" name="name" value="{{ o.name or '' }}" required placeholder="Downtown, or Austin office">
+  <label>Address (printed on invoices for this office's matters)</label><textarea name="address" style="min-height:60px">{{ o.address or '' }}</textarea>
+  <div class="row">
+    <div><label>Phone</label><input type="tel" name="phone" value="{{ o.phone or '' }}"></div>
+    <div><label>Email</label><input type="email" name="email" value="{{ o.email or '' }}"></div>
+  </div>
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_default" value="1" {{ 'checked' if o.is_default }}> Default office for new matters and users</label>
+  <div class="actions"><button class="btn">{{ 'Add office' if is_new else 'Save' }}</button><a class="btn secondary" href="/settings/offices">Cancel</a></div>
+</form>
+{% endblock %}

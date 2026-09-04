@@ -1,6 +1,7 @@
-"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda` or `.venv/bin/python -m app.cli reminders`.
+"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders` or `... interest`.
 
-Both are idempotent per day: they write an AuditLog row and skip work that already has one today.
+All three are idempotent: agenda and reminders write an AuditLog row and skip work that already has one today
+(evergreen top-up requests use a 14-day window), interest checks Invoice.last_interest_on for the month.
 """
 import sys
 from datetime import date, datetime, timedelta
@@ -165,10 +166,68 @@ def run_reminders():
     return inv_count, eng_count
 
 
+# ---------------------------------------------------------------------------
+# evergreen retainer top-ups (runs with `reminders`)
+# ---------------------------------------------------------------------------
+EVERGREEN_DAYS = 14
+
+
+def run_evergreen():
+    """Email a trust top-up request for every open matter under its evergreen minimum, at most once per
+    matter every 14 days (AuditLog action="evergreen_sent"). Returns the number of requests sent."""
+    from .blueprints.trust import evergreen_shortfalls, send_deposit_request
+    since = datetime.utcnow() - timedelta(days=EVERGREEN_DAYS)
+    sent = 0
+    for matter, balance, shortfall in evergreen_shortfalls():
+        recent = AuditLog.query.filter(AuditLog.action == "evergreen_sent", AuditLog.entity == "matter",
+                                       AuditLog.entity_id == matter.id, AuditLog.created_at >= since).first()
+        if recent:
+            continue
+        client = matter.client
+        if not client or not client.email:
+            audit("evergreen_skipped", "matter", matter.id, "client has no email")
+            db.session.commit()
+            continue
+        try:
+            send_deposit_request(client, matter, shortfall)
+        except ValueError as e:
+            audit("evergreen_skipped", "matter", matter.id, str(e)[:300])
+            db.session.commit()
+            continue
+        audit("evergreen_sent", "matter", matter.id,
+              f"balance {cents_to_str(balance)} below minimum {cents_to_str(matter.trust_minimum_cents)}; "
+              f"requested {cents_to_str(shortfall)} from {client.email}")
+        db.session.commit()
+        sent += 1
+    return sent
+
+
+# ---------------------------------------------------------------------------
+# interest on overdue invoices
+# ---------------------------------------------------------------------------
+def run_interest(today=None):
+    """Add one interest line per overdue invoice per month. Returns (invoices_charged, total_cents)."""
+    from .blueprints.invoices import apply_interest, OPEN_STATUSES
+    firm = Firm.get()
+    if not firm.interest_apr_bps:
+        return 0, 0
+    today = today or date.today()
+    cutoff = today - timedelta(days=firm.interest_grace_days or 0)
+    count = total = 0
+    for inv in Invoice.query.filter(Invoice.status.in_(list(OPEN_STATUSES)), Invoice.due_on != None,
+                                    Invoice.due_on < cutoff).order_by(Invoice.due_on).all():
+        cents = apply_interest(inv, firm=firm, today=today)
+        if cents:
+            db.session.commit()
+            count += 1
+            total += cents
+    return count, total
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
-    if not argv or argv[0] not in ("agenda", "reminders"):
-        print("usage: python -m app.cli agenda|reminders")
+    if not argv or argv[0] not in ("agenda", "reminders", "interest"):
+        print("usage: python -m app.cli agenda|reminders|interest")
         return 2
     from . import create_app
     app = create_app()
@@ -176,9 +235,13 @@ def main(argv=None):
         if argv[0] == "agenda":
             n = run_agenda()
             print(f"agenda: {n} email(s) sent")
+        elif argv[0] == "interest":
+            n, cents = run_interest()
+            print(f"interest: {n} invoice(s) charged, {cents_to_str(cents)} total")
         else:
             i, e = run_reminders()
-            print(f"reminders: {i} invoice, {e} engagement")
+            ev = run_evergreen()
+            print(f"reminders: {i} invoice, {e} engagement, {ev} evergreen top-up")
     return 0
 
 

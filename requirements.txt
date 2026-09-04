@@ -10,3 +10,4 @@ rapidfuzz==3.13.0
 requests==2.32.4
 python-dateutil==2.9.0.post0
 pypdf==5.6.0
+docxtpl==0.19.1

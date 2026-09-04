@@ -21,6 +21,9 @@
       <dt>Address</dt><dd style="white-space:pre-line">{{ c.address }}</dd>
       {% if c.tags %}<dt>Tags</dt><dd>{{ c.tags }}</dd>{% endif %}
       {% if c.aliases %}<dt>Other names</dt><dd style="white-space:pre-line">{{ c.aliases }}</dd>{% endif %}
+      <dt>Language</dt><dd>{% if c.language == 'es' %}Spanish{% elif c.language == 'en' %}English{% else %}<span class="muted">firm default</span>{% endif %}</dd>
+      {% if c.ledes_client_id %}<dt>LEDES client id</dt><dd>{{ c.ledes_client_id }}</dd>{% endif %}
+      {% for k, v in c.custom_fields.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
       <dt>Added</dt><dd>{{ c.created_at|d }}</dd>
     </dl>
     {% if c.notes %}<h3 style="margin-top:12px">Notes on file</h3><p style="white-space:pre-line">{{ c.notes }}</p>{% endif %}

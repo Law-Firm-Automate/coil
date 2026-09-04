@@ -9,14 +9,22 @@ from werkzeug.utils import secure_filename
 from ..extensions import db
 from ..models import Matter, TimeEntry, Timer, Expense, User, audit, now
 from ..helpers import login_required, current_user, parse_money, parse_date, parse_minutes
+from .ledes import choices as utbms_choices, valid_code
 
 bp = Blueprint("time", __name__, url_prefix="/time")
 
 EXPENSE_CATEGORIES = ["Filing fee", "Postage", "Copies", "Travel", "Expert", "Other"]
-ACTIVITY_CODES = ["", "A101 Plan and prepare", "A102 Research", "A103 Draft/revise", "A104 Review/analyze",
-                  "A105 Communicate (in firm)", "A106 Communicate (client)", "A107 Communicate (other)",
-                  "A108 Communicate (opposing)", "A109 Appear for/attend", "A110 Manage data/files",
-                  "A111 Other"]
+# UTBMS selects: [(code, label)] built from app/blueprints/ledes.py. Kept as module names so templates and
+# tests can reach them the same way they always have.
+ACTIVITY_CODES = utbms_choices("activity")
+TASK_CODES = utbms_choices("task")
+EXPENSE_CODES = utbms_choices("expense")
+
+
+def _code(form, field, kind):
+    """Accept 'A103' or the older 'A103 Draft/revise' style and keep only a valid UTBMS code."""
+    raw = (form.get(field) or "").strip().split(" ")[0]
+    return valid_code(kind, raw)
 
 
 def _dollars(cents):
@@ -90,7 +98,8 @@ def _entry_from_form(entry, form):
     entry.description = (form.get("description") or "").strip()
     entry.rate_cents = parse_money(form.get("rate"))
     entry.billable = bool(form.get("billable"))
-    entry.activity_code = (form.get("activity_code") or "").strip()[:20]
+    entry.activity_code = _code(form, "activity_code", "activity")
+    entry.task_code = _code(form, "task_code", "task")
     return None
 
 
@@ -107,7 +116,7 @@ def new():
         if err:
             flash(err, "error")
             return render_template("time/form.html", entry=entry, matters=matters, rates=rates,
-                                   activity_codes=ACTIVITY_CODES, form=request.form), 400
+                                   activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=request.form), 400
         db.session.add(entry)
         db.session.flush()
         audit("create", "time_entry", entry.id, f"{entry.minutes}m on {entry.matter.number}", u.id)
@@ -124,7 +133,7 @@ def new():
     elif matters:
         entry.rate_cents = rates.get(matters[0].id, 0)
     return render_template("time/form.html", entry=entry, matters=matters, rates=rates,
-                           activity_codes=ACTIVITY_CODES, form=None, next=request.args.get("next", ""))
+                           activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=None, next=request.args.get("next", ""))
 
 
 @bp.route("/<int:id>/edit", methods=["GET", "POST"])
@@ -139,19 +148,19 @@ def edit(id):
             flash("This entry is on an invoice and cannot be changed.", "error")
             return redirect(url_for("time.edit", id=id))
         return render_template("time/form.html", entry=entry, matters=matters, rates=rates,
-                               activity_codes=ACTIVITY_CODES, form=None, locked=True)
+                               activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=None, locked=True)
     if request.method == "POST":
         err = _entry_from_form(entry, request.form)
         if err:
             flash(err, "error")
             return render_template("time/form.html", entry=entry, matters=matters, rates=rates,
-                                   activity_codes=ACTIVITY_CODES, form=request.form), 400
+                                   activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=request.form), 400
         audit("update", "time_entry", entry.id, f"{entry.minutes}m", u.id)
         db.session.commit()
         flash("Time entry saved.", "ok")
         return redirect(url_for("time.index", matter_id=entry.matter_id))
     return render_template("time/form.html", entry=entry, matters=matters, rates=rates,
-                           activity_codes=ACTIVITY_CODES, form=None)
+                           activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=None)
 
 
 @bp.route("/<int:id>/delete", methods=["POST"])
@@ -290,6 +299,7 @@ def _expense_from_form(exp, form, files):
     exp.category = cat if cat in EXPENSE_CATEGORIES else "Other"
     exp.amount_cents = amount
     exp.billable = bool(form.get("billable"))
+    exp.expense_code = _code(form, "expense_code", "expense")
     receipt = _save_receipt(files.get("receipt"))
     if receipt:
         exp.receipt_path = receipt
@@ -308,7 +318,7 @@ def expense_new():
         if err:
             flash(err, "error")
             return render_template("time/expense_form.html", expense=exp, matters=matters,
-                                   categories=EXPENSE_CATEGORIES, form=request.form), 400
+                                   categories=EXPENSE_CATEGORIES, expense_codes=EXPENSE_CODES, form=request.form), 400
         db.session.add(exp)
         db.session.flush()
         audit("create", "expense", exp.id, f"{exp.category} {exp.amount_cents}c on {exp.matter.number}", u.id)
@@ -319,7 +329,7 @@ def expense_new():
             return redirect(nxt)
         return redirect(url_for("time.expenses", matter_id=exp.matter_id))
     exp = Expense(date=date.today(), billable=True, matter_id=matter_id, category="Other")
-    return render_template("time/expense_form.html", expense=exp, matters=matters, categories=EXPENSE_CATEGORIES,
+    return render_template("time/expense_form.html", expense=exp, matters=matters, categories=EXPENSE_CATEGORIES, expense_codes=EXPENSE_CODES,
                            form=None, next=request.args.get("next", ""))
 
 
@@ -334,18 +344,18 @@ def expense_edit(id):
             flash("This expense is on an invoice and cannot be changed.", "error")
             return redirect(url_for("time.expense_edit", id=id))
         return render_template("time/expense_form.html", expense=exp, matters=matters,
-                               categories=EXPENSE_CATEGORIES, form=None, locked=True)
+                               categories=EXPENSE_CATEGORIES, expense_codes=EXPENSE_CODES, form=None, locked=True)
     if request.method == "POST":
         err = _expense_from_form(exp, request.form, request.files)
         if err:
             flash(err, "error")
             return render_template("time/expense_form.html", expense=exp, matters=matters,
-                                   categories=EXPENSE_CATEGORIES, form=request.form), 400
+                                   categories=EXPENSE_CATEGORIES, expense_codes=EXPENSE_CODES, form=request.form), 400
         audit("update", "expense", exp.id, f"{exp.amount_cents}c", u.id)
         db.session.commit()
         flash("Expense saved.", "ok")
         return redirect(url_for("time.expenses", matter_id=exp.matter_id))
-    return render_template("time/expense_form.html", expense=exp, matters=matters, categories=EXPENSE_CATEGORIES,
+    return render_template("time/expense_form.html", expense=exp, matters=matters, categories=EXPENSE_CATEGORIES, expense_codes=EXPENSE_CODES,
                            form=None)
 
 

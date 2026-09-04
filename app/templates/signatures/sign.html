@@ -1,0 +1,35 @@
+{% extends "public.html" %}{% block title %}{{ title }}{% endblock %}{% block content %}
+<h1 style="font-size:1.3rem;margin:0 0 6px">{{ title }}</h1>
+<p class="muted">{{ t('sign.doc.from', lang, firm=firm().name) }}</p>
+{% if s.message %}<div class="card" style="white-space:pre-wrap">{{ s.message }}</div>{% endif %}
+<div class="card">
+  {% if inline and s.document.mime == 'application/pdf' %}
+    <iframe src="{{ file_url }}" title="{{ title }}" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:6px;background:#fff"></iframe>
+    <p class="small muted" style="margin-top:8px">{{ t('sign.doc.preview_note', lang) }} <a href="{{ file_url }}" target="_blank" rel="noopener">{{ t('sign.doc.open', lang) }}</a></p>
+  {% elif inline %}
+    <img src="{{ file_url }}" alt="{{ title }}" style="max-width:100%;border:1px solid var(--line);border-radius:6px">
+    <p class="small muted" style="margin-top:8px"><a href="{{ file_url }}" target="_blank" rel="noopener">{{ t('sign.doc.open', lang) }}</a></p>
+  {% else %}
+    <p><a class="btn" href="{{ file_url }}">{{ t('sign.doc.download', lang) }}</a> <span class="small muted">{{ s.document.name }}</span></p>
+  {% endif %}
+</div>
+<div class="card" style="margin-top:18px">
+  <h2>{{ t('sign.doc.section', lang) }}</h2>
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="/sign/doc/{{ s.token }}">
+    <div class="row">
+      <div><label>{{ t('sign.name', lang) }}</label><input type="text" name="signer_name" value="{{ name }}" required autocomplete="name"></div>
+      <div><label>{{ t('sign.email', lang) }}</label><input type="email" name="signer_email" value="{{ email }}" autocomplete="email"></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin-top:14px"><input type="checkbox" name="agree" value="1" style="margin-top:4px"> {{ t('sign.agree_doc', lang) }}</label>
+    <div class="actions"><button class="btn">{{ t('sign.button', lang) }}</button></div>
+  </form>
+  <details style="margin-top:14px"><summary class="small">{{ t('sign.decline_summary', lang) }}</summary>
+    <form method="post" action="/sign/doc/{{ s.token }}/decline" style="margin-top:8px">
+      <label>{{ t('sign.reason', lang) }}</label><input type="text" name="reason" maxlength="300">
+      <div class="actions"><button class="btn secondary small" data-confirm="{{ t('sign.decline_confirm_doc', lang) }}">{{ t('sign.decline', lang) }}</button></div>
+    </form>
+  </details>
+</div>
+<p class="small muted">{{ t('sign.record_note', lang) }}</p>
+{% endblock %}

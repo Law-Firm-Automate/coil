@@ -2,6 +2,25 @@
 <div class="topbar"><h1>{{ 'New matter' if is_new else 'Edit ' ~ m.label }}</h1></div>
 <form method="post" class="card" style="max-width:900px">
   {{ csrf() }}
+  {# ---- Agent B: matter template picker + office (keep as one block) ---- #}
+  <div class="row">
+    {% if is_new %}
+    <div><label>Start from a template</label>
+      <select name="template_pick" id="template_pick"><option value="">No template</option>{% for t in templates %}<option value="{{ t.id }}" {{ 'selected' if template and template.id == t.id }}>{{ t.name }}{% if t.practice_area %} ({{ t.practice_area }}){% endif %}</option>{% endfor %}</select>
+      <input type="hidden" name="template_id" value="{{ template.id if template else '' }}">
+      <div class="small muted">Picking one reloads this form with the template's defaults. <a href="/settings/templates">Manage templates</a></div>
+    </div>
+    {% endif %}
+    <div><label>Office</label><select name="office_id"><option value="">{{ 'Firm address' if not offices else 'None' }}</option>{% for o in offices %}<option value="{{ o.id }}" {{ 'selected' if o.id == m.office_id }}>{{ o.name }}{% if o.is_default %} (default){% endif %}</option>{% endfor %}</select>{% if not offices %}<div class="small muted">Invoices use the firm address until you <a href="/settings/offices">add offices</a>.</div>{% endif %}</div>
+  </div>
+  {% if is_new and template %}
+  <div class="flash" style="margin-top:10px"><strong>{{ template.name }}</strong>: when you open this matter it will add
+    {{ template.milestones|length }} milestone(s), {{ template.tasks|length }} task(s){% if template.sol_years %}, a limitations date {{ template.sol_years|round(1) }} year(s) after the opened date{% endif %}{% if template.custom_fields %} and {{ template.custom_fields|length }} custom field(s){% endif %}. Offsets count from the opened date below.
+    {% if template.tasks %}<div class="small" style="margin-top:4px">Tasks: {% for tk in template.tasks %}{{ tk.title }} (+{{ tk.offset_days or 0 }}d){{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+    {% if template.milestones %}<div class="small">Milestones: {% for ms in template.milestones %}{{ ms.description }} {{ (ms.amount_cents or 0)|money }}{{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+  </div>
+  {% endif %}
+  {# ---- end Agent B block ---- #}
   <div class="row">
     <div><label>Client</label>
       <select name="client_id" required><option value="">Choose a contact</option>{% for c in clients %}<option value="{{ c.id }}" {{ 'selected' if c.id == m.client_id }}>{{ c.display_name }}{% if not c.is_client %} (not yet a client){% endif %}</option>{% endfor %}</select>
@@ -42,6 +61,19 @@
     <div class="actions" style="margin-top:6px"><button type="button" class="btn small secondary" data-add-row="ms_table">Add milestone</button><span class="small muted">Blank rows are ignored. Clear a description to remove a milestone.</span></div>
   </div>
 
+  {# ---- Agent A: billing details (currency, originator, evergreen retainer, LEDES) ---- #}
+  <h3 style="margin-top:18px">Billing details</h3>
+  <div class="row">
+    <div><label>Currency</label><select name="currency"><option value="">Firm default ({{ firm().currency or 'USD' }})</option>{% for c in currencies %}<option value="{{ c }}" {{ 'selected' if c == m.currency }}>{{ c }}</option>{% endfor %}</select><div class="small muted">Invoices copy this when built. Online card payments stay in USD.</div></div>
+    <div><label>Originating attorney</label><select name="originating_user_id"><option value="">Same as responsible</option>{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == m.originating_user_id }}>{{ u.name }}</option>{% endfor %}</select><div class="small muted">Who brought the work in. Drives the origination report.</div></div>
+    <div><label>LEDES matter id</label><input type="text" name="ledes_matter_id" value="{{ m.ledes_matter_id or '' }}" placeholder="Carrier's CLIENT_MATTER_ID" maxlength="40"><div class="small muted">Needed for LEDES e-billing exports.</div></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div><label>Evergreen retainer minimum</label><input type="text" name="trust_minimum" value="{{ (m.trust_minimum_cents / 100)|round(2) if m.trust_minimum_cents else '' }}" placeholder="0.00" inputmode="decimal"><div class="small muted">When this matter's trust balance drops below this, the client is asked to top up. Blank = off.</div></div>
+    <div><label>Replenish to</label><input type="text" name="trust_replenish_to" value="{{ (m.trust_replenish_to_cents / 100)|round(2) if m.trust_replenish_to_cents else '' }}" placeholder="0.00" inputmode="decimal"><div class="small muted">Target balance for the top-up request. Blank = the minimum. Sent by the nightly reminders job, at most every 14 days.</div></div>
+  </div>
+  {# ---- end Agent A block ---- #}
+
   <h3 style="margin-top:18px">Deadlines and court</h3>
   <div class="row">
     <div><label>Statute of limitations date</label><input type="date" name="sol_date" value="{{ m.sol_date|iso }}"></div>
@@ -65,6 +97,8 @@
   var sel=document.getElementById('billing_type');
   function sync(){var v=sel.value;document.querySelectorAll('[data-fee]').forEach(function(el){el.style.display=el.getAttribute('data-fee').split(' ').indexOf(v)>=0?'':'none';});}
   sel.addEventListener('change',sync);sync();
+  var tp=document.getElementById('template_pick');
+  if(tp){tp.addEventListener('change',function(){var u=new URL(window.location.href);if(tp.value){u.searchParams.set('template_id',tp.value);}else{u.searchParams.delete('template_id');}window.location.href=u.toString();});}
   document.addEventListener('click',function(e){
     var add=e.target.closest('[data-add-row]');
     if(add){var t=document.getElementById(add.getAttribute('data-add-row'));var rows=t.querySelectorAll('tr');var last=rows[rows.length-1];var clone=last.cloneNode(true);clone.querySelectorAll('input').forEach(function(i){i.value='';i.removeAttribute('readonly');});clone.querySelectorAll('.badge').forEach(function(b){b.remove();});t.appendChild(clone);}

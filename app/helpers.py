@@ -31,6 +31,17 @@ def parse_money(s):
     return -v if neg else v
 
 
+CURRENCY_SYMBOLS = {"USD": "$", "CAD": "CA$", "GBP": "\u00a3", "EUR": "\u20ac", "AUD": "A$", "MXN": "MX$"}
+CURRENCIES = list(CURRENCY_SYMBOLS)
+
+
+def fmt_money(cents, code="USD"):
+    """Like money() but with the symbol for the given ISO code. fmt_money(123456, "GBP") -> "\u00a31,234.56"."""
+    code = (code or "USD").upper()
+    symbol = CURRENCY_SYMBOLS.get(code, code + " ")
+    return cents_to_str(cents, symbol)
+
+
 def parse_date(s, default=None):
     if not s:
         return default
@@ -83,6 +94,22 @@ def owner_required(f):
             abort(403)
         return f(*a, **kw)
     return wrapper
+
+
+def permission_required(name):
+    """Explicit check against app.permissions: @permission_required("trust"). Owners always pass."""
+    def deco(f):
+        @wraps(f)
+        def wrapper(*a, **kw):
+            u = current_user()
+            if not u:
+                return redirect(url_for("auth.login", next=request.path))
+            from .permissions import has_permission
+            if not has_permission(u, name):
+                abort(403)
+            return f(*a, **kw)
+        return wrapper
+    return deco
 
 
 def portal_contact():
@@ -139,6 +166,7 @@ def register_template_globals(app):
         firm=lambda: Firm.get(), today=date.today, now=datetime.utcnow,
     )
     app.jinja_env.filters["money"] = cents_to_str
+    app.jinja_env.filters["cur"] = fmt_money
     app.jinja_env.filters["hours"] = lambda m: f"{(m or 0) / 60:.2f}"
     app.jinja_env.filters["d"] = lambda v: v.strftime("%b %-d, %Y") if v else ""
     app.jinja_env.filters["dt"] = lambda v: v.strftime("%b %-d, %Y %-I:%M %p") if v else ""

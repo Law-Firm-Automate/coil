@@ -1,21 +1,34 @@
 {% extends "base.html" %}{% block title %}Messages with {{ c.display_name }}{% endblock %}{% block content %}
-<style>.bubbles{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding:4px}.bubble{max-width:70%;padding:8px 12px;border-radius:12px;font-size:.93rem;white-space:pre-wrap}.bubble.in{background:#e8ecf1;align-self:flex-start}.bubble.out{background:#1f5f8b;color:#fff;align-self:flex-end}.bubble .meta{display:block;font-size:.72rem;opacity:.75;margin-top:3px}</style>
+<style>.bubbles{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding:4px}.bubble{max-width:70%;padding:8px 12px;border-radius:12px;font-size:.93rem;white-space:pre-wrap}.bubble.in{background:#e8ecf1;align-self:flex-start}.bubble.out{background:#1f5f8b;color:#fff;align-self:flex-end}.bubble.portal{border:1px dashed #1f4f8b}.bubble .meta{display:block;font-size:.72rem;opacity:.75;margin-top:3px}.bubble .badge{margin-right:6px;vertical-align:middle}</style>
 <div class="topbar"><h1>{{ c.display_name }} <span class="muted small">{{ c.phone or 'no phone' }}</span></h1>
 <div class="actions" style="margin:0"><a class="btn small secondary" href="/contacts/{{ c.id }}">Contact</a><a class="btn small secondary" href="/messages">All threads</a></div></div>
 <div class="grid c2" style="grid-template-columns:2fr 1fr">
   <div class="card">
     <div class="bubbles" id="bubbles">
-      {% for m in msgs %}<div class="bubble {{ m.direction }}">{{ m.body }}<span class="meta">{{ m.created_at|dt }}{% if m.matter %} &middot; {{ m.matter.number }}{% endif %}{% if m.direction == 'out' %} &middot; {{ m.status }}{% endif %}</span></div>
+      {% for m in msgs %}<div class="bubble {{ m.direction }}{% if m.channel == 'portal' %} portal{% endif %}">{% if m.channel == 'portal' %}<span class="badge new">portal</span>{% endif %}{{ m.body }}<span class="meta">{{ m.created_at|dt }}{% if m.matter %} &middot; {{ m.matter.number }}{% endif %}{% if m.channel == 'portal' %}{% if m.direction == 'out' %} &middot; {{ m.user.name if m.user else 'staff' }} &middot; {{ 'read ' ~ (m.read_at|dt) if m.read_at else 'unread' }}{% else %} &middot; {{ 'opened' if m.read_at else 'new' }}{% endif %}{% elif m.direction == 'out' %} &middot; {{ m.status }}{% endif %}</span></div>
       {% else %}<div class="empty">No messages yet.</div>{% endfor %}
     </div>
-    <form method="post" action="/messages/send" style="margin-top:12px">
-      {{ csrf() }}<input type="hidden" name="contact_id" value="{{ c.id }}">
-      <textarea name="body" placeholder="Type a text message" required style="min-height:70px"></textarea>
-      <div class="row" style="align-items:end">
-        <div><label>Matter (optional)</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if matter_id == m.id }}>{{ m.label }}</option>{% endfor %}</select></div>
-        <div><button class="btn" {{ 'disabled' if not c.phone }}>Send text</button></div>
-      </div>
-    </form>
+    <div class="grid c2" style="margin-top:12px">
+      <form method="post" action="/messages/send">
+        <h2 style="font-size:1rem">Send a text</h2>
+        {{ csrf() }}<input type="hidden" name="contact_id" value="{{ c.id }}">
+        <textarea name="body" placeholder="Type a text message" required style="min-height:70px"></textarea>
+        <div class="row" style="align-items:end">
+          <div><label>Matter (optional)</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if matter_id == m.id }}>{{ m.label }}</option>{% endfor %}</select></div>
+          <div><button class="btn" {{ 'disabled' if not c.phone }}>Send text</button></div>
+        </div>
+      </form>
+      <form method="post" action="/messages/portal-send">
+        <h2 style="font-size:1rem">Reply in portal</h2>
+        {{ csrf() }}<input type="hidden" name="contact_id" value="{{ c.id }}">
+        <textarea name="body" placeholder="Secure message. The client is emailed that a message is waiting; the text stays in the portal." required style="min-height:70px"></textarea>
+        <div class="row" style="align-items:end">
+          <div><label>Matter (optional)</label><select name="matter_id"><option value="">None</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if matter_id == m.id }}>{{ m.label }}</option>{% endfor %}</select></div>
+          <div><button class="btn secondary">Post to portal</button></div>
+        </div>
+        {% if not c.email %}<p class="small muted">No email on file, so the client will not be notified.</p>{% endif %}
+      </form>
+    </div>
   </div>
   <div class="card">
     <h2>Matters</h2>

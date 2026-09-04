@@ -1,7 +1,9 @@
 {% extends "base.html" %}{% block title %}New invoice: {{ matter.number }}{% endblock %}{% block content %}
 <div class="topbar"><h1>New invoice for {{ matter.label }}</h1>
 <div class="actions" style="margin:0"><a class="btn secondary small" href="/matters/{{ matter.id }}">Back to matter</a></div></div>
-<p class="muted">Client: <a href="/contacts/{{ matter.client_id }}">{{ matter.client.display_name }}</a> · Billing: <strong>{{ matter.billing_type }}</strong>{% if matter.billing_type in ('flat','hybrid') and matter.flat_fee_cents %} · Flat fee {{ matter.flat_fee_cents|money }}{% endif %}{% if matter.billing_type == 'contingency' %} · {{ matter.contingency_pct }}%{% endif %}</p>
+<p class="muted">Client: <a href="/contacts/{{ matter.client_id }}">{{ matter.client.display_name }}</a> · Billing: <strong>{{ matter.billing_type }}</strong>{% if matter.billing_type in ('flat','hybrid') and matter.flat_fee_cents %} · Flat fee {{ matter.flat_fee_cents|money }}{% endif %}{% if matter.billing_type == 'contingency' %} · {{ matter.contingency_pct }}%{% endif %}{% if currency != 'USD' %} · Currency <strong>{{ currency }}</strong>{% endif %}</p>
+{% if payers %}<div class="flash {{ 'ok' if payers_ok else 'error' }}">Split billing: this build creates one invoice per payer{% for p in payers %}{{ ',' if not loop.first else ':' }} {{ p.contact.display_name }} {{ p.percent|round(2) }}%{% if p.label %} ({{ p.label }}){% endif %}{% endfor %}. {% if payers_ok %}Every line is shared by percentage, rounding half up, with any leftover cent on the last payer so the group adds up exactly.{% else %}The percentages total {{ payers_total|round(2) }}%, not 100%. <a href="/matters/{{ matter.id }}">Fix the payers</a> before building.{% endif %}</div>{% endif %}
+{% if needs_approval %}<div class="flash">Your firm requires invoice approval. This draft will wait for the owner or a billing user to approve it before it can be sent.</div>{% endif %}
 <form method="post" action="{{ url_for('invoices.new') }}" id="builder">{{ csrf() }}
 <input type="hidden" name="matter_id" value="{{ matter.id }}">
 <div class="grid c2">
@@ -90,7 +92,7 @@
   <div class="label">Invoice total</div>
   <div class="value" id="total">$0.00</div>
   <div class="small muted">Updates as you pick items.</div>
-  <div class="actions"><button class="btn">Create draft invoice</button> <a class="btn secondary" href="/matters/{{ matter.id }}">Cancel</a></div>
+  <div class="actions"><button class="btn" {{ 'disabled' if not payers_ok }}>{{ 'Create split draft invoices' if payers else 'Create draft invoice' }}</button> <a class="btn secondary" href="/matters/{{ matter.id }}">Cancel</a></div>
   <p class="small muted">The invoice is saved as a draft. You can edit lines, then send it from the invoice page.</p>
 </div>
 </div>

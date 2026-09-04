@@ -26,7 +26,7 @@
   <td>{% if d.uploaded_by_client %}<span class="badge pending">client</span>{% else %}{{ d.uploaded_by.name if d.uploaded_by else '' }}{% endif %}</td>
   <td class="num">{% if d.size >= 1048576 %}{{ (d.size / 1048576)|round(1) }} MB{% else %}{{ (d.size / 1024)|round(1) }} KB{% endif %}</td>
   <td><form method="post" action="/documents/{{ d.id }}/share" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small {{ 'ok' if d.shared_to_portal else 'secondary' }}">{{ 'Shared' if d.shared_to_portal else 'Not shared' }}</button></form></td>
-  <td class="right nowrap"><a class="btn small secondary" href="/documents/{{ d.id }}/download">Download</a> <form method="post" action="/documents/{{ d.id }}/delete" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small secondary" data-confirm="Delete {{ d.name }}? The file is removed from disk.">Delete</button></form></td>
+  <td class="right nowrap"><a class="btn small secondary" href="/signatures/new?document_id={{ d.id }}" title="Send this file for e-signature">Request signature</a> <a class="btn small secondary" href="/documents/{{ d.id }}/download">Download</a> <form method="post" action="/documents/{{ d.id }}/delete" class="inline">{{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn small secondary" data-confirm="Delete {{ d.name }}? The file is removed from disk.">Delete</button></form></td>
 </tr>{% endfor %}</table>
 <p class="small muted">{{ docs|length }} files, {{ (total / 1048576)|round(2) }} MB.</p>
 {% else %}<div class="empty">No documents{% if matter %} on this matter{% endif %} yet.</div>{% endif %}

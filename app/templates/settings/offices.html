@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}Offices{% endblock %}{% block content %}
+<div class="topbar"><h1>Offices</h1><div class="actions" style="margin:0"><a class="btn small" href="/settings/offices/new">Add office</a><a class="btn small secondary" href="/settings">Settings</a></div></div>
+<div class="card">
+{% if rows %}
+<table><tr><th>Office</th><th>Address</th><th>Phone</th><th class="num">Users</th><th class="num">Matters</th><th></th></tr>
+{% for o in rows %}<tr>
+  <td><a href="/settings/offices/{{ o.id }}/edit">{{ o.name }}</a>{% if o.is_default %} <span class="badge open">default</span>{% endif %}</td>
+  <td class="small" style="white-space:pre-line">{{ o.address }}</td><td class="nowrap">{{ o.phone }}</td>
+  <td class="num">{{ refs[o.id][0] }}</td><td class="num">{{ refs[o.id][1] }}</td>
+  <td class="right nowrap">
+    {% if not o.is_default %}<form method="post" action="/settings/offices/{{ o.id }}/default" class="inline">{{ csrf() }}<button class="btn small secondary">Make default</button></form>{% endif %}
+    <a class="btn small secondary" href="/settings/offices/{{ o.id }}/edit">Edit</a>
+    {% if refs[o.id][0] == 0 and refs[o.id][1] == 0 %}<form method="post" action="/settings/offices/{{ o.id }}/delete" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Delete {{ o.name }}?">Delete</button></form>{% endif %}
+  </td>
+</tr>{% endfor %}</table>
+<p class="small muted">The default office is preselected on new matters and new users. An office that users or matters still point at cannot be deleted. Invoices for a matter print that matter's office address.</p>
+{% else %}<div class="empty">No offices yet. A single-location firm can skip this; invoices use the firm address. <a href="/settings/offices/new">Add an office</a> if you bill from more than one location.</div>{% endif %}
+</div>
+{% endblock %}

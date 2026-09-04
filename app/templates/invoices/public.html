@@ -1,72 +1,73 @@
-{% extends "public.html" %}{% block title %}Invoice {{ inv.number }} from {{ firm_settings.name }}{% endblock %}
+{% extends "public.html" %}{% block title %}{{ t('inv.title', lang_for(inv.client), number=inv.number, firm=firm_settings.name) }}{% endblock %}
 {% block head %}<style>
 .paidstamp{display:inline-block;border:3px solid var(--ok);color:var(--ok);font-weight:800;letter-spacing:.12em;padding:4px 14px;border-radius:6px;transform:rotate(-6deg);font-size:1.3rem}
 .paybtn{display:block;text-align:center;padding:14px 18px;font-size:1.05rem}
 </style>{% endblock %}
 {% block content %}
+{% set lang = lang_for(inv.client) %}
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
     <div>
-      <h1>Invoice {{ inv.number }}</h1>
+      <h1>{{ t('inv.heading', lang, number=inv.number) }}</h1>
       <div class="muted">{{ inv.matter.name }}</div>
     </div>
     <div class="right">
-      {% if inv.status == 'void' %}<span class="badge void">Void</span>
-      {% elif inv.balance_cents == 0 and inv.total_cents > 0 %}<span class="paidstamp">PAID</span>
-      {% else %}<div class="small muted">Balance due</div><div style="font-size:1.6rem;font-weight:700">{{ inv.balance_cents|money }}</div>{% endif %}
+      {% if inv.status == 'void' %}<span class="badge void">{{ t('inv.void', lang) }}</span>
+      {% elif inv.balance_cents == 0 and inv.total_cents > 0 %}<span class="paidstamp">{{ t('inv.paid_stamp', lang) }}</span>
+      {% else %}<div class="small muted">{{ t('inv.balance_due', lang) }}</div><div style="font-size:1.6rem;font-weight:700">{{ inv.balance_cents|money }}</div>{% endif %}
     </div>
   </div>
   <div class="grid c2" style="margin-top:14px">
     <dl class="kv">
-      <dt>Bill to</dt><dd>{{ inv.client.display_name }}{% if inv.client.address %}<br><span class="small muted">{{ inv.client.address|replace('\n', ', ') }}</span>{% endif %}</dd>
-      <dt>Matter</dt><dd>{{ inv.matter.number }} {{ inv.matter.name }}</dd>
+      <dt>{{ t('inv.bill_to', lang) }}</dt><dd>{{ inv.client.display_name }}{% if inv.client.address %}<br><span class="small muted">{{ inv.client.address|replace('\n', ', ') }}</span>{% endif %}</dd>
+      <dt>{{ t('inv.matter', lang) }}</dt><dd>{{ inv.matter.number }} {{ inv.matter.name }}</dd>
     </dl>
     <dl class="kv">
-      <dt>Issued</dt><dd>{{ inv.issued_on|d }}</dd>
-      <dt>Due</dt><dd>{{ inv.due_on|d if inv.due_on else 'On receipt' }}</dd>
-      <dt>From</dt><dd>{{ firm_settings.name }}{% if firm_settings.address %}<br><span class="small muted">{{ firm_settings.address|replace('\n', ', ') }}</span>{% endif %}</dd>
+      <dt>{{ t('inv.issued', lang) }}</dt><dd>{{ inv.issued_on|d }}</dd>
+      <dt>{{ t('inv.due', lang) }}</dt><dd>{{ inv.due_on|d if inv.due_on else t('inv.on_receipt', lang) }}</dd>
+      <dt>{{ t('inv.from', lang) }}</dt><dd>{{ firm_settings.name }}{% if firm_settings.address %}<br><span class="small muted">{{ firm_settings.address|replace('\n', ', ') }}</span>{% endif %}</dd>
     </dl>
   </div>
 </div>
 
 <div class="card">
 <table>
-<tr><th>Date</th><th>Description</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th></tr>
+<tr><th>{{ t('inv.date', lang) }}</th><th>{{ t('inv.description', lang) }}</th><th class="num">{{ t('inv.qty', lang) }}</th><th class="num">{{ t('inv.rate', lang) }}</th><th class="num">{{ t('inv.amount', lang) }}</th></tr>
 {% for l in inv.lines %}
 <tr><td class="nowrap">{{ l.date|d }}</td><td>{{ l.description }}</td>
     <td class="num">{% if l.kind == 'time' %}{{ '%.2f' % l.quantity }}{% endif %}</td><td class="num">{% if l.kind == 'time' %}{{ l.unit_cents|money }}{% endif %}</td><td class="num">{{ l.amount_cents|money }}</td></tr>
 {% endfor %}
-<tr><th colspan="4" class="right">Subtotal</th><th class="num">{{ inv.subtotal_cents|money }}</th></tr>
-{% if inv.tax_cents %}<tr><th colspan="4" class="right">Tax</th><th class="num">{{ inv.tax_cents|money }}</th></tr>{% endif %}
-{% if inv.paid_cents %}<tr><th colspan="4" class="right">Paid</th><th class="num">{{ inv.paid_cents|money }}</th></tr>{% endif %}
-<tr><th colspan="4" class="right">Balance due</th><th class="num">{{ inv.balance_cents|money }}</th></tr>
+<tr><th colspan="4" class="right">{{ t('inv.subtotal', lang) }}</th><th class="num">{{ inv.subtotal_cents|money }}</th></tr>
+{% if inv.tax_cents %}<tr><th colspan="4" class="right">{{ t('inv.tax', lang) }}</th><th class="num">{{ inv.tax_cents|money }}</th></tr>{% endif %}
+{% if inv.paid_cents %}<tr><th colspan="4" class="right">{{ t('inv.paid', lang) }}</th><th class="num">{{ inv.paid_cents|money }}</th></tr>{% endif %}
+<tr><th colspan="4" class="right">{{ t('inv.balance_due', lang) }}</th><th class="num">{{ inv.balance_cents|money }}</th></tr>
 </table>
 {% if inv.notes %}<p class="small" style="margin-top:10px">{{ inv.notes }}</p>{% endif %}
 </div>
 
 {% if inv.status != 'void' and inv.balance_cents > 0 %}
 <div class="card">
-  <h2>Pay this invoice</h2>
+  <h2>{{ t('inv.pay_this', lang) }}</h2>
   <div class="grid c2">
     <div>
-      <a class="btn ok paybtn" href="/pay/{{ inv.public_token }}?method=ach">Pay by bank transfer (ACH), no fee</a>
+      <a class="btn ok paybtn" href="/pay/{{ inv.public_token }}?method=ach">{{ t('inv.pay_ach', lang) }}</a>
     </div>
     <div>
-      <a class="btn paybtn" href="/pay/{{ inv.public_token }}?method=card">Pay by card</a>
-      {% if surcharge_pct %}<div class="small muted" style="text-align:center;margin-top:6px">A {{ '%g' % surcharge_pct }}% card surcharge applies.</div>{% endif %}
+      <a class="btn paybtn" href="/pay/{{ inv.public_token }}?method=card">{{ t('inv.pay_card', lang) }}</a>
+      {% if surcharge_pct %}<div class="small muted" style="text-align:center;margin-top:6px">{{ t('inv.surcharge', lang, pct='%g' % surcharge_pct) }}</div>{% endif %}
     </div>
   </div>
-  {% if trust_balance > 0 %}<p class="small muted" style="margin-top:12px">You have {{ trust_balance|money }} on deposit in our trust account. If you would rather we apply those funds to this invoice, reply to the email or call {{ firm_settings.phone or 'our office' }} and we will take care of it.</p>{% endif %}
-  <p class="small muted">Prefer to mail a check? Make it payable to {{ firm_settings.name }}{% if firm_settings.address %} and send it to {{ firm_settings.address|replace('\n', ', ') }}{% endif %}.</p>
+  {% if trust_balance > 0 %}<p class="small muted" style="margin-top:12px">{{ t('inv.trust_note', lang, amount=trust_balance|money, phone=(firm_settings.phone or t('inv.our_office', lang))) }}</p>{% endif %}
+  <p class="small muted">{{ t('inv.check', lang, firm=firm_settings.name, send_to=(t('inv.send_to', lang, address=firm_settings.address|replace('\n', ', ')) if firm_settings.address else '')) }}</p>
 </div>
 {% endif %}
 
 {% if payments %}
-<div class="card"><h2>Payments received</h2>
-<table><tr><th>Date</th><th>Method</th><th class="num">Amount</th></tr>
+<div class="card"><h2>{{ t('inv.payments_received', lang) }}</h2>
+<table><tr><th>{{ t('inv.date', lang) }}</th><th>{{ t('inv.method', lang) }}</th><th class="num">{{ t('inv.amount', lang) }}</th></tr>
 {% for p in payments %}<tr><td>{{ p.received_on|d }}</td><td>{{ p.method }}</td><td class="num">{{ p.amount_cents|money }}</td></tr>{% endfor %}
 </table></div>
 {% endif %}
 
-<p class="small"><a href="{{ url_for('invoices.public_pdf', token=inv.public_token) }}">Download PDF</a>{% if firm_settings.invoice_footer %} <span class="muted">· {{ firm_settings.invoice_footer }}</span>{% endif %}</p>
+<p class="small"><a href="{{ url_for('invoices.public_pdf', token=inv.public_token) }}">{{ t('inv.download_pdf', lang) }}</a>{% if firm_settings.invoice_footer %} <span class="muted">· {{ firm_settings.invoice_footer }}</span>{% endif %}</p>
 {% endblock %}

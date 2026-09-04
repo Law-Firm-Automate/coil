@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Signatures{% endblock %}{% block content %}
+<div class="topbar"><h1>Document signatures</h1>
+<div class="actions" style="margin:0"><a class="btn small" href="/signatures/new">Request a signature</a><a class="btn small secondary" href="/documents">Documents</a></div></div>
+<div class="tabs">
+  <a class="{{ 'active' if not status }}" href="/signatures">All</a>
+  <a class="{{ 'active' if status == 'open' }}" href="/signatures?status=open">Awaiting signature ({{ counts.sent + counts.viewed }})</a>
+  {% for s in ['draft','sent','viewed','signed','declined','void'] %}<a class="{{ 'active' if status == s }}" href="/signatures?status={{ s }}">{{ s|capitalize }} ({{ counts[s] }})</a>{% endfor %}
+</div>
+<div class="card">
+{% if rows %}
+<table><tr><th>Document</th><th>Signer</th><th>Matter</th><th>Status</th><th>Sent</th><th class="num">Views</th><th>Signed</th></tr>
+{% for s in rows %}<tr>
+  <td><a href="/signatures/{{ s.id }}">{{ s.title or s.document.name }}</a><br><span class="small muted">{{ s.document.name }}</span></td>
+  <td><a href="/contacts/{{ s.contact_id }}">{{ s.contact.display_name }}</a></td>
+  <td>{% if s.document.matter %}<a href="/matters/{{ s.document.matter_id }}">{{ s.document.matter.label }}</a>{% endif %}</td>
+  <td><span class="badge {{ s.status }}">{{ s.status }}</span></td>
+  <td class="nowrap small">{{ s.sent_at|dt }}</td>
+  <td class="num">{{ s.view_count or 0 }}{% if s.first_viewed_at %} <span class="muted small">first {{ s.first_viewed_at|dt }}</span>{% endif %}</td>
+  <td class="nowrap small">{% if s.signed_at %}{{ s.signed_at|dt }}<br><span class="muted">{{ s.signer_name }}</span>{% endif %}</td>
+</tr>{% endfor %}</table>
+{% else %}<div class="empty">No signature requests{% if status %} with status {{ status }}{% endif %}. <a href="/signatures/new">Request one</a> from any uploaded document.</div>{% endif %}
+</div>
+{% endblock %}

@@ -18,6 +18,7 @@ def create_app(config=None):
     db.init_app(app)
     register_template_globals(app)
     app.before_request(check_csrf)
+    from .permissions import enforce; app.before_request(enforce)
 
     from .blueprints import auth, dashboard
     app.register_blueprint(auth.bp)
@@ -26,7 +27,7 @@ def create_app(config=None):
     for modname in ("contacts", "matters", "conflicts", "tasks", "calendar", "documents",
                     "time", "invoices", "reports",
                     "trust", "payments", "portal",
-                    "intake", "engagements", "messages", "settings", "exports"):
+                    "intake", "engagements", "messages", "settings", "exports", "signatures"):
         try:
             mod = __import__(f"app.blueprints.{modname}", fromlist=["bp"])
             app.register_blueprint(mod.bp)

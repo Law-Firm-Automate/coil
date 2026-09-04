@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Matter templates{% endblock %}{% block content %}
+<div class="topbar"><h1>Matter templates</h1><div class="actions" style="margin:0">{% if is_owner %}<a class="btn small" href="/settings/templates/new">New template</a>{% endif %}<a class="btn small secondary" href="/matters/new">New matter</a>{% if is_owner %}<a class="btn small secondary" href="/settings">Settings</a>{% endif %}</div></div>
+<div class="card">
+{% if rows %}
+<table><tr><th>Template</th><th>Practice area</th><th>Billing</th><th class="num">Milestones</th><th class="num">Tasks</th><th class="num">Fields</th><th>SOL</th><th class="num">Used by</th><th></th></tr>
+{% for t in rows %}<tr>
+  <td>{% if is_owner %}<a href="/settings/templates/{{ t.id }}/edit">{{ t.name }}</a>{% else %}{{ t.name }}{% endif %}{% if not t.is_active %} <span class="badge closed">inactive</span>{% endif %}{% if t.description %}<br><span class="small muted">{{ t.description }}</span>{% endif %}</td>
+  <td>{{ t.practice_area }}</td>
+  <td class="nowrap">{% if t.billing_type == 'flat' %}Flat {{ t.flat_fee_cents|money }}{% elif t.billing_type == 'hourly' %}Hourly{% if t.hourly_rate_cents %} {{ t.hourly_rate_cents|money }}{% endif %}{% elif t.billing_type == 'contingency' %}{{ t.contingency_pct }}%{% else %}Hybrid{% endif %}</td>
+  <td class="num">{{ t.milestones|length }}</td><td class="num">{{ t.tasks|length }}</td><td class="num">{{ t.custom_fields|length }}</td>
+  <td class="nowrap">{% if t.sol_years %}{{ t.sol_years|round(1) }} yr{% else %}<span class="muted">none</span>{% endif %}</td>
+  <td class="num">{{ usage.get(t.id, 0) }}</td>
+  <td class="right nowrap">
+    {% if t.is_active %}<a class="btn small" href="/matters/new?template_id={{ t.id }}">Use</a>{% endif %}
+    {% if is_owner %}<a class="btn small secondary" href="/settings/templates/{{ t.id }}/edit">Edit</a>
+    <form method="post" action="/settings/templates/{{ t.id }}/duplicate" class="inline">{{ csrf() }}<button class="btn small secondary">Duplicate</button></form>
+    <form method="post" action="/settings/templates/{{ t.id }}/delete" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="{{ 'Deactivate' if usage.get(t.id, 0) else 'Delete' }} {{ t.name }}?">{{ 'Deactivate' if usage.get(t.id, 0) else 'Delete' }}</button></form>{% endif %}
+  </td>
+</tr>{% endfor %}</table>
+<p class="small muted">A template prefills a new matter and, once the matter is opened, adds its milestones, tasks, custom fields and limitations date. Offsets count from the matter's opened date. Templates already used by a matter are deactivated instead of deleted.</p>
+{% else %}<div class="empty">No templates yet.{% if is_owner %} <a href="/settings/templates/new">Create one</a>.{% endif %}</div>{% endif %}
+</div>
+{% endblock %}

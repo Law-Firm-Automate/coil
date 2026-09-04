@@ -2,9 +2,11 @@
 import csv
 import io
 from datetime import date
-from flask import Blueprint, render_template, Response
-from ..models import Invoice, Payment, Contact, TimeEntry, TrustTransaction
-from ..helpers import login_required
+from flask import Blueprint, render_template, Response, request, flash
+from ..extensions import db
+from ..models import Invoice, Payment, Contact, TimeEntry, TrustTransaction, Firm, now
+from ..helpers import login_required, parse_date, current_user
+from . import ledes
 
 bp = Blueprint("exports", __name__, url_prefix="/exports")
 
@@ -51,10 +53,65 @@ def _item(kind):
     return "Adjustment"
 
 
+def _ledes_args():
+    start, end = ledes.default_range()
+    d_from = parse_date(request.args.get("from"), start)
+    d_to = parse_date(request.args.get("to"), end)
+    client_id = request.args.get("client_id", type=int)
+    return d_from, d_to, client_id
+
+
 @bp.route("")
 @login_required
 def index():
-    return render_template("exports/index.html", today=date.today())
+    d_from, d_to, client_id = _ledes_args()
+    clients = Contact.query.filter_by(is_client=True).all()
+    clients.sort(key=lambda c: c.sort_name.lower())
+    return render_template("exports/index.html", today=date.today(), ledes_from=d_from, ledes_to=d_to,
+                           ledes_client_id=client_id, clients=clients, firm_settings=Firm.get())
+
+
+def ledes_invoices(d_from, d_to, client_id=None):
+    q = Invoice.query.filter(Invoice.status.notin_(["draft", "void"]), Invoice.issued_on >= d_from,
+                             Invoice.issued_on <= d_to)
+    if client_id:
+        q = q.filter(Invoice.client_id == client_id)
+    return q.order_by(Invoice.issued_on, Invoice.id).all()
+
+
+@bp.route("/ledes")
+@login_required
+def ledes_export():
+    """LEDES 1998B for every sent invoice issued in the range. Refuses, listing what is missing, when the firm,
+    a client, or a matter in the range has no LEDES id."""
+    d_from, d_to, client_id = _ledes_args()
+    firm = Firm.get()
+    invoices = ledes_invoices(d_from, d_to, client_id)
+    problems = ledes.missing_ids(firm, invoices)
+    if problems:
+        flash("LEDES export refused. " + " ".join(problems), "error")
+        clients = Contact.query.filter_by(is_client=True).all()
+        clients.sort(key=lambda c: c.sort_name.lower())
+        return render_template("exports/index.html", today=date.today(), ledes_from=d_from, ledes_to=d_to,
+                               ledes_client_id=client_id, clients=clients, firm_settings=firm,
+                               ledes_problems=problems), 400
+    if not invoices:
+        flash(f"No sent invoices issued between {d_from.isoformat()} and {d_to.isoformat()}.", "error")
+        clients = Contact.query.filter_by(is_client=True).all()
+        clients.sort(key=lambda c: c.sort_name.lower())
+        return render_template("exports/index.html", today=date.today(), ledes_from=d_from, ledes_to=d_to,
+                               ledes_client_id=client_id, clients=clients, firm_settings=firm), 400
+    body = ledes.build_1998b(firm, invoices)
+    stamp = now()
+    for inv in invoices:
+        inv.ledes_exported_at = stamp
+    from ..models import audit
+    audit("ledes_export", "invoice", None, f"{len(invoices)} invoices {d_from.isoformat()}..{d_to.isoformat()}",
+          current_user().id)
+    db.session.commit()
+    resp = Response(body, mimetype="text/plain; charset=utf-8")
+    resp.headers["Content-Disposition"] = f'attachment; filename="ledes-{d_from.isoformat()}-{d_to.isoformat()}.txt"'
+    return resp
 
 
 @bp.route("/quickbooks/invoices.csv")

@@ -1,4 +1,4 @@
 <div class="actions" style="margin:0 0 16px;justify-content:space-between">
-  <div><a href="{{ url_for('portal.home') }}">Home</a></div>
-  {% if portal_contact() %}<form method="post" action="{{ url_for('portal.logout') }}" class="inline">{{ csrf() }}<button class="btn small secondary">Log out</button></form>{% endif %}
+  <div><a href="{{ url_for('portal.home') }}">{{ t('portal.nav.home', lang) }}</a> <span class="muted">·</span> <a href="{{ url_for('portal.messages') }}">{{ t('portal.nav.messages', lang) }}</a>{% if unread %} <span class="badge new">{{ unread }}</span>{% endif %}</div>
+  {% if portal_contact() %}<form method="post" action="{{ url_for('portal.logout') }}" class="inline">{{ csrf() }}<button class="btn small secondary">{{ t('portal.nav.logout', lang) }}</button></form>{% endif %}
 </div>
