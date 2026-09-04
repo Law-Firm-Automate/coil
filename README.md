@@ -50,7 +50,7 @@ pay pages explain that online payment is not set up. Without Twilio, texts are s
 One container, one database file. Mac or Linux with Docker:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lawfirmautomate/coil/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Coil-Legal/coil/main/install.sh | sh
 ```
 
 Then open http://localhost:8080 and create the owner account. Windows, email, backups, remote

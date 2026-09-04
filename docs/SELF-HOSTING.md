@@ -15,7 +15,7 @@ run it on.
 Open Terminal and paste:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lawfirmautomate/coil/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Coil-Legal/coil/main/install.sh | sh
 ```
 
 Then open http://localhost:8080 and create the owner account. That is the whole install.
@@ -45,7 +45,7 @@ MAIL_FROM=
 ```yaml
 services:
   coil:
-    image: ghcr.io/lawfirmautomate/coil:latest
+    image: ghcr.io/coil-legal/coil:latest
     restart: unless-stopped
     env_file: .env
     ports:
@@ -108,5 +108,5 @@ from a small command. Run these from cron or Task Scheduler on the Coil machine:
 
 ## Getting help
 
-Open an issue at https://github.com/lawfirmautomate/coil/issues, or email the address on the Coil page
+Open an issue at https://github.com/Coil-Legal/coil/issues, or email the address on the Coil page
 at lawfirmautomate.com/coil.
