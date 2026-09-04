@@ -5,3 +5,4 @@ __pycache__/
 data/*.db
 data/uploads/
 data/pdf/
+.claude/

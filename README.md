@@ -1,6 +1,7 @@
 # Coil
 
-Coil is practice management for solo and small law firms. Built after reading what solos actually use in
+Coil is practice management for solo and small law firms, offered at cost. No per-seat plans, no add-ons,
+no yearly price creep. Built after reading what solos actually use in
 practice-management software: intake, an engagement letter that gets signed, billing (flat fee first),
 collecting payment, and a trust ledger that reconciles. Everything else is deliberately left out.
 
@@ -44,22 +45,35 @@ cp .env.example .env
 Without SMTP configured, outbound email is captured at `/dev/outbox` (owner only). Without Stripe keys,
 pay pages explain that online payment is not set up. Without Twilio, texts are stored but not sent.
 
-## Deploy (idcprojects VPS)
+## Run it yourself (free)
+
+One container, one database file. Mac or Linux with Docker:
 
 ```bash
-scp -r -i ~/.ssh/id_ed25519 . root@idcprojects.tail15f079.ts.net:/home/deploy/apps/practice.iandolan.com/
-ssh -i ~/.ssh/id_ed25519 root@idcprojects.tail15f079.ts.net 'cd /home/deploy/apps/practice.iandolan.com && docker compose up -d --build'
+curl -fsSL https://raw.githubusercontent.com/Senteras/coil/main/install.sh | sh
 ```
 
-Set `BASE_URL`, `SECRET_KEY`, SMTP, Stripe and Twilio values in `.env` on the server. Point the Stripe
-webhook at `BASE_URL/webhooks/stripe` and the Twilio inbound webhook at `BASE_URL/webhooks/twilio`.
+Then open http://localhost:8080 and create the owner account. Windows, email, backups, remote
+access and updates are covered in [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
-Cron on the server:
+Hosted for you instead: request beta access at https://lawfirmautomate.com/coil.
+
+## Deploying behind a reverse proxy
+
+`docker-compose.yml` carries Traefik labels and reads `DOMAIN` from `.env`. Any proxy that
+terminates HTTPS and forwards to port 8000 works. Set `BASE_URL` to the public address so links
+in emails resolve. Point the Stripe webhook at `BASE_URL/webhooks/stripe` and the Twilio inbound
+webhook at `BASE_URL/webhooks/twilio`.
+
+Scheduled jobs (cron on the host):
 
 ```
-15 7 * * *  cd /home/deploy/apps/practice.iandolan.com && docker compose exec -T web python -m app.cli agenda
-30 7 * * *  cd /home/deploy/apps/practice.iandolan.com && docker compose exec -T web python -m app.cli reminders
-0  6 1 * *  cd /home/deploy/apps/practice.iandolan.com && docker compose exec -T web python -m app.cli interest
+15 7 * * *  docker compose exec -T web python -m app.cli agenda
+30 7 * * *  docker compose exec -T web python -m app.cli reminders
+0  8 * * *  docker compose exec -T web python -m app.cli sequences
+*/10 * * * * docker compose exec -T web python -m app.cli emailin
+*/15 * * * * docker compose exec -T web python -m app.cli webhooks
+0  6 1 * *  docker compose exec -T web python -m app.cli interest
 ```
 
 ## Money handling notes
@@ -76,3 +90,7 @@ Cron on the server:
 ```bash
 .venv/bin/python seed.py && .venv/bin/python -m pytest -q
 ```
+
+## License
+
+AGPL-3.0. Run it, change it, host it for others; if you host a modified version, share the changes.
