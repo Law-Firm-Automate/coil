@@ -24,6 +24,11 @@ class Config:
     TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
     TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
     TWILIO_FROM_NUMBER = os.environ.get("TWILIO_FROM_NUMBER", "")
+    # Install key. Self-hosted installs register once against coil.legal at first-run setup.
+    # Hosted instances and development set COIL_SKIP_INSTALL_KEY=1.
+    COIL_KEY_VERIFY_URL = os.environ.get("COIL_KEY_VERIFY_URL", "https://coil.legal/api/verify-key")
+    COIL_SKIP_INSTALL_KEY = os.environ.get("COIL_SKIP_INSTALL_KEY", "") in ("1", "true", "yes")
+    COIL_VERSION = os.environ.get("COIL_VERSION", "0.3.0")
     # Email filing (python -m app.cli emailin). Leave IMAP_HOST blank to disable.
     IMAP_HOST = os.environ.get("IMAP_HOST", "")
     IMAP_PORT = int(os.environ.get("IMAP_PORT", "993") or 993)
