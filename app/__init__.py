@@ -45,6 +45,8 @@ def create_app(config=None):
     with app.app_context():
         from . import models  # noqa
         db.create_all()
+        from .migrate import add_missing_columns
+        add_missing_columns()
 
     @app.errorhandler(404)
     def nf(e):
