@@ -125,6 +125,36 @@
   </div>
 </form>
 {% endif %}
+{# ---- Agent P: charge card on file + payment plan ---- #}
+{% set plan = money_active_plan(inv) %}
+{% if money_has_card(inv.client) %}
+{% set sc = money_surcharge(inv.balance_cents) %}
+<h3 style="margin-top:14px">Charge card on file</h3>
+<p class="small muted">{{ money_card_label(inv.client) }}{% if inv.client.card_authorised_on %}, authorised {{ inv.client.card_authorised_on|d }}{% endif %}.{% if sc %} A {{ '%g' % (firm_settings.surcharge_bps / 100) }}% card surcharge is added.{% endif %}{% if not money_stripe_ok() %} Online payments are not configured, so nothing can be charged until STRIPE_SECRET_KEY is set.{% endif %}</p>
+<form method="post" action="/money/charge/{{ inv.id }}">{{ csrf() }}
+  <div class="row">
+    <div><label>Amount</label><input type="text" name="amount" value="{{ dollars(inv.balance_cents) }}" inputmode="decimal" required></div>
+    <div><label>&nbsp;</label><button class="btn small" data-confirm="Charge {{ inv.balance_cents|money }}{% if sc %} plus a {{ sc|money }} card surcharge ({{ (inv.balance_cents + sc)|money }} in total){% endif %} to {{ money_card_label(inv.client) }}? The client is not asked first.">Charge card on file</button></div>
+  </div>
+</form>
+{% else %}
+<p class="small muted" style="margin-top:14px">No card on file for {{ inv.client.display_name }}. <a href="/contacts/{{ inv.client_id }}">Request one</a> from the contact page to charge invoices and run automatic payment plans.</p>
+{% endif %}
+<h3 style="margin-top:14px">Payment plan</h3>
+{% if plan %}
+<p class="small">{{ plan.installments }} x {{ plan.installment_cents|money }} {{ money_freq_labels[plan.frequency] }}, {{ plan.paid_installments }} paid, <span class="badge {{ {'active':'open','paused':'draft','failed':'overdue'}[plan.status] }}">{{ plan.status }}</span>{% if plan.status == 'active' %}, next {{ money_next_cents(plan)|money }} on {{ plan.next_charge_on|d }}{% endif %}. <a href="/money/plans/{{ plan.id }}">Open plan</a></p>
+{% else %}
+<form method="post" action="/money/plans/new">{{ csrf() }}<input type="hidden" name="invoice_id" value="{{ inv.id }}">
+  <div class="row">
+    <div><label>Installments</label><input type="number" name="installments" value="3" min="2" max="60" required></div>
+    <div><label>Frequency</label><select name="frequency"><option value="monthly">Monthly</option><option value="biweekly">Every two weeks</option><option value="weekly">Weekly</option></select></div>
+    <div><label>First charge</label><input type="date" name="first_charge_on" value="{{ today|iso }}" required></div>
+  </div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" name="auto_charge" value="1" {% if not money_has_card(inv.client) %}disabled{% endif %}> Charge the card on file automatically{% if not money_has_card(inv.client) %} <span class="small muted">(needs a card on file; otherwise the client gets an email with a pay link for each installment)</span>{% endif %}</label>
+  <div class="actions"><button class="btn small secondary">Set up payment plan</button></div>
+</form>
+{% endif %}
+{# ---- end Agent P ---- #}
 {% elif inv.status == 'draft' %}<p class="small muted" style="margin-top:10px">Send the invoice before recording payments against it.</p>{% endif %}
 </div>
 

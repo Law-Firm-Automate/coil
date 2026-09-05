@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Fee splits, {{ m.label }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Fee splits <span class="muted small">{{ m.label }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="/matters/{{ m.id }}">Back to matter</a> <a class="btn secondary small" href="/reports/compensation">Compensation report</a></div></div>
+<div class="card">
+  <p class="small muted">Who gets credit when fees on this matter are collected. <strong>Working</strong> percentages must add up to 100 and drive the allocation in the compensation report. <strong>Originating</strong> and <strong>referral</strong> percentages are informational credits shown alongside, as a share of the fee.{% if defaulted and rows %} Nothing is saved yet: the originator is credited 100% by default.{% endif %}</p>
+  <form method="post" action="/money/splits/{{ m.id }}">{{ csrf() }}
+    <table>
+      <tr><th>Person</th><th>Role</th><th class="num">Percent</th></tr>
+      {% set blanks = 3 %}
+      {% for i in range((rows|length) + blanks) %}
+      {% set r = rows[i] if i < rows|length else none %}
+      <tr>
+        <td><select name="user_id_{{ i }}"><option value="">(none)</option>{% for u in users %}<option value="{{ u.id }}" {% if r and r.user_id == u.id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}</select></td>
+        <td><select name="role_{{ i }}">{% for role in ('working', 'originating', 'referral') %}<option value="{{ role }}" {% if r and r.role == role %}selected{% elif not r and role == 'working' %}selected{% endif %}>{{ role }}</option>{% endfor %}</select></td>
+        <td class="num"><input type="text" name="percent_{{ i }}" value="{{ ('%g' % r.percent) if r else '' }}" inputmode="decimal" placeholder="0" style="width:90px;text-align:right"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="small muted">Leave a row's person or percent blank to drop it. Saving with every row blank clears the splits.</p>
+    <div class="actions"><button class="btn">Save splits</button> <a class="btn secondary" href="/matters/{{ m.id }}">Cancel</a></div>
+  </form>
+</div>
+{% endblock %}

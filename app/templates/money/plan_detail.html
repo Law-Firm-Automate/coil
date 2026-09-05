@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}Payment plan {{ plan.id }}{% endblock %}{% block content %}
+{% set inv = plan.invoice %}
+<div class="topbar"><h1>Payment plan <span class="badge {{ {'active':'open','paused':'draft','failed':'overdue','completed':'paid','cancelled':'void'}[plan.status] }}">{{ plan.status }}</span></h1>
+<div class="actions" style="margin:0">
+  {% if plan.status in ('active', 'paused', 'failed') %}
+    {% if has_card %}<form method="post" action="/money/plans/{{ plan.id }}/charge" class="inline">{{ csrf() }}<button class="btn small" data-confirm="Charge {{ next_cents|money }}{% if surcharge %} plus a {{ surcharge|money }} card surcharge{% endif %} to {{ card }} now?">Charge now</button></form>{% endif %}
+    <form method="post" action="/money/plans/{{ plan.id }}/remind" class="inline">{{ csrf() }}<button class="btn small secondary" {% if not plan.contact.email %}disabled title="Client has no email"{% endif %}>Send reminder now</button></form>
+    {% if plan.status == 'active' %}<form method="post" action="/money/plans/{{ plan.id }}/pause" class="inline">{{ csrf() }}<button class="btn small secondary">Pause</button></form>
+    {% else %}<form method="post" action="/money/plans/{{ plan.id }}/resume" class="inline">{{ csrf() }}<button class="btn small secondary">Resume</button></form>{% endif %}
+    <form method="post" action="/money/plans/{{ plan.id }}/cancel" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Cancel this plan? The invoice balance stays due.">Cancel plan</button></form>
+  {% endif %}
+  <a class="btn secondary small" href="/money/plans">All plans</a>
+</div></div>
+{% if plan.last_error %}<div class="flash error">Last problem: {{ plan.last_error }}</div>{% endif %}
+{% if plan.auto_charge and not stripe_ok %}<div class="flash">Online payments are not configured, so this plan cannot charge the card. It will keep waiting until STRIPE_SECRET_KEY is set, or switch it to reminders by cancelling and recreating it.</div>{% endif %}
+<div class="grid c3">
+  <div class="card"><dl class="kv">
+    <dt>Client</dt><dd><a href="/contacts/{{ plan.contact_id }}">{{ plan.contact.display_name }}</a></dd>
+    <dt>Invoice</dt><dd><a href="/invoices/{{ plan.invoice_id }}">{{ inv.number }}</a> <span class="small muted">{{ inv.matter.label if inv.matter else '' }}</span></dd>
+    <dt>Balance now</dt><dd><strong>{{ inv.balance_cents|money }}</strong></dd>
+    <dt>Created</dt><dd>{{ plan.created_at|d }}{% if plan.created_by_id %} <span class="small muted">by user {{ plan.created_by_id }}</span>{% endif %}</dd>
+  </dl></div>
+  <div class="card"><dl class="kv">
+    <dt>Schedule</dt><dd>{{ plan.installments }} installments of {{ plan.installment_cents|money }}, {{ labels[plan.frequency] }}</dd>
+    <dt>Paid</dt><dd>{{ plan.paid_installments }} of {{ plan.installments }}</dd>
+    <dt>Next</dt><dd>{% if plan.status == 'active' %}{{ next_cents|money }} on {{ plan.next_charge_on|d }}{% if plan.next_charge_on and plan.next_charge_on <= today %} <span class="badge pending">due</span>{% endif %}{% else %}<span class="muted">nothing while {{ plan.status }}</span>{% endif %}</dd>
+    <dt>How</dt><dd>{% if plan.auto_charge %}Charged automatically to {{ card or 'the card on file' }}{% if surcharge %} <span class="small muted">(+ {{ surcharge|money }} surcharge per installment at today's amount)</span>{% endif %}{% else %}Email reminder with a pay link{% if has_card %} <span class="small muted">({{ card }} is on file; "Charge now" uses it)</span>{% endif %}{% endif %}</dd>
+  </dl></div>
+  <div class="card"><h2>Payments through this plan</h2>
+    {% if payments %}<table><tr><th>Received</th><th>Method</th><th class="num">Amount</th></tr>{% for p in payments %}<tr><td class="nowrap"><a href="/payments/{{ p.id }}">{{ p.received_on|d }}</a></td><td>{{ p.method }}{% if p.surcharge_cents %} <span class="small muted">+{{ p.surcharge_cents|money }} surcharge</span>{% endif %}</td><td class="num">{{ p.amount_cents|money }}</td></tr>{% endfor %}</table>
+    {% else %}<div class="empty">None yet.</div>{% endif %}
+    <p class="small muted">Payments the client makes from the reminder link land on the invoice as ordinary online payments; see the invoice for all of them.</p>
+  </div>
+</div>
+<div class="card"><h2>Installments</h2>
+<table>
+<tr><th>#</th><th>Due</th><th class="num">Amount</th><th>State</th></tr>
+{% for n, due, amt, state in schedule %}<tr><td>{{ n }}</td><td class="nowrap">{{ due|d }}</td><td class="num">{{ amt|money }}</td><td>{% if state == 'paid' %}<span class="badge paid">paid</span>{% elif state == 'next' and plan.status == 'active' %}<span class="badge pending">next</span>{% elif state == 'next' %}<span class="badge draft">next when resumed</span>{% else %}<span class="muted">upcoming</span>{% endif %}</td></tr>{% endfor %}
+</table>
+<p class="small muted">The last installment absorbs rounding so the plan adds up to the balance exactly. If the client pays part of the invoice another way, later installments shrink to fit what is left.</p>
+</div>
+{% endblock %}

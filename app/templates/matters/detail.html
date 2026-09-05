@@ -6,6 +6,7 @@
     <a class="btn small" href="/time/new?matter_id={{ m.id }}">Log time</a>
     <a class="btn small secondary" href="/invoices/new?matter_id={{ m.id }}">New invoice</a>
     {# Agent K #}<a class="btn small secondary" href="/pi/{{ m.id }}" title="Providers, records, liens, demand and the settlement worksheet. Starts a PI case on this matter if there is none.">Personal injury</a>
+    {# Agent R #}<a class="btn small secondary" href="/criminal/{{ m.id }}" title="Case facts, charges, court date chain, speedy-trial check and disposition summary. Starts a criminal case on this matter if there is none.">Criminal defense</a>
     {# Agent M #}<a class="btn small secondary" href="/discovery?matter_id={{ m.id }}" title="Propound interrogatories, requests for production and admissions from starter sets, or respond to a served set with AI-drafted responses and objections">Discovery</a><a class="btn small secondary" href="/discovery/depositions?matter_id={{ m.id }}" title="Summarise a transcript: key testimony with page:line cites and contradictions against the chronology">Depositions</a>
     <a class="btn small secondary" href="/matters/{{ m.id }}/edit">Edit</a>
     {% if m.status == 'closed' %}<form method="post" action="/matters/{{ m.id }}/reopen" class="inline">{{ csrf() }}<button class="btn small secondary">Reopen</button></form>
@@ -80,6 +81,17 @@
   </form>
 </div>
 {# ---- end Agent A block ---- #}
+{# ---- Agent P: fee splits (CosmoLex lane) ---- #}
+<div class="card"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Fee splits</h2><div class="actions" style="margin:0"><a class="btn small secondary" href="/money/splits/{{ m.id }}">Edit splits</a><a class="btn small secondary" href="/reports/compensation">Compensation report</a></div></div>
+  {% if m.fee_splits %}
+  <table><tr><th>Person</th><th>Role</th><th class="num">Percent</th></tr>{% for s in m.fee_splits %}<tr><td>{{ s.user.name if s.user else '' }}</td><td>{{ s.role }}</td><td class="num">{{ '%g' % (s.percent or 0) }}%</td></tr>{% endfor %}</table>
+  {% if not (m.fee_splits|selectattr('role', 'equalto', 'working')|list) %}<p class="small muted">No working split: collected fees are credited to {{ m.responsible.name if m.responsible else 'the responsible attorney' }} in the compensation report and flagged.</p>{% endif %}
+  {% elif m.originator %}
+  <table><tr><th>Person</th><th>Role</th><th class="num">Percent</th></tr><tr><td>{{ m.originator.name }}</td><td>originating <span class="small muted">(default, not saved)</span></td><td class="num">100%</td></tr></table>
+  <p class="small muted">No working split: collected fees are credited to {{ m.responsible.name if m.responsible else 'the responsible attorney' }} in the compensation report and flagged.</p>
+  {% else %}<div class="empty">No fee splits. Set an originating attorney on the matter form, or <a href="/money/splits/{{ m.id }}">add splits</a>.</div>{% endif %}
+</div>
+{# ---- end Agent P ---- #}
 <div class="grid c2">
   <div class="card"><h2>Flat fee milestones</h2>
     {% if m.milestones %}<table><tr><th>Milestone</th><th>Due</th><th class="num">Amount</th><th></th></tr>{% for ms in m.milestones %}<tr><td>{{ ms.description }}</td><td class="nowrap">{{ ms.due_on|d }}</td><td class="num">{{ ms.amount_cents|money }}</td><td class="right nowrap">{% if ms.invoiced %}<span class="badge paid">invoiced</span> <a class="small" href="/invoices/{{ ms.invoice_id }}">{{ ms.invoice.number if ms.invoice else '' }}</a>{% else %}<form method="post" action="/matters/{{ m.id }}/milestones/{{ ms.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary">Remove</button></form>{% endif %}</td></tr>{% endfor %}

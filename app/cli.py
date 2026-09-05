@@ -1,5 +1,5 @@
-"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders`, `... interest`, `... emailin`
-or `... monthly_invoicing [--force]`.
+"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders`, `... interest`, `... emailin`,
+`... monthly_invoicing [--force]` or `... payment_plans`.
 
 All three are idempotent: agenda and reminders write an AuditLog row and skip work that already has one today
 (evergreen top-up requests use a 14-day window), interest checks Invoice.last_interest_on for the month.
@@ -53,6 +53,14 @@ def build_agenda(user):
                                     Engagement.sent_at <= datetime.utcnow() - timedelta(days=2)).order_by(
         Engagement.sent_at).all()
     leads = IntakeLead.query.filter_by(status="new").order_by(IntakeLead.created_at.desc()).all()
+    # Agent R: time capture suggestions waiting for this user (browser extension). Additive, never blocks the agenda.
+    try:
+        from .models import TimeSuggestion
+        pending_suggestions = TimeSuggestion.query.filter_by(user_id=user.id, status="pending").count()
+        suggestion_minutes = sum(int(s.minutes or 0) for s in
+                                 TimeSuggestion.query.filter_by(user_id=user.id, status="pending").all())
+    except Exception:
+        pending_suggestions, suggestion_minutes = 0, 0
 
     def task_item(t):
         tag = "overdue" if t.due_on < today else "today"
@@ -72,6 +80,10 @@ def build_agenda(user):
             f"viewed {e.view_count or 0}x" for e in stale]),
         ("New intake leads", [
             f"{_link(f'/intake/{l.id}', l.name)} ({escape(l.matter_type or 'no type')}), {l.created_at:%b %-d}" for l in leads]),
+        ("Time capture suggestions", [
+            f"{pending_suggestions} pending suggestion{'s' if pending_suggestions != 1 else ''} "
+            f"({suggestion_minutes / 60:.1f} h captured): {_link('/time/suggestions', 'review and log them')}"
+        ] if pending_suggestions else []),
     ]
     return sections
 
@@ -360,12 +372,22 @@ def run_case_audit(today=None):
     return _run(today=today)
 
 
+# ---------------------------------------------------------------------------
+# payment plans (Agent P; see app/blueprints/money.py)
+# ---------------------------------------------------------------------------
+def run_payment_plans(today=None):
+    """Charge or remind every active payment plan due today or earlier. Once per plan per day through AuditLog
+    plan_charged / plan_reminded. Returns dict(charged, reminded, failed, completed, skipped)."""
+    from .blueprints.money import run_payment_plans as _run
+    return _run(today=today)
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] not in ("agenda", "reminders", "interest", "emailin", "sequences", "webhooks",
-                                   "monthly_invoicing", "case_audit"):
+                                   "monthly_invoicing", "case_audit", "payment_plans"):
         print("usage: python -m app.cli agenda|reminders|interest|emailin|sequences|webhooks|monthly_invoicing "
-              "[--force]|case_audit")
+              "[--force]|case_audit|payment_plans")
         return 2
     from . import create_app
     app = create_app()
@@ -386,6 +408,10 @@ def main(argv=None):
         elif argv[0] == "webhooks":
             r, ok, bad = run_webhooks()
             print(f"webhooks: {r} retried, {ok} delivered, {bad} still failing")
+        elif argv[0] == "payment_plans":
+            r = run_payment_plans()
+            print(f"payment_plans: {r['charged']} charged, {r['reminded']} reminded, {r['failed']} failed, "
+                  f"{r['completed']} completed, {r['skipped']} already handled today")
         elif argv[0] == "agenda":
             n = run_agenda()
             print(f"agenda: {n} email(s) sent")

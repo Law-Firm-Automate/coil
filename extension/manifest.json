@@ -1,12 +1,23 @@
 {
   "manifest_version": 3,
   "name": "Coil Timer",
-  "version": "1.0.0",
-  "description": "Search matters, run a timer and log time to Coil from any tab.",
-  "permissions": ["storage"],
-  "host_permissions": ["http://*/*", "https://*/*"],
+  "version": "1.1.0",
+  "description": "Search matters, run a timer, log time, and capture browsing time as suggestions in Coil.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "idle",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "Coil Timer"
+  },
+  "background": {
+    "service_worker": "background.js"
   }
 }

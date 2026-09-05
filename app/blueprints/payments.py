@@ -294,6 +294,16 @@ def stripe_webhook():
             return ("bad json", 400)
     etype = event.get("type") or ""
     obj = (event.get("data") or {}).get("object") or {}
+    if etype == "checkout.session.completed" and (obj.get("mode") or "") == "setup":
+        # Card on file (money.py): a setup-mode session carries no payment; store the card on the contact.
+        from .money import store_card_from_session
+        try:
+            store_card_from_session(obj)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("failed to store card from setup session %s", obj.get("id"))
+            return ("error", 500)
+        return ("ok", 200)
     if etype in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
         if obj.get("payment_status") != "paid":
             # ACH: completed fires while the debit is pending; async_payment_succeeded follows once it settles.

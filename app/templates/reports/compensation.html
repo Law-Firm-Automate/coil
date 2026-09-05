@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block title %}Compensation{% endblock %}{% block content %}
+<div class="topbar"><h1>Compensation</h1>
+<div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('reports.compensation', format='csv', **{'from': d_from|iso, 'to': d_to|iso}) }}">Download CSV</a> <a class="btn secondary small" href="{{ url_for('reports.index') }}">All reports</a></div></div>
+<div class="card">
+<form method="get" class="row">
+  <div><label>From</label><input type="date" name="from" value="{{ d_from|iso }}"></div>
+  <div><label>To</label><input type="date" name="to" value="{{ d_to|iso }}"></div>
+  <div><label>&nbsp;</label><button class="btn secondary">Update</button></div>
+</form>
+</div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Fees collected</div><div class="value">{{ totals.fee|money }}</div><div class="small muted">{{ totals.payments }} payment{{ '' if totals.payments == 1 else 's' }}, {{ d_from|d }} to {{ d_to|d }}. Expense reimbursements and surcharges are left out.</div></div>
+  <div class="card stat"><div class="label">Allocated by working split</div><div class="value">{{ totals.working|money }}</div></div>
+  <div class="card stat"><div class="label">Matters without a working split</div><div class="value" {% if totals.flagged %}style="color:var(--warn)"{% endif %}>{{ totals.flagged }}</div><div class="small muted">Credited 100% to the responsible attorney and flagged below.</div></div>
+</div>
+<div class="card"><h2>Per person</h2>
+{% if user_rows %}
+<table>
+<tr><th>Person</th><th class="num">Matters</th><th class="num">Working allocation</th><th class="num">Originating credit</th><th class="num">Referral credit</th><th>Flags</th></tr>
+{% for r in user_rows %}<tr><td><strong>{{ r.user.name if r.user else '(nobody)' }}</strong></td><td class="num">{{ r.matter_count }}</td><td class="num"><strong>{{ r.working|money }}</strong></td><td class="num">{{ r.originating|money }}</td><td class="num">{{ r.referral|money }}</td><td>{% if r.flagged %}<span class="badge draft">{{ r.flagged }} without working split</span>{% endif %}</td></tr>{% endfor %}
+<tr><th>Total</th><th class="num"></th><th class="num">{{ totals.working|money }}</th><th class="num">{{ totals.originating|money }}</th><th class="num">{{ totals.referral|money }}</th><th></th></tr>
+</table>
+{% else %}<div class="empty">No fee payments in this range.</div>{% endif %}
+</div>
+<div class="card"><h2>Per matter</h2>
+{% if matter_rows %}
+<table>
+<tr><th>Matter</th><th>Client</th><th class="num">Collected</th><th class="num">Fee share</th><th>Working allocation</th><th>Originating</th><th>Referral</th></tr>
+{% for r in matter_rows %}<tr>
+  <td><a href="/matters/{{ r.matter.id }}">{{ r.matter.label }}</a> <a class="small muted" href="/money/splits/{{ r.matter.id }}">splits</a></td>
+  <td>{{ r.matter.client.display_name if r.matter.client else '' }}</td>
+  <td class="num">{{ r.gross|money }}</td>
+  <td class="num"><strong>{{ r.fee|money }}</strong></td>
+  <td>{% for u, pct, cents in r.working %}{{ u.name }} {{ '%g' % pct }}% <strong>{{ cents|money }}</strong>{% if not loop.last %}<br>{% endif %}{% endfor %}{% if r.flagged %} <span class="badge draft">no working split</span>{% endif %}</td>
+  <td>{% for u, pct, cents in r.originating %}{{ u.name }} {{ '%g' % pct }}% {{ cents|money }}{% if r.defaulted %} <span class="small muted">(default)</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">none</span>{% endfor %}</td>
+  <td>{% for u, pct, cents in r.referral %}{{ u.name }} {{ '%g' % pct }}% {{ cents|money }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">none</span>{% endfor %}</td>
+</tr>{% endfor %}
+<tr><th colspan="2">Total</th><th class="num">{{ totals.gross|money }}</th><th class="num">{{ totals.fee|money }}</th><th>{{ totals.working|money }}</th><th>{{ totals.originating|money }}</th><th>{{ totals.referral|money }}</th></tr>
+</table>
+{% else %}<div class="empty">No fee payments in this range.</div>{% endif %}
+</div>
+<p class="small muted">Fee share is each payment prorated to the invoice's non-expense lines (time, flat fees, adjustments, interest). Working percentages split that fee share between people; originating and referral percentages are shown as credits on top and do not reduce anyone's allocation. Set them from the Fee splits card on the matter.</p>
+{% endblock %}

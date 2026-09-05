@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}Payment plans{% endblock %}{% block content %}
+<div class="topbar"><h1>Payment plans</h1></div>
+<div class="tabs">
+  {% for s in ('active', 'paused', 'failed', 'completed', 'cancelled', 'all') %}<a href="/money/plans?status={{ s }}" class="{{ 'active' if status == s }}">{{ s }}{% if s != 'all' and counts[s] %} <span class="small muted">{{ counts[s] }}</span>{% endif %}</a>{% endfor %}
+</div>
+<div class="card">
+{% if plans %}
+<table>
+<tr><th>Client</th><th>Invoice</th><th>Schedule</th><th>Progress</th><th>Next</th><th class="num">Next amount</th><th>How</th><th>Status</th></tr>
+{% for p in plans %}
+<tr>
+  <td><a href="/contacts/{{ p.contact_id }}">{{ p.contact.display_name if p.contact else '' }}</a></td>
+  <td><a href="/invoices/{{ p.invoice_id }}">{{ p.invoice.number if p.invoice else '' }}</a> <span class="small muted">balance {{ p.invoice.balance_cents|money if p.invoice else '' }}</span></td>
+  <td>{{ p.installments }} x {{ p.installment_cents|money }} {{ labels[p.frequency] }}</td>
+  <td>{{ p.paid_installments }} of {{ p.installments }} paid</td>
+  <td class="nowrap">{% if p.status == 'active' and p.next_charge_on %}{{ p.next_charge_on|d }}{% if p.next_charge_on <= today %} <span class="badge pending">due</span>{% endif %}{% elif p.next_charge_on %}<span class="muted">{{ p.next_charge_on|d }}</span>{% endif %}</td>
+  <td class="num">{{ next_cents(p)|money }}</td>
+  <td>{{ 'card on file' if p.auto_charge else 'email reminder' }}</td>
+  <td><a href="/money/plans/{{ p.id }}"><span class="badge {{ {'active':'open','paused':'draft','failed':'overdue','completed':'paid','cancelled':'void'}[p.status] }}">{{ p.status }}</span></a>{% if p.last_error %}<br><span class="small muted">{{ p.last_error }}</span>{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}<div class="empty">No {{ '' if status == 'all' else status }} payment plans. Set one up from an invoice's page.</div>{% endif %}
+</div>
+<p class="small muted">Plans run from <code>python -m app.cli payment_plans</code> once a day: card-on-file plans are charged, the rest get an email with a pay link for the installment. A plan completes when every installment is paid or the invoice balance reaches zero.</p>
+{% endblock %}

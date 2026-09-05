@@ -1,0 +1,6 @@
+{% extends "public.html" %}{% block title %}Not available yet{% endblock %}{% block content %}
+<div class="card">
+  <h1>Online payments are not set up yet</h1>
+  <p>{{ f.name }} is not able to store cards or take online payments at the moment, so there is nothing to do here. {% if f.phone %}If you have questions, call {{ f.phone }}.{% endif %}</p>
+</div>
+{% endblock %}

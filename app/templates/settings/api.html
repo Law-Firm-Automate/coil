@@ -10,7 +10,7 @@
       <label>Name (what will use it)</label><input type="text" name="name" placeholder="Chrome extension on my laptop" required>
       <label>Scope</label>
       <label><input type="radio" name="scopes" value="read" checked> Read only: matters, contacts, time, invoices, tasks</label>
-      <label><input type="radio" name="scopes" value="read,write"> Read and write: also log time and run the timer</label>
+      <label><input type="radio" name="scopes" value="read,write"> Read and write: also log time, run the timer, post time capture segments and phone intake leads</label>
       <div class="actions"><button class="btn">Create token</button></div>
     </form>
     <p class="small muted">Tokens act as the user who created them. Only the SHA-256 of the token is stored.</p>
@@ -39,6 +39,9 @@
 <tr><td>POST</td><td><code>/timer/stop</code></td><td>write</td><td>Optional matter_id, description. Creates a time entry rounded up to 6 minutes.</td></tr>
 <tr><td>GET</td><td><code>/invoices?status=</code></td><td>read</td><td>status: open (sent, viewed, partial), draft, paid, void, all.</td></tr>
 <tr><td>GET</td><td><code>/tasks?due=today|overdue|week&amp;mine=1</code></td><td>read</td><td>Open tasks.</td></tr>
+<tr><td>POST</td><td><code>/leads</code></td><td>write</td><td>Phone intake from an answering service (Ruby, Smith.ai) or the voice agent. JSON or form: name (required), email, phone, matter_type, description, adverse_party, source (default phone), call_summary and transcript (text or a list of {role, text}; both are appended to the description), external_id. Creates and scores an intake lead and returns {id, url, score, created}. A retry with the same external_id returns the existing lead instead of a duplicate; the reference is kept at the end of the description as <code>[ref: ...]</code>.</td></tr>
+<tr><td>POST</td><td><code>/capture</code></td><td>write</td><td>Time capture from the browser extension: a JSON list of {started_at (ISO), minutes, title, url, source}. Each becomes a pending suggestion for the token's user with a guessed matter (a matter number in the title or url, else a client or matter name). Under 2 minutes is ignored; the same title within 30 minutes of a pending suggestion merges into it. Returns {created, merged, ignored, pending}.</td></tr>
+<tr><td>GET</td><td><code>/capture/pending</code></td><td>read</td><td>Count of the user's pending suggestions, their minutes, and the review URL (/time/suggestions).</td></tr>
 </table>
 <p class="small muted">Example: <code>curl -H "Authorization: Bearer coil_..." "{{ base }}/api/v1/matters?q=alvarez"</code>. The Chrome extension in the repository's <code>extension/</code> folder uses these endpoints; see its README for load-unpacked steps.</p>
 </div>

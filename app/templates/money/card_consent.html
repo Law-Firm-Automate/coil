@@ -1,0 +1,18 @@
+{% extends "public.html" %}{% block title %}Save a card on file{% endblock %}{% block content %}
+<div class="card">
+  <h1>Save a card on file</h1>
+  <p class="muted">For {{ c.display_name }}</p>
+  <p>{{ f.name }} would like to keep a payment card on file for your account. Here is what that means:</p>
+  <ul>
+    <li>The card is stored by Stripe, our payment processor. {{ f.name }} never sees the full card number.</li>
+    <li>When an invoice is issued to you, {{ f.name }} may charge the card for the invoice amount, or for the installments of a payment plan you have agreed to.</li>
+    <li>{% if f.surcharge_enabled and f.surcharge_bps %}A card processing surcharge of {{ pct }}% is added to card charges, the same as when you pay an invoice online by card. Bank transfers carry no surcharge.{% else %}No surcharge is added to card charges.{% endif %}</li>
+    <li>You will receive an invoice for every charge, and you can ask {{ f.name }} to remove the card at any time{% if f.phone or f.email %} ({{ f.phone }}{% if f.phone and f.email %}, {% endif %}{{ f.email }}){% endif %}.</li>
+  </ul>
+  <form method="post" action="/pay/card/{{ tok.token }}">{{ csrf() }}
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin-top:14px"><input type="checkbox" name="agree" value="1" style="margin-top:4px"> I authorise {{ f.name }} to keep this card on file and to charge it for invoices and payment plan installments on my account, as described above.</label>
+    <div class="actions"><button class="btn">Continue to secure card page</button></div>
+  </form>
+  <p class="small muted">This link works for 7 days and can be used once.</p>
+</div>
+{% endblock %}

@@ -18,7 +18,7 @@ from sqlalchemy import or_
 from werkzeug.exceptions import HTTPException
 
 from ..extensions import db
-from ..models import ApiToken, Matter, Contact, TimeEntry, Timer, Invoice, Task, Firm, audit, now
+from ..models import ApiToken, Matter, Contact, TimeEntry, Timer, Invoice, Task, Firm, IntakeLead, audit, now
 from ..helpers import parse_date, parse_minutes
 
 bp = Blueprint("api", __name__, url_prefix="/api/v1")
@@ -355,6 +355,100 @@ def tasks():
         query = query.filter(Task.assignee_id == g.api_user.id)
     rows = query.order_by(Task.due_on.is_(None), Task.due_on, Task.priority.desc()).limit(200).all()
     return jsonify({"tasks": [task_json(t) for t in rows]})
+
+
+# ---------------------------------------------------------------- leads (Ruby / Smith.ai lane, Agent R)
+def _find_lead_by_ref(external_id):
+    if not external_id:
+        return None
+    tag = f"[ref: {external_id}]"
+    return IntakeLead.query.filter(IntakeLead.description.like(f"%{tag}%")).order_by(IntakeLead.id).first()
+
+
+def lead_json(l, created=True):
+    return {"id": l.id, "url": f"{current_app.config['BASE_URL']}/intake/{l.id}", "name": l.name,
+            "status": l.status, "stage": l.stage, "score": l.score, "source": l.source, "created": bool(created)}
+
+
+@bp.route("/leads", methods=["POST"])
+@scope_required("write")
+def lead_create():
+    """Phone intake from an answering service or the voice agent. Idempotent on external_id: the id is kept at
+    the tail of the description as "[ref: <id>]" and a retry with the same id returns the existing lead."""
+    from .intake import _score
+    b = _body()
+    external_id = str(b.get("external_id") or "").strip()[:120]
+    if external_id and ("]" in external_id or "\n" in external_id):
+        return _error(400, "external_id may not contain ] or a newline.")
+    existing = _find_lead_by_ref(external_id)
+    if existing:
+        return jsonify(lead_json(existing, created=False)), 200
+    name = str(b.get("name") or "").strip()[:200]
+    if not name:
+        return _error(400, "name is required.")
+    parts = [str(b.get("description") or "").strip()]
+    summary = str(b.get("call_summary") or "").strip()
+    if summary:
+        parts.append("Call summary:\n" + summary)
+    transcript = b.get("transcript")
+    if isinstance(transcript, list):
+        lines = []
+        for t in transcript:
+            if isinstance(t, dict):
+                who = t.get("role") or t.get("speaker") or ""
+                text = t.get("text") or t.get("content") or ""
+                lines.append(f"{who}: {text}".strip(": ") if who else str(text))
+            else:
+                lines.append(str(t))
+        transcript = "\n".join(l for l in lines if l)
+    transcript = str(transcript or "").strip()
+    if transcript:
+        parts.append("Transcript:\n" + transcript[:20000])
+    if external_id:
+        parts.append(f"[ref: {external_id}]")
+    lead = IntakeLead(name=name, email=str(b.get("email") or "").strip()[:200],
+                      phone=str(b.get("phone") or "").strip()[:50],
+                      matter_type=str(b.get("matter_type") or "").strip()[:100],
+                      description="\n\n".join(p for p in parts if p),
+                      adverse_party=str(b.get("adverse_party") or "").strip()[:300],
+                      source=(str(b.get("source") or "").strip() or "phone")[:100])
+    db.session.add(lead)
+    db.session.flush()
+    _score(lead)
+    audit("create", "intake_lead", lead.id, f"{lead.name} via api ({lead.source})"
+          + (f" ref {external_id}" if external_id else ""), g.api_user.id)
+    db.session.commit()
+    return jsonify(lead_json(lead, created=True)), 201
+
+
+# ---------------------------------------------------------------- time capture (Smokeball lane, Agent R)
+@bp.route("/capture", methods=["POST"])
+@scope_required("write")
+def capture_create():
+    """Segments from the extension: [{started_at ISO, minutes, title, url, source}]. Under two minutes is ignored;
+    the same title within 30 minutes of a pending suggestion is merged into it. Logic lives in capture.py."""
+    from .capture import ingest_segments, pending_count
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        segments = data.get("segments")
+    else:
+        segments = data
+    if not isinstance(segments, list):
+        return _error(400, "Send a JSON list of segments, or {\"segments\": [...]}.")
+    if len(segments) > 500:
+        return _error(400, "At most 500 segments per call.")
+    r = ingest_segments(g.api_user, segments)
+    db.session.commit()
+    r["pending"] = pending_count(g.api_user)
+    return jsonify(r), 201 if r["created"] else 200
+
+
+@bp.route("/capture/pending")
+def capture_pending():
+    from .capture import pending_query
+    rows = pending_query(g.api_user).all()
+    return jsonify({"pending": len(rows), "minutes": sum(int(s.minutes or 0) for s in rows),
+                    "url": f"{current_app.config['BASE_URL']}/time/suggestions"})
 
 
 @bp.route("/<path:_rest>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

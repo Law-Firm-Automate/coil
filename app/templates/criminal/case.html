@@ -1,0 +1,78 @@
+{% extends "base.html" %}{% block title %}Criminal: {{ m.label }}{% endblock %}{% block content %}
+<div class="topbar">
+  <div><h1>Criminal defense <span style="font-weight:500">{{ m.number }} {{ m.name }}</span> <span class="badge {{ 'closed' if c.stage == 'disposed' else 'pending' }}">{{ c.stage }}</span> {% if c.custody_status == 'in' %}<span class="badge overdue">in custody</span>{% endif %}</h1>
+    <div class="small muted">Client <a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a>{% if c.court %} &middot; {{ c.court }}{% endif %}{% if c.cause_number %} &middot; cause {{ c.cause_number }}{% endif %} &middot; <a href="/matters/{{ m.id }}">matter page</a> &middot; <a href="/criminal">board</a></div></div>
+  <div class="tabs" style="margin:0;border:0"><a href="#facts">Facts</a><a href="#charges">Charges</a><a href="#tasks">Tasks</a><a href="#documents">Documents</a></div>
+</div>
+<div class="grid c4">
+  <div class="card stat"><div class="label">Next setting</div><div class="value" style="font-size:1.15rem">{{ c.next_setting_on|d or 'not set' }}</div><div class="small muted">{{ c.next_setting_type or '' }}</div></div>
+  <div class="card stat"><div class="label">Custody / bond</div><div class="value" style="font-size:1.15rem">{{ 'In custody' if c.custody_status == 'in' else 'Out' }}</div><div class="small muted">{% if c.bond_cents %}{{ c.bond_cents|money }}{% endif %} {{ c.bond_status or '' }}</div></div>
+  <div class="card stat"><div class="label">Charges</div><div class="value">{{ charges|length }}</div><div class="small muted">{{ charges|selectattr('disposition', 'in', ['', 'pending'])|list|length }} pending</div></div>
+  <div class="card stat"><div class="label">Discovery</div><div class="value" style="font-size:1.15rem">{{ c.discovery_received_on|d or 'not received' }}</div>{% if c.arrest_on %}<div class="small muted">arrest {{ c.arrest_on|d }}</div>{% endif %}</div>
+</div>
+
+<div class="card"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Client status</h2>{% if stage_synced %}<span class="small muted">Stage mirrored to the client timeline</span>{% endif %}</div>
+  <p style="margin:0">{{ status_text }}</p>
+  <p class="small muted" style="margin:6px 0 0">Written from the facts below. Usable on the client-facing stage timeline.</p></div>
+
+<div class="grid c2">
+<div class="card" id="facts"><h2>Case facts</h2>
+<form method="post" action="/criminal/{{ m.id }}/facts">{{ csrf() }}
+  <div class="grid c2">
+    <div><label>Court</label><input type="text" name="court" value="{{ c.court or '' }}" placeholder="County Court at Law No. 2"></div>
+    <div><label>Cause number</label><input type="text" name="cause_number" value="{{ c.cause_number or '' }}"></div>
+    <div><label>Arrest date</label><input type="date" name="arrest_on" value="{{ c.arrest_on|iso }}"></div>
+    <div><label>Stage</label><select name="stage">{% for k, l in stages %}<option value="{{ k }}" {% if c.stage == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div><label>Bond amount</label><input type="text" name="bond" value="{{ (c.bond_cents / 100)|round(2) if c.bond_cents else '' }}" placeholder="5000.00"></div>
+    <div><label>Bond status</label><select name="bond_status">{% for k, l in bond_statuses %}<option value="{{ k }}" {% if (c.bond_status or '') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div><label>Custody</label><select name="custody_status">{% for k, l in custody %}<option value="{{ k }}" {% if (c.custody_status or 'out') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div><label>Judge</label><input type="text" name="judge" value="{{ c.judge or '' }}"></div>
+    <div><label>Prosecutor</label><input type="text" name="prosecutor" value="{{ c.prosecutor or '' }}"></div>
+    <div><label>Prosecutor email</label><input type="email" name="prosecutor_email" value="{{ c.prosecutor_email or '' }}"></div>
+    <div><label>Next setting date</label><input type="date" name="next_setting_on" value="{{ c.next_setting_on|iso }}"></div>
+    <div><label>Setting type</label><select name="next_setting_type"><option value="">Not set</option>{% for k, l in setting_types %}<option value="{{ k }}" {% if c.next_setting_type == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div><label>Discovery received</label><input type="date" name="discovery_received_on" value="{{ c.discovery_received_on|iso }}"></div>
+  </div>
+  <label>Plea offer</label><textarea name="plea_offer" style="min-height:50px" placeholder="What the State has offered, in its words">{{ c.plea_offer or '' }}</textarea>
+  <label>Notes</label><textarea name="notes" style="min-height:60px">{{ c.notes or '' }}</textarea>
+  <div class="actions"><button class="btn">Save facts</button></div>
+</form>
+</div>
+
+<div>
+<div class="card"><h2>Actions</h2>
+  <form method="post" action="/criminal/{{ m.id }}/court-chain" class="row" style="align-items:flex-start">{{ csrf() }}<button class="btn small" {% if not c.next_setting_on %}disabled{% endif %}>Court date chain</button>
+    <span class="small muted">From the next setting: the setting as a court date, "Prepare for" 7 days before, "Confirm client appearance" 2 days before{% if not c.discovery_received_on %}, and a "Request discovery" task since none is recorded{% endif %}. Safe to click twice.</span></form>
+  <form method="post" action="/criminal/{{ m.id }}/speedy-trial" class="row" style="align-items:flex-start;margin-top:10px">{{ csrf() }}<button class="btn small secondary" {% if not c.arrest_on %}disabled{% endif %}>Speedy trial / limitations check</button>
+    <span class="small muted">Deadline at arrest + {{ speedy_days }} days{% if speedy_on %} ({{ speedy_on|d }}){% endif %}. {{ speedy_note }}</span></form>
+  <form method="post" action="/criminal/{{ m.id }}/disposition-pdf" class="row" style="align-items:flex-start;margin-top:10px">{{ csrf() }}<button class="btn small secondary">Disposition summary PDF</button>
+    <span class="small muted">Charges with dispositions and sentences, filed to the matter's Criminal folder.</span></form>
+</div>
+
+<div class="card" id="documents"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Criminal folder</h2><a class="btn small secondary" href="/documents?matter_id={{ m.id }}">All documents</a></div>
+  {% if docs %}<table>{% for d in docs %}<tr><td><a href="/documents/{{ d.id }}/download">{{ d.name }}</a></td><td class="nowrap small muted">{{ d.created_at|dt }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">Nothing filed here yet.</div>{% endif %}
+</div>
+</div>
+</div>
+
+<div class="card" id="charges"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Charges</h2><a class="btn small" href="/criminal/{{ m.id }}/charges/new">Add charge</a></div>
+<p class="small muted" style="margin:0 0 8px">{{ range_note }}</p>
+{% if charges %}<table>
+<tr><th>Statute</th><th>Charge</th><th>Degree</th><th>Range</th><th class="num">Max fine</th><th>Enhancement</th><th>Disposition</th><th>Sentence</th><th></th></tr>
+{% for ch in charges %}<tr>
+  <td class="nowrap">{{ ch.statute }}</td><td>{{ ch.description }}</td><td>{{ ch.degree }}</td><td>{{ ch.range_text }}</td>
+  <td class="num">{{ ch.fine_max_cents|money if ch.fine_max_cents else '' }}</td><td>{{ ch.enhancement }}</td>
+  <td><span class="badge {{ 'open' if ch.disposition in ('dismissed', 'acquitted') else 'overdue' if ch.disposition == 'convicted' else 'draft' if ch.disposition in ('plea', 'deferred') else 'pending' }}">{{ ch.disposition or 'pending' }}</span>{% if ch.disposition_on %} <span class="small muted">{{ ch.disposition_on|d }}</span>{% endif %}</td>
+  <td class="small">{{ ch.sentence }}</td>
+  <td class="right nowrap"><a class="btn small secondary" href="/criminal/{{ m.id }}/charges/{{ ch.id }}/edit">Edit</a> <form method="post" action="/criminal/{{ m.id }}/charges/{{ ch.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Remove this charge?">Remove</button></form></td>
+</tr>{% endfor %}
+</table>{% else %}<div class="empty">No charges yet.</div>{% endif %}
+</div>
+
+<div class="card" id="tasks"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Open tasks and dates</h2><a class="btn small secondary" href="/tasks/new?matter_id={{ m.id }}">New task</a></div>
+{% if tasks %}<table><tr><th>Task</th><th>Kind</th><th>Due</th><th></th></tr>
+{% for t in tasks %}<tr><td><a href="/tasks/{{ t.id }}">{{ t.title }}</a>{% if t.notes %}<br><span class="small muted">{{ t.notes }}</span>{% endif %}</td><td>{{ t.kind.replace('_', ' ') }}</td><td class="nowrap">{% if t.is_overdue %}<span class="badge overdue">overdue</span> {% endif %}{{ t.due_on|d }}</td>
+<td class="right"><form method="post" action="/tasks/{{ t.id }}/done" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/criminal/{{ m.id }}#tasks"><button class="btn small secondary">Done</button></form></td></tr>{% endfor %}</table>
+{% else %}<div class="empty">No open tasks. Use Court date chain above once the next setting is entered.</div>{% endif %}
+</div>
+{% endblock %}

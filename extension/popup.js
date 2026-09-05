@@ -111,9 +111,59 @@ $("log").onclick = async () => {
   } catch (e) { show(e.message, "err"); }
 };
 
+// ---- time capture (background.js does the watching; this just shows state and settings)
+function sendBg(msg) {
+  return new Promise((resolve) => {
+    try { chrome.runtime.sendMessage(msg, (r) => resolve(r || {})); } catch (e) { resolve({ error: e.message }); }
+  });
+}
+
+function lines(v) { return String(v || "").split(/\n/).map((x) => x.trim()).filter(Boolean); }
+
+async function loadCapture() {
+  const s = await chrome.storage.local.get(["captureOn", "allowlist", "denylist"]);
+  const on = s.captureOn !== false;
+  $("capture-on").checked = on;
+  $("capture-state").textContent = on ? "on" : "off";
+  $("allowlist").value = (s.allowlist || []).join("\n");
+  $("denylist").value = (s.denylist || []).join("\n");
+  $("suggest-link").href = (cfg.base || "").replace(/\/+$/, "") + "/time/suggestions";
+}
+
+async function refreshPending() {
+  if (!cfg.base || !cfg.token) return;
+  try {
+    await sendBg({ type: "flush" });  // push whatever the worker has queued before counting
+    const p = await api("/capture/pending");
+    $("pending").hidden = false;
+    $("pending").textContent = p.pending ? p.pending + " suggestion" + (p.pending === 1 ? "" : "s") + " waiting (" +
+      (p.minutes / 60).toFixed(1) + " h). Review at Time suggestions." : "No suggestions waiting.";
+    const q = await sendBg({ type: "queue" });
+    const bits = [];
+    if (q.queued) bits.push(q.queued + " segment" + (q.queued === 1 ? "" : "s") + " queued");
+    if (q.current && q.current.title) bits.push("tracking: " + q.current.title.slice(0, 40));
+    if (q.lastError) bits.push("last post failed: " + q.lastError);
+    $("queue").textContent = bits.join(" · ");
+  } catch (e) { $("queue").textContent = e.message; }
+}
+
+$("capture-on").addEventListener("change", async () => {
+  const on = $("capture-on").checked;
+  await chrome.storage.local.set({ captureOn: on });
+  $("capture-state").textContent = on ? "on" : "off";
+  await sendBg({ type: "capture-toggled", on });
+});
+
+$("capture-save").onclick = async () => {
+  await chrome.storage.local.set({ allowlist: lines($("allowlist").value), denylist: lines($("denylist").value) });
+  show("Capture settings saved.", "ok");
+};
+
 (async () => {
   const saved = await chrome.storage.local.get(["base", "token"]);
   cfg = { base: saved.base || "", token: saved.token || "" };
   $("base").value = cfg.base; $("token").value = cfg.token;
   await refresh();
+  await loadCapture();
+  await refreshPending();
 })();

@@ -19,3 +19,6 @@ button:disabled { opacity: .5; cursor: default; }
 details { margin-bottom: 8px; }
 summary { cursor: pointer; color: #1f5f8b; }
 section { margin-top: 8px; }
+textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; padding: 6px 8px; border: 1px solid #c8d0da; border-radius: 6px; font: inherit; resize: vertical; }
+label.check { display: flex; gap: 6px; align-items: center; font-weight: 600; }
+label.check input { width: auto; margin: 0; display: inline; }

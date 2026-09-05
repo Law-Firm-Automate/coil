@@ -154,20 +154,48 @@ FEATURE_MAP = [
         "company": "Smokeball",
         "blurb": "Known for automatic time capture from documents and email.",
         "features": [
-            ("Automatic time capture", "", "planned"),
+            ("Time capture suggestions from the browser extension: tabs become suggested entries with a guessed matter, accept or dismiss", "/time/suggestions", "built"),
         ],
     },
     {"company": "Calendly / Lawmatics", "blurb": "Self-scheduled consults, paid or free, with intake questionnaires.", "features": []},
     {"company": "Hona / Case Status", "blurb": "A client-facing stage timeline with automatic updates.", "features": []},
     {"company": "Kenect / Podium", "blurb": "Review requests by text and email after a matter closes.", "features": []},
-    {"company": "CosmoLex", "blurb": "Fee splits and compensation reporting.", "features": []},
-    {"company": "Gravity Legal", "blurb": "Cards on file and payment plans.", "features": []},
+    {
+        "company": "CosmoLex",
+        "blurb": "Fee splits and compensation reporting.",
+        "features": [
+            ("Fee splits per matter: originating, working and referral percentages", "/matters", "built"),
+            ("Compensation report: collected fees allocated by working split, originating credit alongside, CSV", "/reports/compensation", "built"),
+        ],
+    },
+    {
+        "company": "Gravity Legal",
+        "blurb": "Cards on file and payment plans.",
+        "features": [
+            ("Card on file with client consent (emailed link or from the portal), stored at Stripe", "/contacts", "built"),
+            ("Charge an invoice to the card on file, surcharge per firm settings", "/invoices", "built"),
+            ("Payment plans: weekly, biweekly or monthly installments, auto-charged or emailed (python -m app.cli payment_plans)", "/money/plans", "built"),
+        ],
+    },
     {"company": "Gavel / Documate", "blurb": "Guided questionnaire-to-document generation.", "features": []},
     {"company": "CaseFleet / TrialPad", "blurb": "Fact chronology tied to evidence, witnesses and exhibits; trial notebook.", "features": []},
     {"company": "CourtDrive / Docketbird", "blurb": "Docket alerts on followed cases (via CourtListener RECAP).", "features": []},
     {"company": "Adobe / Bates tools", "blurb": "Bates numbering, exhibit stamps, redaction boxes, table of authorities.", "features": []},
-    {"company": "Ruby / Smith.ai", "blurb": "Phone intake that lands in the pipeline.", "features": []},
-    {"company": "Vertical case types", "blurb": "Practice-area modules beyond PI.", "features": []},
+    {
+        "company": "Ruby / Smith.ai",
+        "blurb": "Phone intake that lands in the pipeline.",
+        "features": [
+            ("Phone intake API: POST /api/v1/leads creates and scores a lead, idempotent on an external reference", "/settings/api", "built"),
+            ("Voice intake agent hook: the after-hours DUI agent posts a finished intake to Coil when COIL_LEADS_URL is set", "/intake", "built"),
+        ],
+    },
+    {
+        "company": "Vertical case types",
+        "blurb": "Practice-area modules beyond PI.",
+        "features": [
+            ("Criminal defense: stage board, case facts, charges with attorney-entered ranges, court date chain, speedy-trial check, disposition PDF", "/criminal", "built"),
+        ],
+    },
     {
         "company": "Coil only",
         "blurb": "Not modelled on any competitor.",

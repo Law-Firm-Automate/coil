@@ -1,0 +1,12 @@
+{% extends "public.html" %}{% block title %}Card saved{% endblock %}{% block content %}
+<div class="card">
+  {% if saved %}
+  <h1>Card saved</h1>
+  <p>Thank you. {{ label or 'Your card' }} is now on file with {{ f.name }}. You will get an invoice for every charge, and you can ask us to remove the card at any time.</p>
+  {% else %}
+  <h1>Almost there</h1>
+  <p>We have not received confirmation from Stripe yet. This usually resolves within a minute; if the card still does not show as saved, contact {{ f.name }}{% if f.phone %} at {{ f.phone }}{% endif %}.</p>
+  {% endif %}
+  <p><a href="/portal">Go to the client portal</a></p>
+</div>
+{% endblock %}

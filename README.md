@@ -75,6 +75,7 @@ Scheduled jobs (cron on the host):
 */15 * * * * docker compose exec -T web python -m app.cli webhooks
 0  6 1 * *  docker compose exec -T web python -m app.cli interest
 0  5 * * *  docker compose exec -T web python -m app.cli case_audit
+0  9 * * *  docker compose exec -T web python -m app.cli payment_plans
 0  7 * * *  docker compose exec -T web python -m app.cli monthly_invoicing
 ```
 

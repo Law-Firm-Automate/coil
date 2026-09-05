@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}{{ 'New charge' if is_new else 'Edit charge' }}: {{ m.number }}{% endblock %}{% block content %}
+<div class="topbar"><div><h1>{{ 'New charge' if is_new else 'Edit charge' }} <span style="font-weight:500">{{ m.number }} {{ m.name }}</span></h1>
+  <div class="small muted"><a href="/criminal/{{ m.id }}">Back to the criminal case</a></div></div></div>
+<div class="card" style="max-width:760px">
+<p class="small muted">{{ range_note }}</p>
+<form method="post">{{ csrf() }}
+  <div class="grid c2">
+    <div><label>Statute</label><input type="text" name="statute" value="{{ ch.statute or '' }}" placeholder="Penal Code 49.04"></div>
+    <div><label>Degree</label><input type="text" name="degree" value="{{ ch.degree or '' }}" placeholder="Class B misdemeanor"></div>
+  </div>
+  <label>Charge description</label><input type="text" name="description" value="{{ ch.description or '' }}" required placeholder="Driving while intoxicated, first offense">
+  <div class="grid c2">
+    <div><label>Sentencing range (as you know it)</label><input type="text" name="range_text" value="{{ ch.range_text or '' }}" placeholder="72 hours to 180 days county jail"></div>
+    <div><label>Maximum fine</label><input type="text" name="fine_max" value="{{ (ch.fine_max_cents / 100)|round(2) if ch.fine_max_cents else '' }}" placeholder="2000.00"></div>
+  </div>
+  <label>Enhancement</label><input type="text" name="enhancement" value="{{ ch.enhancement or '' }}" placeholder="Prior conviction, open container, BAC over 0.15">
+  <div class="grid c2">
+    <div><label>Disposition</label><select name="disposition">{% for k, l in dispositions %}<option value="{{ k }}" {% if (ch.disposition or 'pending') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div><label>Disposition date</label><input type="date" name="disposition_on" value="{{ ch.disposition_on|iso }}"></div>
+  </div>
+  <label>Sentence</label><textarea name="sentence" style="min-height:60px" placeholder="Terms as pronounced">{{ ch.sentence or '' }}</textarea>
+  <div class="actions"><button class="btn">{{ 'Add charge' if is_new else 'Save charge' }}</button><a class="btn secondary" href="/criminal/{{ m.id }}#charges">Cancel</a></div>
+</form>
+</div>
+{% endblock %}

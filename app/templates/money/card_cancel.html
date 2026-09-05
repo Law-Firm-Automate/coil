@@ -1,0 +1,6 @@
+{% extends "public.html" %}{% block title %}Card not saved{% endblock %}{% block content %}
+<div class="card">
+  <h1>No card was saved</h1>
+  <p>You left the secure card page before finishing. Nothing was stored. You can <a href="/pay/card/{{ token }}">try again</a> while the link is valid, or ignore this if you have changed your mind.</p>
+</div>
+{% endblock %}

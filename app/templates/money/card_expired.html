@@ -1,0 +1,6 @@
+{% extends "public.html" %}{% block title %}Link expired{% endblock %}{% block content %}
+<div class="card">
+  <h1>This link has expired or was already used</h1>
+  <p>Card links work for 7 days and once only. Ask {{ f.name }}{% if f.phone %} ({{ f.phone }}){% endif %} to send a fresh one, or sign in to the <a href="/portal/login">client portal</a> and choose "Save a card" there.</p>
+</div>
+{% endblock %}

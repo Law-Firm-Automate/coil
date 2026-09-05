@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% block title %}Time suggestions{% endblock %}{% block content %}
+<div class="topbar">
+  <div><h1>Time suggestions</h1>
+    <div class="small muted">Activity captured by the Coil browser extension, waiting to become time entries. Accepting rounds up to the next six minutes at your rate for that matter.</div></div>
+  <div class="actions" style="margin:0">
+    <form method="post" action="/time/suggestions/accept-all" class="inline">{{ csrf() }}<button class="btn small" {% if not with_matter %}disabled{% endif %} data-confirm="Log {{ with_matter }} suggestion{{ '' if with_matter == 1 else 's' }} as time entries on their guessed matters?">Accept all with a matter ({{ with_matter }})</button></form>
+    <form method="post" action="/time/suggestions/dismiss-all" class="inline">{{ csrf() }}<button class="btn small secondary" {% if not count %}disabled{% endif %} data-confirm="Dismiss every pending suggestion?">Dismiss all</button></form>
+    <a class="btn small secondary" href="/time">Time entries</a>
+  </div>
+</div>
+<div class="grid c3">
+  <div class="card stat"><div class="label">Pending</div><div class="value">{{ count }}</div></div>
+  <div class="card stat"><div class="label">Captured</div><div class="value">{{ total_minutes|hours }} h</div><div class="small muted">before rounding</div></div>
+  <div class="card stat"><div class="label">With a matter guess</div><div class="value">{{ with_matter }}</div></div>
+</div>
+
+{% if not count %}<div class="empty">Nothing pending. Install the extension from the repository's <code>extension/</code> folder, turn Capture on in its popup, and segments over two minutes show up here every ten minutes.</div>{% endif %}
+
+{% for day, rows in groups.items() %}
+<div class="card"><h2>{{ day|d }} <span class="small muted">{{ rows|length }} item{{ '' if rows|length == 1 else 's' }}, {{ (rows|sum(attribute='minutes'))|hours }} h</span></h2>
+<table>
+<tr><th>Started</th><th>Title</th><th class="num">Min</th><th>Matter and description</th><th></th></tr>
+{% for s in rows %}
+<tr>
+  <td class="nowrap small">{{ s.started_at|dt }}<br><span class="muted">{{ s.source }}</span></td>
+  <td>{% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a>{% else %}{{ s.title }}{% endif %}</td>
+  <td class="num">{{ s.minutes }}</td>
+  <td>
+    <form method="post" action="/time/suggestions/{{ s.id }}/accept" id="acc{{ s.id }}">{{ csrf() }}
+      <select name="matter_id" style="width:100%;margin-bottom:4px"><option value="">No matter{% if not s.matter_id %} (no guess){% endif %}</option>{% for m in matters %}<option value="{{ m.id }}" {% if m.id == s.matter_id %}selected{% endif %}>{{ m.label }} ({{ m.client.display_name }})</option>{% endfor %}</select>
+      <input type="text" name="description" value="{{ s.title }}" placeholder="Description on the time entry">
+    </form>
+  </td>
+  <td class="right nowrap">
+    <button class="btn small" form="acc{{ s.id }}">Accept</button>
+    <button class="btn small secondary" form="acc{{ s.id }}" name="action" value="save" title="Save the matter without logging time yet">Save</button>
+    <form method="post" action="/time/suggestions/{{ s.id }}/dismiss" class="inline">{{ csrf() }}<button class="btn small secondary">Dismiss</button></form>
+  </td>
+</tr>
+{% endfor %}
+</table></div>
+{% endfor %}
+
+{% if recent %}
+<div class="card"><h2>Recently handled</h2>
+<table><tr><th>When</th><th>Title</th><th class="num">Min</th><th>Outcome</th></tr>
+{% for s in recent %}<tr><td class="nowrap small">{{ s.started_at|dt }}</td><td>{{ s.title }}</td><td class="num">{{ s.minutes }}</td><td>{% if s.status == 'accepted' %}<span class="badge open">accepted</span>{% if s.time_entry_id %} <a class="small" href="/time/{{ s.time_entry_id }}/edit">entry</a>{% endif %}{% else %}<span class="badge">dismissed</span>{% endif %}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+{% endblock %}

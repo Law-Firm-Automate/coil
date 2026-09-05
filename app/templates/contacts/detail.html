@@ -24,6 +24,7 @@
       {% if c.aliases %}<dt>Other names</dt><dd style="white-space:pre-line">{{ c.aliases }}</dd>{% endif %}
       <dt>Language</dt><dd>{% if c.language == 'es' %}Spanish{% elif c.language == 'en' %}English{% else %}<span class="muted">firm default</span>{% endif %}</dd>
       {% if c.ledes_client_id %}<dt>LEDES client id</dt><dd>{{ c.ledes_client_id }}</dd>{% endif %}
+      {# Agent P: card on file #}<dt>Card on file</dt><dd>{% if money_has_card(c) %}{{ money_card_label(c) }}{% if c.card_authorised_on %} <span class="small muted">authorised {{ c.card_authorised_on|d }}</span>{% endif %} <form method="post" action="/money/cards/{{ c.id }}/remove" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Remove {{ money_card_label(c) }}? Automatic payment plans switch to email reminders.">Remove card</button></form>{% else %}<span class="muted">none</span> <form method="post" action="/money/cards/{{ c.id }}/request" class="inline">{{ csrf() }}<button class="btn small secondary" {% if not c.email %}disabled title="No email address"{% endif %} title="Emails a link that explains charge-on-invoice and saves a card through Stripe">Request card on file</button></form>{% if not money_stripe_ok() %} <span class="small muted">Online payments are not configured.</span>{% endif %}{% endif %}</dd>
       {% for k, v in c.custom_fields.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
       <dt>Added</dt><dd>{{ c.created_at|d }}</dd>
     </dl>

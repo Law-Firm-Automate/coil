@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block title %}Criminal defense{% endblock %}{% block content %}
+<style>
+.crboard{display:grid;grid-template-columns:repeat(7,minmax(165px,1fr));gap:10px;overflow-x:auto;align-items:start}
+.crcol{background:#f3f5f8;border-radius:8px;padding:8px;min-height:140px}
+.crcol h3{font-size:.85rem;margin:0 0 8px;display:flex;justify-content:space-between}
+.crcard{background:#fff;border:1px solid #dfe3ea;border-radius:6px;padding:8px;margin-bottom:8px;font-size:.82rem}
+.crcard .kv{grid-template-columns:auto 1fr;gap:1px 8px;font-size:.78rem;margin-top:4px}
+</style>
+<div class="topbar"><h1>Criminal defense</h1>
+  <div class="actions" style="margin:0"><span class="small muted">{{ count }} case{{ '' if count == 1 else 's' }}</span></div></div>
+
+<div class="card">
+  <form method="post" action="/criminal/start" class="searchbar">{{ csrf() }}
+    <label style="margin:0">Start a criminal case on a matter</label>
+    <select name="matter_id" required style="width:auto"><option value="">Choose an open matter</option>{% for m in open_matters %}<option value="{{ m.id }}">{{ m.label }} ({{ m.client.display_name }})</option>{% endfor %}</select>
+    <button class="btn small" {% if not open_matters %}disabled{% endif %}>Start</button>
+    {% if not open_matters %}<span class="small muted">Every open matter already has a criminal case.</span>{% endif %}
+  </form>
+</div>
+
+<div class="crboard">
+{% for key, label in stages %}
+<div class="crcol">
+  <h3><span>{{ label }}</span><span class="muted">({{ cols[key]|length }})</span></h3>
+  {% for row in cols[key] %}{% set c = row.case %}{% set m = row.matter %}
+  <div class="crcard">
+    <a href="/criminal/{{ m.id }}"><strong>{{ m.number }}</strong> {{ m.name }}</a>
+    <div class="small muted">{{ m.client.display_name }}</div>
+    <div style="margin-top:4px">{% if c.custody_status == 'in' %}<span class="badge overdue">in custody</span>{% else %}<span class="badge open">out of custody</span>{% endif %}{% if row.charges %} <span class="badge">{{ row.charges }} charge{{ '' if row.charges == 1 else 's' }}</span>{% endif %}</div>
+    <dl class="kv">
+      <dt>Next</dt><dd>{% if c.next_setting_on %}{% if c.next_setting_on < today %}<span class="badge overdue">past</span> {% elif c.next_setting_on <= soon %}<span class="badge pending">soon</span> {% endif %}{{ c.next_setting_on|d }}{% if row.setting %} <span class="muted">{{ row.setting }}</span>{% endif %}{% else %}<span class="muted">no setting</span>{% endif %}</dd>
+      {% if c.court %}<dt>Court</dt><dd>{{ c.court }}</dd>{% endif %}
+      {% if c.cause_number %}<dt>Cause</dt><dd>{{ c.cause_number }}</dd>{% endif %}
+      {% if c.arrest_on %}<dt>Arrest</dt><dd>{{ c.arrest_on|d }}</dd>{% endif %}
+      {% if c.bond_cents %}<dt>Bond</dt><dd>{{ c.bond_cents|money }}{% if c.bond_status %} ({{ c.bond_status }}){% endif %}</dd>{% endif %}
+    </dl>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+</div>
+{% if not count %}<div class="empty">No criminal cases yet. Start one on a matter above, or open any matter and use its Criminal defense button.</div>{% endif %}
+{% endblock %}

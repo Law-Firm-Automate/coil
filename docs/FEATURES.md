@@ -138,7 +138,70 @@ The $10 to $40 time-and-billing tools named as Clio alternatives.
 
 Known for automatic time capture from documents and email.
 
-- Automatic time capture · planned
+- Time capture suggestions from the browser extension: tabs become suggested entries with a guessed matter, accept or dismiss (`/time/suggestions`) · built
+
+## Calendly / Lawmatics
+
+Self-scheduled consults, paid or free, with intake questionnaires.
+
+
+## Hona / Case Status
+
+A client-facing stage timeline with automatic updates.
+
+
+## Kenect / Podium
+
+Review requests by text and email after a matter closes.
+
+
+## CosmoLex
+
+Fee splits and compensation reporting.
+
+- Fee splits per matter: originating, working and referral percentages (`/matters`) · built
+- Compensation report: collected fees allocated by working split, originating credit alongside, CSV (`/reports/compensation`) · built
+
+## Gravity Legal
+
+Cards on file and payment plans.
+
+- Card on file with client consent (emailed link or from the portal), stored at Stripe (`/contacts`) · built
+- Charge an invoice to the card on file, surcharge per firm settings (`/invoices`) · built
+- Payment plans: weekly, biweekly or monthly installments, auto-charged or emailed (python -m app.cli payment_plans) (`/money/plans`) · built
+
+## Gavel / Documate
+
+Guided questionnaire-to-document generation.
+
+
+## CaseFleet / TrialPad
+
+Fact chronology tied to evidence, witnesses and exhibits; trial notebook.
+
+
+## CourtDrive / Docketbird
+
+Docket alerts on followed cases (via CourtListener RECAP).
+
+
+## Adobe / Bates tools
+
+Bates numbering, exhibit stamps, redaction boxes, table of authorities.
+
+
+## Ruby / Smith.ai
+
+Phone intake that lands in the pipeline.
+
+- Phone intake API: POST /api/v1/leads creates and scores a lead, idempotent on an external reference (`/settings/api`) · built
+- Voice intake agent hook: the after-hours DUI agent posts a finished intake to Coil when COIL_LEADS_URL is set (`/intake`) · built
+
+## Vertical case types
+
+Practice-area modules beyond PI.
+
+- Criminal defense: stage board, case facts, charges with attorney-entered ranges, court date chain, speedy-trial check, disposition PDF (`/criminal`) · built
 
 ## Coil only
 

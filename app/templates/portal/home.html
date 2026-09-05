@@ -30,6 +30,24 @@
   {% else %}<p class="muted">{{ t('portal.home.nothing_due', lang) }}</p>{% endif %}
 </div>
 
+{# ---- Agent P: card on file + payment plans (strings inline; app/i18n.py belongs to Agent D) ---- #}
+{% set es = (lang == 'es') %}
+{% set plans = money_plans_for_contact(c) %}
+<div class="card">
+  <h2>{{ 'Pagos automáticos' if es else 'Automatic payments' }}</h2>
+  {% if plans %}
+  <table><tr><th>{{ 'Factura' if es else 'Invoice' }}</th><th>{{ 'Cuotas' if es else 'Installments' }}</th><th>{{ 'Próximo pago' if es else 'Next payment' }}</th><th class="num">{{ 'Importe' if es else 'Amount' }}</th><th></th></tr>
+  {% for p in plans %}<tr><td>{{ p.invoice.number if p.invoice else '' }}</td><td>{{ p.paid_installments }} / {{ p.installments }}</td><td class="nowrap">{{ p.next_charge_on|d }}</td><td class="num">{{ money_next_cents(p)|money }}</td><td class="right nowrap">{% if p.auto_charge %}<span class="small muted">{{ 'se cobra a la tarjeta guardada' if es else 'charged to your saved card' }}</span>{% elif p.invoice %}<a href="/pay/plan/{{ p.id }}/{{ p.invoice.public_token }}">{{ 'Pagar ahora' if es else 'Pay now' }}</a>{% endif %}</td></tr>{% endfor %}</table>
+  {% endif %}
+  {% if money_has_card(c) %}
+  <p>{{ 'Tarjeta guardada: ' if es else 'Card on file: ' }}{{ money_card_label(c) }}{% if c.card_authorised_on %} <span class="small muted">({{ 'autorizada el ' if es else 'authorised ' }}{{ c.card_authorised_on|d }})</span>{% endif %}. <span class="small muted">{{ 'Para retirarla, póngase en contacto con nosotros.' if es else 'Contact us to remove it.' }}</span></p>
+  {% else %}
+  <p class="muted">{{ 'Guarde una tarjeta para que las facturas y los planes de pago se cobren automáticamente. Recibirá una factura por cada cargo.' if es else 'Save a card so invoices and payment plans can be charged automatically. You get an invoice for every charge.' }}</p>
+  <form method="post" action="/money/portal/card">{{ csrf() }}<button class="btn small">{{ 'Guardar una tarjeta para pagos automáticos' if es else 'Save a card for automatic payments' }}</button></form>
+  {% endif %}
+</div>
+{# ---- end Agent P ---- #}
+
 <div class="card">
   <h2>{{ t('portal.home.matters', lang) }}</h2>
   {% if matters %}<table><tr><th>{{ t('portal.home.number', lang) }}</th><th>{{ t('portal.home.matter', lang) }}</th><th>{{ t('portal.home.status', lang) }}</th><th>{{ t('portal.home.attorney', lang) }}</th></tr>

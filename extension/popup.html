@@ -33,6 +33,16 @@
     <button id="log" class="secondary">Log time</button>
   </div>
 </section>
+<details id="capture">
+  <summary>Capture <span id="capture-state" class="muted"></span></summary>
+  <label class="check"><input id="capture-on" type="checkbox"> Capture time from the active tab</label>
+  <p class="muted">Tabs you spend two minutes or more on become suggestions at <a id="suggest-link" href="#" target="_blank">Time suggestions</a>. Nothing is logged until you accept it there. Idle for five minutes stops the clock.</p>
+  <div id="pending" class="picked" hidden></div>
+  <label>Only these domains (one per line; blank = everything except the denylist)<textarea id="allowlist" rows="3" placeholder="courts.state.tx.us&#10;mail.google.com"></textarea></label>
+  <label>Never capture<textarea id="denylist" rows="3"></textarea></label>
+  <button id="capture-save" class="secondary">Save capture settings</button>
+  <p id="queue" class="muted"></p>
+</details>
 <script src="popup.js"></script>
 </body>
 </html>
