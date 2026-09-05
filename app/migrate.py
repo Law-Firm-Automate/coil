@@ -47,8 +47,15 @@ def add_missing_columns():
                 default = _sql_default(col)
                 if default is not None:
                     ddl += f" DEFAULT {default}"
-                conn.execute(text(ddl))
-                added.append(f"{table.name}.{col.name}")
+                try:
+                    conn.execute(text(ddl))
+                    added.append(f"{table.name}.{col.name}")
+                except Exception as e:  # noqa: BLE001
+                    # Two gunicorn workers start at once and both see the column missing; the
+                    # second ALTER fails with "duplicate column name". That is success, not an error.
+                    if "duplicate column" in str(e).lower():
+                        continue
+                    raise
     if added:
         log.warning("schema: added %d missing column(s): %s", len(added), ", ".join(added))
     return added
