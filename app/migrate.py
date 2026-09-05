@@ -14,11 +14,14 @@ log = logging.getLogger("migrate")
 
 
 def _sql_default(col):
+    """SQL literal for the model's scalar default, or None when there is no usable default."""
     d = col.default
-    if d is None or d.is_callable if hasattr(d, "is_callable") else False:
+    if d is None:
         return None
-    v = d.arg
-    if callable(v):
+    if getattr(d, "is_callable", False):
+        return None
+    v = getattr(d, "arg", None)
+    if v is None or callable(v):
         return None
     if isinstance(v, bool):
         return "1" if v else "0"
