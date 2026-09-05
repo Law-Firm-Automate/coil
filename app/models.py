@@ -724,6 +724,8 @@ class IntakeLead(db.Model):
     next_follow_up_on = db.Column(db.Date)
     assigned_user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     lost_reason = db.Column(db.String(200), default="")
+    score = db.Column(db.Integer)  # 0-100 case score at intake (Eve lane)
+    score_json = db.Column(db.Text, default="{}")
     contact = db.relationship("Contact")
     matter = db.relationship("Matter")
     conflict_check = db.relationship("ConflictCheck")
@@ -1085,6 +1087,96 @@ class PiCase(db.Model):
     demand_amount_cents = db.Column(db.Integer, default=0)
     offer_cents = db.Column(db.Integer, default=0)
     stage = db.Column(db.String(30), default="intake")  # intake | treating | records | demand | negotiation | litigation | settled | closed
+    created_at = db.Column(db.DateTime, default=now)
+    # Eve lane: model-written case overview from the documents, and a viability/value score
+    overview_text = db.Column(db.Text, default="")
+    overview_at = db.Column(db.DateTime)
+    case_score = db.Column(db.Integer)  # 0-100
+    case_score_json = db.Column(db.Text, default="{}")  # factors behind the score
+    demand_style_notes = db.Column(db.Text, default="")  # per-matter tone notes for the narrative demand
+    matter = db.relationship("Matter")
+
+
+class ChronologyEntry(db.Model):
+    """One dated event in a PI treatment chronology, typed by hand or extracted from a records PDF."""
+    __tablename__ = "chronology_entries"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    provider_id = db.Column(db.Integer, db.ForeignKey("medical_providers.id"))
+    date = db.Column(db.Date)
+    provider_name = db.Column(db.String(200), default="")
+    visit_type = db.Column(db.String(60), default="")  # ER | office | imaging | surgery | PT | pharmacy | other
+    diagnosis = db.Column(db.Text, default="")
+    procedure = db.Column(db.Text, default="")
+    charges_cents = db.Column(db.Integer, default=0)
+    source_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
+    page_ref = db.Column(db.String(40), default="")
+    notes = db.Column(db.Text, default="")
+    origin = db.Column(db.String(10), default="user")  # user | ai
+    confirmed = db.Column(db.Boolean, default=True)  # ai rows start unconfirmed until reviewed
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+    provider = db.relationship("MedicalProvider")
+    source_document = db.relationship("Document")
+
+
+class DiscoverySet(db.Model):
+    """A set of discovery requests we propound, or responses to a set served on us."""
+    __tablename__ = "discovery_sets"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    direction = db.Column(db.String(10), default="propound")  # propound | respond
+    kind = db.Column(db.String(20), default="interrogatories")  # interrogatories | rfp | rfa
+    title = db.Column(db.String(300), default="")
+    party = db.Column(db.String(200), default="")  # who it is directed to / who served it
+    served_on = db.Column(db.Date)
+    due_on = db.Column(db.Date)
+    items_json = db.Column(db.Text, default="[]")  # [{"n":1,"request":"...","response":"...","objections":["..."],"flag":"..."}]
+    source_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))  # the served set, when responding
+    output_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
+    status = db.Column(db.String(20), default="draft")  # draft | review | final
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+    @property
+    def items(self):
+        try:
+            return json.loads(self.items_json or "[]")
+        except Exception:
+            return []
+
+
+class DepositionSummary(db.Model):
+    __tablename__ = "deposition_summaries"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))  # the transcript
+    deponent = db.Column(db.String(200), default="")
+    taken_on = db.Column(db.Date)
+    summary_text = db.Column(db.Text, default="")
+    key_testimony_json = db.Column(db.Text, default="[]")  # [{"page":.., "line":.., "quote":.., "topic":..}]
+    contradictions_json = db.Column(db.Text, default="[]")  # [{"testimony":.., "conflicts_with":.., "source":..}]
+    status = db.Column(db.String(20), default="draft")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+    document = db.relationship("Document")
+
+
+class CaseAuditFinding(db.Model):
+    """One thing the nightly case audit noticed on a matter. Re-runs update last_seen rather than duplicating."""
+    __tablename__ = "case_audit_findings"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    kind = db.Column(db.String(60), nullable=False)  # missing_records | treatment_gap | bills_missing | imaging_not_obtained | sol_near | no_activity | mass_tort_signal | injury_mention | ...
+    severity = db.Column(db.String(10), default="medium")  # low | medium | high
+    message = db.Column(db.String(400), default="")
+    detail_json = db.Column(db.Text, default="{}")
+    origin = db.Column(db.String(10), default="rule")  # rule | ai
+    status = db.Column(db.String(12), default="open")  # open | dismissed | resolved
+    first_seen_on = db.Column(db.Date, default=date.today)
+    last_seen_on = db.Column(db.Date, default=date.today)
     created_at = db.Column(db.DateTime, default=now)
     matter = db.relationship("Matter")
 

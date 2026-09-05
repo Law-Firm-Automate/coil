@@ -32,7 +32,7 @@ def create_app(config=None):
                     "trust", "payments", "portal",
                     "intake", "engagements", "messages", "settings", "exports", "signatures",
                     "rules", "doctemplates", "emailin", "accounting", "api", "webhooks_out", "ai",
-                    "statements", "research", "pi", "features"):
+                    "statements", "research", "pi", "features", "records", "discovery", "caseaudit"):
         try:
             mod = __import__(f"app.blueprints.{modname}", fromlist=["bp"])
             app.register_blueprint(mod.bp)

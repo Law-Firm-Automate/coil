@@ -95,6 +95,11 @@ FEATURE_MAP = [
         ],
     },
     {
+        "company": "Eve Legal",
+        "blurb": "Plaintiff-side AI: records into chronologies, demands, discovery, depositions, a nightly case audit, case scoring.",
+        "features": [],
+    },
+    {
         "company": "NetDocuments",
         "blurb": "Document management.",
         "features": [
