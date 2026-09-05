@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block title %}Depositions{% endblock %}{% block content %}
+<div class="topbar"><h1>Deposition summaries{% if matter %} <span style="font-weight:500">for <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></span>{% endif %}</h1>
+<div class="actions" style="margin:0">{% if matter %}<a class="btn small" href="/discovery/depositions/new?matter_id={{ matter.id }}">New summary</a><a class="btn small secondary" href="/discovery?matter_id={{ matter.id }}">Discovery sets</a>{% else %}<a class="btn small secondary" href="/discovery">Discovery sets</a>{% endif %}</div></div>
+<div class="card">
+  <form method="get" class="searchbar" style="margin:0">
+    <select name="matter_id" style="width:auto;max-width:100%" aria-label="Matter"><option value="">All matters</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}</option>{% endfor %}</select>
+    <button class="btn secondary">Show</button>{% if matter_id %}<a class="small" href="/discovery/depositions">Clear</a>{% endif %}
+  </form>
+  {% if not matter %}<p class="small muted" style="margin:8px 0 0">Pick a matter to summarise a transcript. Summaries are also reachable from the Depositions button on each matter.</p>{% endif %}
+</div>
+<div class="card">
+{% if deps %}
+<table>
+  <tr><th>Deponent</th><th>Matter</th><th>Taken</th><th>Transcript</th><th>Key passages</th><th>Status</th></tr>
+  {% for d in deps %}
+  <tr>
+    <td><a href="/discovery/depositions/{{ d.id }}">{{ d.deponent or 'Deponent' }}</a></td>
+    <td class="small"><a href="/matters/{{ d.matter_id }}">{{ d.matter.number }}</a></td>
+    <td>{{ d.taken_on|d }}</td>
+    <td class="small">{% if d.document %}<a href="/documents/{{ d.document.id }}/download">{{ d.document.name }}</a>{% endif %}</td>
+    <td class="num">{{ counts.get(d.id, 0) }}</td>
+    <td><span class="badge {{ 'draft' if d.status == 'draft' else 'pending' if d.status == 'review' else 'open' }}">{{ d.status }}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">No deposition summaries yet.{% if matter %} <a href="/discovery/depositions/new?matter_id={{ matter.id }}">Summarise a transcript</a> on this matter.{% endif %}</div>
+{% endif %}
+</div>
+{% endblock %}

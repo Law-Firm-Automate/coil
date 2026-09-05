@@ -4,7 +4,7 @@
   <div><h1>Personal injury <span style="font-weight:500">{{ m.number }} {{ m.name }}</span> <span class="badge {{ 'open' if c.stage in ('settled',) else 'closed' if c.stage == 'closed' else 'pending' }}">{{ c.stage }}</span></h1>
     <div class="small muted">Client <a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a>{% if dob %} &middot; DOB {{ dob }}{% endif %}{% if c.date_of_loss %} &middot; date of loss {{ c.date_of_loss|d }}{% endif %} &middot; <a href="/matters/{{ m.id }}">matter page</a> &middot; <a href="/pi">board</a></div></div>
   <div class="tabs" style="margin:0;border:0">
-    <a href="#facts">Facts</a><a href="#providers">Providers</a><a href="#liens">Liens</a><a href="#demand">Demand</a><a href="#settlement">Settlement</a><a href="#tasks">Tasks</a>
+    <a href="#facts">Facts</a><a href="#chronology">Chronology</a><a href="#overview">Overview</a><a href="#providers">Providers</a><a href="#liens">Liens</a><a href="#demand">Demand</a><a href="#settlement">Settlement</a><a href="#tasks">Tasks</a>
   </div>
 </div>
 <div class="grid c4">
@@ -12,6 +12,26 @@
   <div class="card stat"><div class="label">Total billed</div><div class="value">{{ total_billed|money }}</div><div class="small muted">{{ providers|length }} provider{{ '' if providers|length == 1 else 's' }}</div></div>
   <div class="card stat"><div class="label">Liens payable</div><div class="value">{{ liens_payable|money }}</div><div class="small muted">{{ liens|length }} lien{{ '' if liens|length == 1 else 's' }}</div></div>
   <div class="card stat"><div class="label">Demand / offer</div><div class="value" style="font-size:1.15rem">{{ c.demand_amount_cents|money }} / {{ c.offer_cents|money }}</div><div class="small muted">{% if c.demand_sent_on %}sent {{ c.demand_sent_on|d }}{% else %}demand not sent{% endif %}</div></div>
+</div>
+
+{# ---------------- Agent N: case audit + case score ---------------- #}
+{% set sc = c.case_score_json|score_factors %}
+<div class="grid c2" id="audit">
+  <div class="card">
+    <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Case audit{% if audit_info %} <span class="badge {{ 'overdue' if audit_info.high else 'pending' if audit_info.open else 'open' }}">{{ audit_info.open }} open</span>{% endif %}</h2>
+      <div class="actions" style="margin:0"><a class="btn small secondary" href="/audit/{{ m.id }}">Findings</a></div></div>
+    {% if audit_info %}
+    <p class="small muted" style="margin:0 0 6px">{{ audit_info.open }} open{% if audit_info.high %}, {{ audit_info.high }} high{% endif %}. Last run {{ audit_info.last_run|dt if audit_info.last_run else 'never' }}.</p>
+    {% if audit_info.newest %}<ul class="small" style="margin:0;padding-left:18px">{% for f in audit_info.newest %}<li><span class="badge {{ 'overdue' if f.severity == 'high' else 'draft' if f.severity == 'medium' else 'pending' }}">{{ f.severity }}</span> {{ f.message }}{% if f.origin == 'ai' %} <span class="badge new" title="Suggested by the AI model from the file text. Check it before acting.">AI</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% else %}<p class="small muted">The audit module is not available.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Case score {% if c.case_score is not none %}<span class="badge {{ 'open' if c.case_score >= 60 else 'draft' if c.case_score >= 35 else 'overdue' }}">{{ c.case_score }}/100</span>{% else %}<span class="small muted">not scored</span>{% endif %}</h2>
+      <div class="actions" style="margin:0"><form method="post" action="/audit/pi/{{ m.id }}/rescore" class="inline">{{ csrf() }}<button class="btn small secondary" title="Rules only: liability notes, limits, treatment, providers, specials, imaging, demand, age">Rescore</button></form>{% if firm().ai_enabled %}<form method="post" action="/audit/pi/{{ m.id }}/rescore" class="inline">{{ csrf() }}<input type="hidden" name="refine" value="1"><button class="btn small secondary" title="Rules score plus an AI adjustment of at most 15 points either way, with its reason">Rescore with AI</button></form>{% endif %}</div></div>
+    {% if sc.factors %}<ul class="small" style="margin:0;padding-left:18px;columns:2">{% for f in sc.factors %}<li>{{ f.label }} <span class="muted">+{{ f.points }}</span></li>{% endfor %}</ul>
+    {% if sc.ai_adjustment %}<p class="small" style="margin:6px 0 0"><span class="badge new">AI</span> adjustment {{ '+' if sc.ai_adjustment.delta > 0 else '' }}{{ sc.ai_adjustment.delta }}: {{ sc.ai_adjustment.reason }}</p>{% endif %}
+    {% else %}<p class="small muted" style="margin:0">A plain 0 to 100 from what is on the file. It is a triage aid, not a valuation.</p>{% endif %}
+  </div>
 </div>
 
 {# ---------------- Facts ---------------- #}
@@ -39,6 +59,35 @@
   <label>Liability notes</label><textarea name="liability_notes" rows="2" placeholder="Police report favors client; witness statement on file.">{{ c.liability_notes }}</textarea>
   <div class="actions" style="margin-top:8px"><button class="btn small">Save facts</button>{% if not dob %}<span class="small muted">Add a custom field named "dob" on the client contact and the letters will include the date of birth.</span>{% endif %}</div>
 </form></div>
+
+{# ---------------- Agent L: chronology + case overview (records module) ---------------- #}
+{% set rs = records_summary(m.id) %}
+<div class="grid c2">
+  <div class="card" id="chronology">
+    <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Chronology <span class="badge {{ 'pending' if rs.unconfirmed else 'open' if rs.total else 'draft' }}">{{ rs.total }} entr{{ 'y' if rs.total == 1 else 'ies' }}</span></h2>
+      <div class="actions" style="margin:0"><a class="btn small secondary" href="/records/{{ m.id }}">Open chronology</a></div></div>
+    <p class="small muted" style="margin:0 0 8px">{% if rs.total %}{{ rs.unconfirmed }} unconfirmed. Confirmed entries feed the overview and the narrative demand; "Recalculate specials" on the chronology page rolls them into the provider totals.{% else %}No entries yet. Extract them from a records document or type them in on the chronology page.{% endif %}</p>
+    <form method="post" action="/records/{{ m.id }}/extract">{{ csrf() }}
+      <label>Extract from records</label>
+      <div class="row">
+        <div><select name="document_id" required><option value="">Choose a document</option>{% for d in rs.docs %}<option value="{{ d.id }}">{{ d.name }}{% if d.folder %} ({{ d.folder }}){% endif %}{% if not d.extracted_text %} [no text]{% endif %}</option>{% endfor %}</select></div>
+        <div><button class="btn small" {% if not rs.docs %}disabled title="Upload a records document to the matter first"{% endif %}>Extract from records</button></div>
+      </div>
+      <p class="small muted" style="margin:6px 0 0">Adds unconfirmed entries from the document's text. This is a draft for attorney review and may contain errors.</p>
+    </form>
+  </div>
+  <div class="card" id="overview">
+    <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Case overview</h2>
+      <div class="actions" style="margin:0">
+        <form method="post" action="/records/{{ m.id }}/overview" class="inline">{{ csrf() }}<button class="btn small {% if c.overview_text %}secondary{% endif %}" title="Written from the facts, confirmed chronology, providers, liens, notes and the text of the medical records, demand and email documents">{{ 'Regenerate' if c.overview_text else 'Generate overview' }}</button></form>
+        {% if c.overview_text %}<form method="post" action="/records/{{ m.id }}/overview/note" class="inline">{{ csrf() }}<button class="btn small secondary">Save as note</button></form>{% endif %}
+      </div></div>
+    {% if c.overview_text %}
+    <p class="small muted" style="margin:0 0 6px">Generated {{ c.overview_at|dt if c.overview_at else '' }}. This is a draft for attorney review and may contain errors.</p>
+    <div class="small" style="white-space:pre-wrap;max-height:360px;overflow:auto;border:1px solid #ddd;border-radius:6px;padding:10px">{{ c.overview_text }}</div>
+    {% else %}<p class="small muted" style="margin:0">Facts, parties, injuries and treatment, liability, a damages summary and open questions, written from the file. Without AI the same sections are assembled from the structured data.</p>{% endif %}
+  </div>
+</div>
 
 {# ---------------- Providers ---------------- #}
 <div class="card" id="providers"><div class="topbar" style="margin-bottom:10px"><h2>Treating providers</h2><div class="actions" style="margin:0"><a class="btn small" href="/pi/{{ m.id }}/providers/new">Add provider</a></div></div>
@@ -95,6 +144,11 @@
     </div>
     <div class="actions" style="margin-top:8px"><button class="btn small" {% if not providers and not c.incident_description %}title="Add facts and providers first"{% endif %}>Build demand package</button></div>
   </form>
+</div>
+{# Agent L: narrative demand (records module) #}
+<div class="actions" style="margin-top:10px;align-items:center">
+  <a class="btn small secondary" href="/records/{{ m.id }}/demand-draft">{{ 'Open narrative demand draft' if rs.has_draft else 'Draft narrative demand' }}</a>
+  <span class="small muted">A full letter in the firm's voice, section by section, that you edit before saving it as a PDF.{% if rs.demand_doc %} Latest: <a href="/documents/{{ rs.demand_doc.id }}/download">{{ rs.demand_doc.name }}</a> ({{ rs.demand_doc.created_at|d }}).{% endif %}</span>
 </div></div>
 
 {# ---------------- Settlement ---------------- #}

@@ -30,11 +30,12 @@ CARDS = OrderedDict([
     ("unsigned_documents", ("Documents awaiting signature", "list", "Signature requests that are sent or viewed but not signed.")),
     ("portal_messages", ("Unread portal messages", "list", "Secure messages from clients nobody has opened yet.")),
     ("recent_matters", ("Recent matters", "wide", "The eight newest matters with unbilled and trust figures.")),
+    ("case_audit", ("Case audit", "list", "Open high findings from the nightly case audit and the five newest.")),
 ])
 
 # Same content as the original fixed dashboard, in the order it appeared.
 DEFAULT_CARDS = ["open_matters", "ar", "wip", "trust", "tasks", "deadlines", "leads", "engagements", "overdue",
-                 "recent_matters", "my_hours_week"]
+                 "recent_matters", "my_hours_week", "case_audit"]
 
 OPEN_INVOICE = ("sent", "viewed", "partial")
 
@@ -129,6 +130,12 @@ def load_card_data(keys, u, today):
                                                                 Message.read_at == None).count()  # noqa: E711
         elif k == "recent_matters":
             ctx["recent_matters"] = Matter.query.order_by(Matter.created_at.desc()).limit(8).all()
+        elif k == "case_audit":
+            from ..models import CaseAuditFinding
+            ctx["case_audit_high"] = CaseAuditFinding.query.filter_by(status="open", severity="high").count()
+            ctx["case_audit_open"] = CaseAuditFinding.query.filter_by(status="open").count()
+            ctx["case_audit_new"] = CaseAuditFinding.query.filter_by(status="open").order_by(
+                CaseAuditFinding.first_seen_on.desc(), CaseAuditFinding.id.desc()).limit(5).all()
     return ctx
 
 

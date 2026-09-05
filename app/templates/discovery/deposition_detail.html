@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}Deposition: {{ dep.deponent }}{% endblock %}{% block content %}
+<div class="topbar">
+  <div><h1>Deposition of {{ dep.deponent or 'deponent' }} <span class="badge {{ 'draft' if dep.status == 'draft' else 'pending' if dep.status == 'review' else 'open' }}">{{ dep.status }}</span></h1>
+    <div class="small muted"><a href="/matters/{{ dep.matter_id }}">{{ dep.matter.label }}</a>{% if dep.taken_on %} &middot; taken {{ dep.taken_on|d }}{% endif %}{% if dep.document %} &middot; transcript <a href="/documents/{{ dep.document.id }}/download">{{ dep.document.name }}</a>{% endif %}</div></div>
+  <div class="actions" style="margin:0">
+    <form method="post" action="/discovery/depositions/{{ dep.id }}/note" class="inline">{{ csrf() }}<button class="btn small secondary" title="Copies the summary, key testimony and contradictions into a note on the matter">Save as note</button></form>
+    <form method="post" action="/discovery/depositions/{{ dep.id }}/export" class="inline">{{ csrf() }}<button class="btn small secondary" title="Files a PDF of this page under Documents, Depositions">Export PDF</button></form>
+    <form method="post" action="/discovery/depositions/{{ dep.id }}/rerun" class="inline">{{ csrf() }}<button class="btn small secondary" title="Reads the transcript again and replaces the summary, key testimony and contradictions" data-confirm="Re-run the AI over the transcript? The current summary is replaced.">Re-run AI</button></form>
+    <a class="btn small secondary" href="/discovery/depositions?matter_id={{ dep.matter_id }}">All depositions</a>
+  </div>
+</div>
+<p class="small muted">The summary, key testimony and contradictions are an AI draft for attorney review. Check every cite against the transcript. {% if not ai.available %}AI is not available right now: {{ ai.reason }}{% endif %}</p>
+
+<div class="card"><h2>Summary</h2>
+<form method="post" action="/discovery/depositions/{{ dep.id }}/save">{{ csrf() }}
+  <div class="row">
+    <div><label>Deponent</label><input type="text" name="deponent" value="{{ dep.deponent }}"></div>
+    <div><label>Taken on</label><input type="date" name="taken_on" value="{{ dep.taken_on|iso }}"></div>
+    <div><label>Status</label><select name="status">{% for s in statuses %}<option value="{{ s }}" {% if dep.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+  </div>
+  <textarea name="summary_text" rows="10">{{ dep.summary_text }}</textarea>
+  <div class="actions" style="margin-top:8px"><button class="btn">Save</button></div>
+</form>
+</div>
+
+<div class="card"><h2>Key testimony</h2>
+{% if rows %}
+<table>
+  <tr><th>Cite</th><th>Topic</th><th>Testimony</th></tr>
+  {% for k, c in rows %}<tr><td><code style="white-space:nowrap">{{ c }}</code></td><td>{{ k.topic }}</td><td>"{{ k.quote }}"</td></tr>{% endfor %}
+</table>
+<p class="small muted">Cites are copy-ready: paste the code cell into a brief as written.</p>
+{% else %}<div class="empty">No key testimony recorded.</div>{% endif %}
+</div>
+
+<div class="card"><h2>Possible contradictions</h2>
+{% if contras %}
+<ul>{% for c in contras %}<li><strong>Testimony:</strong> {{ c.testimony }}<br><strong>Conflicts with:</strong> {{ c.conflicts_with }}{% if c.source %} <span class="small muted">(source: {{ c.source }})</span>{% endif %}</li>{% endfor %}</ul>
+{% else %}<div class="empty">None found against the confirmed chronology and PI facts.</div>{% endif %}
+</div>
+<form method="post" action="/discovery/depositions/{{ dep.id }}/delete" class="inline">{{ csrf() }}<button class="btn small danger" data-confirm="Delete this deposition summary? Exported PDFs and notes stay.">Delete</button></form>
+{% endblock %}

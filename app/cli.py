@@ -353,16 +353,29 @@ def _monthly_summary_email(firm, owner, out, today):
     send_email(to, f"{title}: {summary}", html, text=f"{summary}. Review at {_base()}/invoices?status=draft")
 
 
+def run_case_audit(today=None):
+    """Nightly case audit (Agent N). See app/blueprints/caseaudit.py. Idempotent: re-runs refresh last_seen_on,
+    resolve what no longer holds, and email the summary at most once per day."""
+    from .blueprints.caseaudit import run_case_audit as _run
+    return _run(today=today)
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] not in ("agenda", "reminders", "interest", "emailin", "sequences", "webhooks",
-                                   "monthly_invoicing"):
-        print("usage: python -m app.cli agenda|reminders|interest|emailin|sequences|webhooks|monthly_invoicing [--force]")
+                                   "monthly_invoicing", "case_audit"):
+        print("usage: python -m app.cli agenda|reminders|interest|emailin|sequences|webhooks|monthly_invoicing "
+              "[--force]|case_audit")
         return 2
     from . import create_app
     app = create_app()
     with app.app_context():
-        if argv[0] == "monthly_invoicing":
+        if argv[0] == "case_audit":
+            r = run_case_audit()
+            print(f"case_audit: {r['matters']} open matters ({r['pi_matters']} PI), {len(r['new'])} new, "
+                  f"{r['seen']} still open, {r['resolved']} resolved, {r['ai']} AI flags"
+                  f"{', summary emailed' if r['emailed'] else ''}")
+        elif argv[0] == "monthly_invoicing":
             r = run_monthly_invoicing(force="--force" in argv[1:])
             if not r["ran"]:
                 print(f"monthly_invoicing: skipped, {r['reason']} (use --force to run today)")

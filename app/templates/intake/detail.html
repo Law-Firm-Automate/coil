@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block title %}Lead: {{ lead.name }}{% endblock %}{% block content %}
 {% set stage_labels = dict(stages) %}
-<div class="topbar"><h1>{{ lead.name }} <span class="badge {{ lead.status }}">{{ lead.status }}</span> <span class="badge {{ 'paid' if lead.stage == 'won' else ('declined' if lead.stage == 'lost' else 'new') }}" title="Pipeline stage">{{ stage_labels.get(lead.stage, lead.stage) }}</span></h1>
+{% set lead_sc = lead.score_json|score_factors %}
+<div class="topbar"><h1>{{ lead.name }} <span class="badge {{ lead.status }}">{{ lead.status }}</span> <span class="badge {{ 'paid' if lead.stage == 'won' else ('declined' if lead.stage == 'lost' else 'new') }}" title="Pipeline stage">{{ stage_labels.get(lead.stage, lead.stage) }}</span>{% if lead.score is not none %} <span class="badge {{ 'open' if lead.score >= 60 else 'draft' if lead.score >= 35 else 'overdue' }} score-badge" title="Case score: {% for f in lead_sc.factors %}{{ f.label }} +{{ f.points }}{{ '; ' if not loop.last }}{% endfor %}">score {{ lead.score }}</span>{% endif %}</h1>
 <div class="actions" style="margin:0">
   {% if lead.status != 'converted' %}
   <form method="post" action="/intake/{{ lead.id }}/status" class="inline">{{ csrf() }}<input type="hidden" name="status" value="{{ 'new' if lead.status == 'contacted' else 'contacted' }}"><button class="btn small secondary">Mark {{ 'new' if lead.status == 'contacted' else 'contacted' }}</button></form>
@@ -67,6 +68,11 @@
     </dl>
     <h3 style="margin-top:12px">Description</h3>
     <p style="white-space:pre-wrap">{{ lead.description or 'No description given.' }}</p>
+    {# Agent N: case score at intake #}
+    <h3 style="margin-top:12px">Case score {% if lead.score is not none %}<span class="badge {{ 'open' if lead.score >= 60 else 'draft' if lead.score >= 35 else 'overdue' }}">{{ lead.score }}/100</span>{% else %}<span class="small muted">not scored</span>{% endif %}</h3>
+    {% if lead_sc.factors %}<ul class="small" style="margin:0 0 6px;padding-left:18px">{% for f in lead_sc.factors %}<li>{{ f.label }} <span class="muted">+{{ f.points }}</span></li>{% endfor %}</ul>{% endif %}
+    <form method="post" action="/audit/lead/{{ lead.id }}/rescore" class="inline">{{ csrf() }}<button class="btn small secondary" title="Rules only: matter type, contact details, description, key words, other party, recency">{{ 'Rescore' if lead.score is not none else 'Score this lead' }}</button></form>
+    <span class="small muted">A triage aid from what is on the lead, not a valuation.</span>
   </div>
   <div class="card">
     <h2>Conflict preview</h2>

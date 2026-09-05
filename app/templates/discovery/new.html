@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}New discovery set{% endblock %}{% block content %}
+<div class="topbar"><h1>New discovery set <span style="font-weight:500">on <a href="/matters/{{ m.id }}">{{ m.label }}</a></span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/discovery?matter_id={{ m.id }}">Back to sets</a></div></div>
+<div class="card">
+<form method="post" action="/discovery/new?matter_id={{ m.id }}">{{ csrf() }}<input type="hidden" name="matter_id" value="{{ m.id }}">
+  <div class="row">
+    <div><label>Direction</label><select name="direction" id="direction">{% for k, lbl in directions %}<option value="{{ k }}" {% if form.get('direction') == k %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+    <div><label>Kind</label><select name="kind">{% for k, lbl in kinds %}<option value="{{ k }}" {% if form.get('kind') == k %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+    <div><label>Party <span class="small muted">(directed to, or who served it)</span></label><input type="text" name="party" value="{{ form.get('party', '') }}" placeholder="Defendant Holloway Trucking"></div>
+    <div><label>Served on</label><input type="date" name="served_on" value="{{ form.get('served_on', '') }}"></div>
+  </div>
+  <label>Title <span class="small muted">(optional, filled in from the kind and party)</span></label><input type="text" name="title" value="{{ form.get('title', '') }}">
+  <div id="respond-box" hidden>
+    <label>Served set (a document on this matter)</label>
+    <select name="source_document_id"><option value="">Choose the document</option>{% for d in docs %}<option value="{{ d.id }}" {% if form.get('source_document_id')|string == d.id|string %}selected{% endif %}>{{ d.name }}{% if d.folder %} ({{ d.folder }}){% endif %}{% if not d.extracted_text %} [no text extracted]{% endif %}</option>{% endfor %}</select>
+    <p class="small muted">The document's text is split into numbered requests ("INTERROGATORY NO. 3", "REQUEST FOR PRODUCTION NO. 12", or plain "3." paragraphs). You can fix the split on the next page.{% if not docs %} This matter has no documents yet; <a href="/documents?matter_id={{ m.id }}">upload the served set</a> first.{% endif %}</p>
+  </div>
+  <p id="propound-note" class="small muted">Starts from the built-in {{ area }} starter set for this matter's practice area. You can then tailor it with AI to the matter facts.</p>
+  <div class="actions" style="margin-top:8px"><button class="btn">Create set</button></div>
+</form>
+</div>
+<script>
+(function(){var d=document.getElementById('direction'),b=document.getElementById('respond-box'),p=document.getElementById('propound-note');
+function sync(){var r=d.value==='respond';b.hidden=!r;p.hidden=r;}d.addEventListener('change',sync);sync();})();
+</script>
+{% endblock %}

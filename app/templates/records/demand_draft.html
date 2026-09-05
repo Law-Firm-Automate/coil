@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block title %}Narrative demand: {{ m.label }}{% endblock %}{% block content %}
+{% macro dollars(c) %}{{ (c / 100)|round(2) if c else '' }}{% endmacro %}
+<div class="topbar">
+  <div><h1>Narrative demand <span style="font-weight:500">{{ m.number }} {{ m.name }}</span></h1>
+    <div class="small muted">Client <a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a> &middot; <a href="/pi/{{ m.id }}#demand">PI case</a> &middot; <a href="/records/{{ m.id }}">chronology</a></div></div>
+  <div class="actions" style="margin:0"><a class="btn small secondary" href="/pi/{{ m.id }}#demand">Back to PI case</a></div>
+</div>
+
+<div class="card"><h2>{{ 'Regenerate the letter' if draft else 'Draft the letter' }}</h2>
+<form method="post" action="/records/{{ m.id }}/demand-draft">{{ csrf() }}
+  <div class="row">
+    <div><label>Demand amount</label><input type="text" name="demand_amount" value="{{ dollars(draft.demand_cents if draft and draft.demand_cents else c.demand_amount_cents) }}" placeholder="75,000.00" required></div>
+    <div><label>Policy limits (from the PI case)</label><input type="text" value="{{ c.policy_limits_cents|money if c.policy_limits_cents else 'unknown' }}" disabled></div>
+    <div><label>Specials on file</label><input type="text" value="{{ total|money }} across {{ providers|length }} provider{{ '' if providers|length == 1 else 's' }}" disabled></div>
+  </div>
+  <label>Style notes for this letter</label>
+  <textarea name="demand_style_notes" rows="2" placeholder="Firm but courteous. Lead with the police report. Keep it under two pages.">{{ c.demand_style_notes }}</textarea>
+  <p class="small muted">The letter is written from the facts, liability notes, the confirmed chronology ({{ unconfirmed }} unconfirmed entr{{ 'y is' if unconfirmed == 1 else 'ies are' }} left out), specials by provider, liens, policy limits and the demand amount.
+  {% if example_names %}It follows the voice of {{ example_names|length }} style example{{ '' if example_names|length == 1 else 's' }} ({{ example_names|join(', ') }}).{% else %}To have it follow the firm's voice, upload one to three earlier demand letters anywhere in Documents with the tag <code>{{ style_tag }}</code>.{% endif %}
+  Without AI, a template letter is filled in from the same data and marked as template text.</p>
+  <div class="actions"><button class="btn small">{{ 'Regenerate' if draft else 'Generate draft' }}</button></div>
+</form></div>
+
+{% if draft %}
+<div class="card">
+  <div class="topbar" style="margin-bottom:8px"><h2>Current draft</h2><div class="small muted">{% if draft.template %}<span class="badge overdue">template text</span> the AI was not available{% if draft.reason %} ({{ draft.reason }}){% endif %}{% else %}generated {{ draft.generated_at }}{% if draft.examples %} following {{ draft.examples|join(', ') }}{% endif %}{% endif %}{% if draft.saved_at %} &middot; last saved {{ draft.saved_at }}{% endif %}</div></div>
+  <p class="small" style="border-left:4px solid var(--warn);padding-left:10px">This is a draft for attorney review and may contain errors. Check every fact, date and figure against the file before it leaves the office.</p>
+  <form method="post" action="/records/{{ m.id }}/demand-draft/save">{{ csrf() }}
+    <input type="hidden" name="demand_amount" value="{{ dollars(draft.demand_cents) }}">
+    {% for key, label in sections %}
+    <label>{{ label }}</label>
+    <textarea name="{{ key }}" rows="{{ 3 if key in ('intro', 'closing') else 7 }}" style="width:100%">{{ draft.sections[key] if draft.sections and draft.sections[key] else '' }}</textarea>
+    {% endfor %}
+    <p class="small muted">"Save as document" builds a PDF on firm letterhead: these sections in order, a specials table by provider ({{ total|money }} total), the signature block, and the draft-for-review footer. It is filed in Documents under Demand and linked from the PI case page.</p>
+    <div class="actions"><button class="btn">Save as document</button></div>
+  </form>
+</div>
+{% else %}
+<div class="empty">No draft yet. Enter the demand amount and generate one.</div>
+{% endif %}
+{% endblock %}

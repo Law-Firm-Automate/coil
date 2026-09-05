@@ -84,6 +84,18 @@ Personal-injury case management: providers, records, liens, settlement.
 - Settlement disbursement worksheet with trust postings (`/pi`) · built
 - Standard PI task set (`/pi`) · built
 
+## Eve Legal
+
+Plaintiff-side AI: records into chronologies, demands, discovery, depositions, a nightly case audit, case scoring.
+
+- Discovery drafting: propound from starter sets tailored by AI, or parse a served set and draft responses with objections (`/discovery`) · built
+- Deposition summaries with page:line citations and contradictions against the chronology (`/discovery/depositions`) · built
+- Nightly case audit: records, gaps, imaging, limitations, liens, demands (rules) plus AI flags labelled as such (`/audit`) · built
+- Case scoring at intake and on PI cases, with the factors shown (`/intake/pipeline`) · built
+- Medical record extraction into a treatment chronology, with page references and a confirm step (`/pi`) · built
+- Case overview written from the documents, chronology, providers, liens and notes (`/pi`) · built
+- Narrative demand letter drafted in the firm's voice from style-example letters, saved as a PDF (`/pi`) · built
+
 ## NetDocuments
 
 Document management.

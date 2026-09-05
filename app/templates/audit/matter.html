@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block title %}Audit: {{ m.label }}{% endblock %}{% block content %}
+{% macro sevbadge(s) %}<span class="badge {{ 'overdue' if s == 'high' else 'draft' if s == 'medium' else 'pending' }}">{{ s }}</span>{% endmacro %}
+<div class="topbar"><div><h1>Case audit <span style="font-weight:500">{{ m.label }}</span></h1>
+    <div class="small muted">Client <a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a> &middot; <a href="/matters/{{ m.id }}">matter page</a>{% if pi %} &middot; <a href="/pi/{{ m.id }}">PI case</a>{% endif %} &middot; <a href="/audit">all findings</a></div></div>
+  <div class="actions" style="margin:0">
+    {% if current_user().role == 'owner' %}<form method="post" action="/audit/run" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/audit/{{ m.id }}"><button class="btn small">Run audit now</button></form>{% endif %}
+  </div></div>
+<p class="small muted">{{ open_n }} open finding{{ '' if open_n == 1 else 's' }}.{% if run %} Last run {{ run.created_at|dt }}.{% else %} The audit has not run yet.{% endif %}{% if not pi %} This matter has no PI case, so only the limitations and activity checks apply.{% endif %} Findings marked <span class="badge new">AI</span> are model suggestions from the file text, not facts.</p>
+<div class="card">
+{% if rows %}
+<table><tr><th>Status</th><th>Severity</th><th>Kind</th><th>Finding</th><th>First seen</th><th>Last seen</th><th></th></tr>
+{% for f in rows %}<tr{% if f.status != 'open' %} class="muted"{% endif %}>
+  <td><span class="badge {{ 'open' if f.status == 'open' else 'closed' if f.status == 'dismissed' else 'paid' }}">{{ f.status }}</span></td>
+  <td>{{ sevbadge(f.severity) }}</td>
+  <td class="small">{{ f.kind|kind_label }}{% if f.origin == 'ai' %} <span class="badge new" title="Suggested by the AI model from the file text. Check it before acting.">AI</span>{% endif %}</td>
+  <td>{{ f.message }}</td>
+  <td class="nowrap small">{{ f.first_seen_on|d }}</td>
+  <td class="nowrap small">{{ f.last_seen_on|d }}</td>
+  <td class="right nowrap">
+    {% if f.status == 'open' %}
+    <form method="post" action="/audit/finding/{{ f.id }}/resolve" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/audit/{{ m.id }}"><button class="btn small secondary">Resolve</button></form>
+    <form method="post" action="/audit/finding/{{ f.id }}/dismiss" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/audit/{{ m.id }}"><button class="btn small secondary">Dismiss</button></form>
+    {% else %}
+    <form method="post" action="/audit/finding/{{ f.id }}/reopen" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/audit/{{ m.id }}"><button class="btn small secondary">Reopen</button></form>
+    {% endif %}
+  </td></tr>{% endfor %}
+</table>
+{% else %}<div class="empty">Nothing found on this matter{% if not run %} yet; the audit has not run{% endif %}.</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}New deposition summary{% endblock %}{% block content %}
+<div class="topbar"><h1>Summarise a deposition <span style="font-weight:500">on <a href="/matters/{{ m.id }}">{{ m.label }}</a></span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/discovery/depositions?matter_id={{ m.id }}">Back</a></div></div>
+<div class="card">
+<form method="post" action="/discovery/depositions/new?matter_id={{ m.id }}">{{ csrf() }}<input type="hidden" name="matter_id" value="{{ m.id }}">
+  <label>Transcript (a document on this matter)</label>
+  <select name="document_id" required><option value="">Choose the transcript</option>{% for d in docs %}<option value="{{ d.id }}" {% if form.get('document_id')|string == d.id|string %}selected{% endif %}>{{ d.name }}{% if d.folder %} ({{ d.folder }}){% endif %}{% if not d.extracted_text %} [no text extracted]{% endif %}</option>{% endfor %}</select>
+  {% if not docs %}<p class="small muted">This matter has no documents yet. <a href="/documents?matter_id={{ m.id }}">Upload the transcript</a> first (text, DOCX or a text-based PDF).</p>{% endif %}
+  <div class="row">
+    <div><label>Deponent</label><input type="text" name="deponent" value="{{ form.get('deponent', '') }}" placeholder="Jane Holloway" required></div>
+    <div><label>Taken on</label><input type="date" name="taken_on" value="{{ form.get('taken_on', '') }}"></div>
+  </div>
+  <p class="small muted">The transcript is read in pieces of about 10,000 characters. Page and line markers in the text (lines like "Page 12" or "12:5") are kept so each key passage carries a page:line cite. The result is a draft for attorney review; without the model the record is still created so you can type the summary and notes yourself.</p>
+  <div class="actions" style="margin-top:8px"><button class="btn">Create and summarise</button></div>
+</form>
+</div>
+{% endblock %}

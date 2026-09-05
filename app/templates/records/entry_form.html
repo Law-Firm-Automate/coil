@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}Edit chronology entry{% endblock %}{% block content %}
+<div class="topbar"><h1>Edit chronology entry <span style="font-weight:500">{{ m.number }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/records/{{ m.id }}">Back to chronology</a></div></div>
+<div class="card">
+{% if not e.confirmed %}<div class="flash">This entry was added by extraction and is unconfirmed. Tick "confirm" below once it matches the record.</div>{% endif %}
+<form method="post" action="/records/{{ m.id }}/entries/{{ e.id }}/edit">{{ csrf() }}
+  <div class="row">
+    <div><label>Date</label><input type="date" name="date" value="{{ e.date|iso }}"></div>
+    <div><label>Linked provider</label><select name="provider_id"><option value="">Not linked</option>{% for p in providers %}<option value="{{ p.id }}" {% if e.provider_id == p.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></div>
+    <div><label>Provider name as written</label><input type="text" name="provider_name" value="{{ e.provider_name }}"></div>
+    <div><label>Visit type</label><select name="visit_type"><option value="">Choose</option>{% for v in visit_types %}<option value="{{ v }}" {% if e.visit_type == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="row">
+    <div><label>Diagnosis</label><input type="text" name="diagnosis" value="{{ e.diagnosis }}"></div>
+    <div><label>Procedure or service</label><input type="text" name="procedure" value="{{ e.procedure }}"></div>
+    <div><label>Charges</label><input type="text" name="charges" value="{{ (e.charges_cents / 100)|round(2) if e.charges_cents else '' }}"></div>
+    <div><label>Page ref</label><input type="text" name="page_ref" value="{{ e.page_ref }}"></div>
+  </div>
+  <label>Notes</label><textarea name="notes" rows="2">{{ e.notes }}</textarea>
+  {% if e.source_document %}<p class="small muted">Source: <a href="/documents/{{ e.source_document.id }}/download">{{ e.source_document.name }}</a>{% if e.page_ref %}, page {{ e.page_ref }}{% endif %}.</p>{% endif %}
+  <div class="actions" style="margin-top:8px">
+    {% if not e.confirmed %}<label style="margin:0;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" name="confirm" value="1" checked> Confirm this entry</label>{% endif %}
+    <button class="btn small">Save</button><a class="btn small secondary" href="/records/{{ m.id }}">Cancel</a>
+  </div>
+</form></div>
+{% endblock %}

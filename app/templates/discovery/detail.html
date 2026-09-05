@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% block title %}{{ ds.title }}{% endblock %}{% block content %}
+<div class="topbar">
+  <div><h1>{{ ds.title }} <span class="badge {{ 'draft' if ds.status == 'draft' else 'pending' if ds.status == 'review' else 'open' }}">{{ ds.status }}</span></h1>
+    <div class="small muted"><a href="/matters/{{ ds.matter_id }}">{{ ds.matter.label }}</a> &middot; {{ 'Propounded to' if ds.direction == 'propound' else 'Served by' }} {{ ds.party or 'unnamed party' }} &middot; {{ kind_labels.get(ds.kind, ds.kind) }}{% if src_doc %} &middot; parsed from <a href="/documents/{{ src_doc.id }}/download">{{ src_doc.name }}</a>{% endif %}</div></div>
+  <div class="actions" style="margin:0">
+    {% if ds.direction == 'propound' %}<form method="post" action="/discovery/{{ ds.id }}/tailor" class="inline">{{ csrf() }}<button class="btn small secondary" title="Rewrites and adds requests using the matter description, parties, PI facts and confirmed chronology. Replaces the current list." data-confirm="Replace the current requests with an AI-tailored set? Unsaved edits on this page are lost.">Tailor with AI</button></form>
+    {% else %}<form method="post" action="/discovery/{{ ds.id }}/draft" class="inline">{{ csrf() }}<button class="btn small secondary" title="Drafts a response, objections from the library and a client-input flag for each request. Without the model, fills placeholders." data-confirm="Draft responses for every item? Existing responses are overwritten.">Draft responses with AI</button></form>{% endif %}
+    <form method="post" action="/discovery/{{ ds.id }}/task" class="inline">{{ csrf() }}<button class="btn small secondary" {% if task %}disabled title="Task already exists, due {{ task.due_on|d }}"{% else %}title="Creates a deadline task due 30 days after the served date"{% endif %}>Set due date task</button></form>
+    <button class="btn small secondary" form="editor" formaction="/discovery/{{ ds.id }}/export" title="Saves your edits, then files a PDF with the caption, every item, responses and objections under Documents, Discovery">Export PDF</button>
+    <a class="btn small secondary" href="/discovery?matter_id={{ ds.matter_id }}">All sets</a>
+  </div>
+</div>
+<p class="small muted">AI output on this page is a draft for attorney review. {% if not ai.available %}AI is not available right now: {{ ai.reason }}{% endif %}</p>
+{% if task %}<div class="flash ok">Deadline task <a href="/tasks/{{ task.id }}">{{ task.title }}</a> is due {{ task.due_on|d }}{% if task.done %} (done){% endif %}.</div>{% endif %}
+{% if out_doc %}<div class="flash">Last export: <a href="/documents/{{ out_doc.id }}/download">{{ out_doc.name }}</a> ({{ out_doc.created_at|dt }}) in the Discovery folder.</div>{% endif %}
+
+<form method="post" action="/discovery/{{ ds.id }}/save" id="editor">{{ csrf() }}
+<div class="card">
+  <div class="row">
+    <div><label>Title</label><input type="text" name="title" value="{{ ds.title }}"></div>
+    <div><label>Party</label><input type="text" name="party" value="{{ ds.party }}"></div>
+    <div><label>Served on</label><input type="date" name="served_on" value="{{ ds.served_on|iso }}"></div>
+    <div><label>Responses due</label><input type="date" name="due_on" value="{{ ds.due_on|iso }}"></div>
+    <div><label>Status</label><select name="status">{% for s in statuses %}<option value="{{ s }}" {% if ds.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+  </div>
+</div>
+
+{% if items %}
+{% for it in items %}
+<div class="card" id="item-{{ it.n }}">
+  <input type="hidden" name="item_n" value="{{ it.n }}">
+  <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">{{ item_label|capitalize }} No. {{ it.n }}{% if it.flag %} <span class="badge pending" title="{{ it.flag }}">needs client input</span>{% endif %}</h2>
+    <div class="actions" style="margin:0">
+      <button class="btn small secondary" name="action" value="up:{{ it.n }}" {% if loop.first %}disabled{% endif %} title="Move up">&uarr;</button>
+      <button class="btn small secondary" name="action" value="down:{{ it.n }}" {% if loop.last %}disabled{% endif %} title="Move down">&darr;</button>
+      <button class="btn small danger" name="action" value="delete:{{ it.n }}" data-confirm="Remove item {{ it.n }}?">Remove</button>
+    </div></div>
+  <label>Request</label><textarea name="item_{{ it.n }}_request" rows="3">{{ it.request }}</textarea>
+  <label>Response</label><textarea name="item_{{ it.n }}_response" rows="{{ 4 if ds.direction == 'respond' else 2 }}" placeholder="{{ 'Response on behalf of the client' if ds.direction == 'respond' else 'Leave blank on a set we propound' }}">{{ it.response }}</textarea>
+  <div class="row">
+    <div><label>Objections</label>
+      <div class="small">{% for k, lbl in objections %}<label style="display:inline-block;margin:0 12px 4px 0;font-weight:400"><input type="checkbox" name="item_{{ it.n }}_objections" value="{{ k }}" {% if k in it.objections %}checked{% endif %}> {{ lbl }}</label>{% endfor %}</div></div>
+    <div><label>Flag <span class="small muted">(a fact only the client has)</span></label><input type="text" name="item_{{ it.n }}_flag" value="{{ it.flag }}" placeholder="Client must confirm the date of the second visit"></div>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card"><div class="empty">No items yet. Add the first one below{% if ds.direction == 'propound' %} or press Tailor with AI{% endif %}.</div></div>
+{% endif %}
+
+<div class="card">
+  <label>Add an item</label><textarea name="new_request" rows="2" placeholder="{{ 'State every fact supporting your contention that ...' if ds.kind == 'interrogatories' else 'All documents relating to ...' if ds.kind == 'rfp' else 'Admit that ...' }}"></textarea>
+  <div class="actions" style="margin-top:8px"><button class="btn small secondary" name="action" value="add">Add item</button><button class="btn">Save all</button>
+    <span class="small muted">Every field on this page saves together. {% if ds.direction == 'respond' %}Placeholder responses read "{{ fallback }}".{% endif %}</span></div>
+</div>
+</form>
+<form method="post" action="/discovery/{{ ds.id }}/delete" class="inline" style="margin-top:6px">{{ csrf() }}<button class="btn small danger" data-confirm="Delete this discovery set? Exported PDFs stay in Documents.">Delete set</button></form>
+{% endblock %}

@@ -60,6 +60,12 @@
 {% elif key == 'recent_matters' %}
   <div class="card span4" data-card="recent_matters"><h2>Recent matters</h2>{% if recent_matters %}<table><tr><th>Matter</th><th>Client</th><th>Billing</th><th>Status</th><th class="num">Unbilled</th><th class="num">Trust</th></tr>
 {% for m in recent_matters %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td>{{ m.client.display_name }}</td><td>{{ m.billing_type }}</td><td><span class="badge {{ m.status }}">{{ m.status }}</span></td><td class="num">{{ (m.unbilled_time_cents() + m.unbilled_expense_cents())|money }}</td><td class="num">{{ m.trust_balance_cents()|money }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">No matters yet. <a href="/matters/new">Create one</a> or <a href="/intake">convert an intake lead</a>.</div>{% endif %}</div>
+{% elif key == 'case_audit' %}
+  <div class="card span2" data-card="case_audit"><h2><a href="/audit">Case audit</a>{% if case_audit_high %} <span class="badge overdue">{{ case_audit_high }} high</span>{% endif %}</h2>
+    {% if case_audit_new %}<table>{% for f in case_audit_new %}<tr><td><span class="badge {{ 'overdue' if f.severity == 'high' else 'draft' if f.severity == 'medium' else 'pending' }}">{{ f.severity }}</span> <a href="/audit/{{ f.matter_id }}">{{ f.matter.number if f.matter else '' }}</a> {{ f.message }}{% if f.origin == 'ai' %} <span class="badge new" title="Suggested by the AI model from the file text. Check it before acting.">AI</span>{% endif %}</td><td class="nowrap small muted">{{ f.first_seen_on|d }}</td></tr>{% endfor %}</table>
+    {% if case_audit_open > case_audit_new|length %}<a class="small" href="/audit">See all {{ case_audit_open }}</a>{% endif %}
+    {% else %}<div class="empty">No open audit findings.</div>{% endif %}
+  </div>
 {% endif %}
 {% endfor %}
 </div>

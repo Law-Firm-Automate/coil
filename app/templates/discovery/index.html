@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block title %}Discovery{% endblock %}{% block content %}
+<div class="topbar"><h1>Discovery{% if matter %} <span style="font-weight:500">for <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></span>{% endif %}</h1>
+<div class="actions" style="margin:0">{% if matter %}<a class="btn small" href="/discovery/new?matter_id={{ matter.id }}">New set</a><a class="btn small secondary" href="/discovery/depositions?matter_id={{ matter.id }}">Depositions</a>{% else %}<a class="btn small secondary" href="/discovery/depositions">Depositions</a>{% endif %}</div></div>
+<div class="card">
+  <form method="get" class="searchbar" style="margin:0">
+    <select name="matter_id" style="width:auto;max-width:100%" aria-label="Matter"><option value="">All matters</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}</option>{% endfor %}</select>
+    <button class="btn secondary">Show</button>{% if matter_id %}<a class="small" href="/discovery">Clear</a>{% endif %}
+  </form>
+  {% if not matter %}<p class="small muted" style="margin:8px 0 0">Pick a matter to start a new set. Sets are also reachable from the Discovery button on each matter.</p>{% endif %}
+</div>
+<div class="card">
+{% if sets %}
+<table>
+  <tr><th>Set</th><th>Matter</th><th>Direction</th><th>Kind</th><th>Party</th><th>Served</th><th>Due</th><th>Items</th><th>Status</th></tr>
+  {% for s in sets %}
+  <tr>
+    <td><a href="/discovery/{{ s.id }}">{{ s.title }}</a>{% if s.output_document_id %}<div class="small muted">exported</div>{% endif %}</td>
+    <td class="small"><a href="/matters/{{ s.matter_id }}">{{ s.matter.number }}</a></td>
+    <td>{{ 'Propound' if s.direction == 'propound' else 'Respond' }}</td>
+    <td>{{ kind_labels.get(s.kind, s.kind) }}</td>
+    <td>{{ s.party }}</td>
+    <td>{{ s.served_on|d }}</td>
+    <td>{{ s.due_on|d }}{% if s.direction == 'respond' and s.due_on and ('Discovery responses due: ' ~ s.title) not in task_titles %}<div class="small muted">no task yet</div>{% endif %}</td>
+    <td class="num">{{ s.items|length }}</td>
+    <td><span class="badge {{ 'draft' if s.status == 'draft' else 'pending' if s.status == 'review' else 'open' }}">{{ s.status }}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">No discovery sets yet.{% if matter %} <a href="/discovery/new?matter_id={{ matter.id }}">Start one</a> from a starter set or a served document.{% endif %}</div>
+{% endif %}
+</div>
+{% endblock %}

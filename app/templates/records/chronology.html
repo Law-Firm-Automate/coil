@@ -1,0 +1,65 @@
+{% extends "base.html" %}{% block title %}Chronology: {{ m.label }}{% endblock %}{% block content %}
+<div class="topbar">
+  <div><h1>Treatment chronology <span style="font-weight:500">{{ m.number }} {{ m.name }}</span></h1>
+    <div class="small muted">Client <a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a>{% if c.date_of_loss %} &middot; date of loss {{ c.date_of_loss|d }}{% endif %} &middot; <a href="/pi/{{ m.id }}">PI case</a> &middot; <a href="/matters/{{ m.id }}">matter page</a> &middot; <a href="/documents?matter_id={{ m.id }}">documents</a></div></div>
+  <div class="actions" style="margin:0">
+    {% if unconfirmed %}<form method="post" action="/records/{{ m.id }}/confirm-all" class="inline">{{ csrf() }}<button class="btn small" data-confirm="Mark all {{ unconfirmed }} unconfirmed entries as reviewed?">Confirm all ({{ unconfirmed }})</button></form>{% endif %}
+    <form method="post" action="/records/{{ m.id }}/recalc-specials" class="inline">{{ csrf() }}<button class="btn small secondary" title="Sets each provider's total billed to the sum of its confirmed entries">Recalculate specials</button></form>
+    <a class="btn small secondary" href="/records/{{ m.id }}/demand-draft">Draft narrative demand</a>
+  </div>
+</div>
+
+<div class="grid c3">
+  <div class="card stat"><div class="label">Entries</div><div class="value">{{ entries|length }}</div><div class="small muted">{{ unconfirmed }} unconfirmed</div></div>
+  <div class="card stat"><div class="label">Charges on confirmed entries</div><div class="value">{{ confirmed_charges|money }}</div><div class="small muted">{{ total_charges|money }} including unconfirmed</div></div>
+  <div class="card stat"><div class="label">Providers</div><div class="value">{{ providers|length }}</div><div class="small muted">total billed {{ (providers|sum(attribute='total_billed_cents'))|money }}</div></div>
+</div>
+
+<div class="card"><h2>Extract from a records document</h2>
+<form method="post" action="/records/{{ m.id }}/extract">{{ csrf() }}
+  <div class="row">
+    <div><label>Document</label><select name="document_id" required><option value="">Choose</option>{% for d in docs %}<option value="{{ d.id }}">{{ d.name }}{% if d.folder %} ({{ d.folder }}){% endif %}{% if not d.extracted_text %} [no text]{% endif %}</option>{% endfor %}</select></div>
+    <div><label>&nbsp;</label><button class="btn small">Extract entries</button></div>
+  </div>
+  <p class="small muted" style="margin-bottom:0">Reads the document's text in parts of about 9,000 characters and adds one unconfirmed entry per dated visit, test, procedure or charge, with the page where it was found. Entries already on the chronology (same date, provider and procedure) are skipped, and providers not yet on the matter are added by name. Without AI, a plain scan finds dates and dollar amounts near the providers already listed. {{ "This is a draft for attorney review and may contain errors." }} Scanned PDFs need OCR first.</p>
+</form></div>
+
+<div class="card"><h2>Chronology</h2>
+{% if entries %}<div style="overflow-x:auto"><table>
+<tr><th>Date</th><th>Provider</th><th>Visit</th><th>Diagnosis</th><th>Procedure</th><th class="num">Charges</th><th>Source</th><th></th></tr>
+{% for e in entries %}<tr>
+  <td class="nowrap">{{ e.date|d if e.date else '' }}{% if not e.date %}<span class="muted">undated</span>{% endif %}{% if not e.confirmed %}<br><span class="badge pending" title="Added by extraction, not yet reviewed">unconfirmed</span>{% endif %}</td>
+  <td>{{ e.provider_name }}{% if e.provider %}<br><span class="small muted">linked: {{ e.provider.name }}</span>{% else %}<form method="post" action="/records/{{ m.id }}/entries/{{ e.id }}/link" class="inline" style="margin-top:4px">{{ csrf() }}<select name="provider_id" style="width:auto;max-width:160px;padding:3px 6px" aria-label="Link to provider"><option value="">link to provider</option>{% for p in providers %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select> <button class="btn small secondary">Link</button></form>{% endif %}</td>
+  <td class="small">{{ e.visit_type }}</td>
+  <td class="small">{{ e.diagnosis }}</td>
+  <td class="small">{{ e.procedure }}{% if e.notes %}<br><span class="muted">{{ e.notes }}</span>{% endif %}</td>
+  <td class="num">{% if e.charges_cents %}{{ e.charges_cents|money }}{% endif %}</td>
+  <td class="small">{% if e.source_document %}<a href="/documents/{{ e.source_document.id }}/download">{{ e.source_document.name }}</a>{% if e.page_ref %} p. {{ e.page_ref }}{% endif %}{% elif e.page_ref %}p. {{ e.page_ref }}{% else %}<span class="muted">{{ 'by hand' if e.origin == 'user' else 'AI' }}</span>{% endif %}</td>
+  <td class="right nowrap">
+    {% if not e.confirmed %}<form method="post" action="/records/{{ m.id }}/entries/{{ e.id }}/confirm" class="inline">{{ csrf() }}<button class="btn small">Confirm</button></form>{% endif %}
+    <a class="btn small secondary" href="/records/{{ m.id }}/entries/{{ e.id }}/edit">Edit</a>
+    <form method="post" action="/records/{{ m.id }}/entries/{{ e.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Delete this entry?">Delete</button></form>
+  </td></tr>{% endfor %}
+<tr><td colspan="5" class="right"><strong>Confirmed charges</strong></td><td class="num"><strong>{{ confirmed_charges|money }}</strong></td><td colspan="2"></td></tr>
+</table></div>
+{% else %}<div class="empty">No entries yet. Extract from a records document above or add a visit by hand below.</div>{% endif %}
+<p class="small muted">Unconfirmed rows came from extraction and count toward nothing until confirmed. "Recalculate specials" rolls confirmed, linked entries into each provider's total billed on the PI case page.</p></div>
+
+<div class="card"><h2>Add an entry by hand</h2>
+<form method="post" action="/records/{{ m.id }}/entries">{{ csrf() }}
+  <div class="row">
+    <div><label>Date</label><input type="date" name="date"></div>
+    <div><label>Provider</label><select name="provider_id"><option value="">Not linked</option>{% for p in providers %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></div>
+    <div><label>Provider name (if not listed)</label><input type="text" name="provider_name" placeholder="Central Imaging"></div>
+    <div><label>Visit type</label><select name="visit_type"><option value="">Choose</option>{% for v in visit_types %}<option value="{{ v }}">{{ v }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="row">
+    <div><label>Diagnosis</label><input type="text" name="diagnosis" placeholder="Cervical strain"></div>
+    <div><label>Procedure or service</label><input type="text" name="procedure" placeholder="MRI cervical spine"></div>
+    <div><label>Charges</label><input type="text" name="charges" placeholder="1,250.00"></div>
+    <div><label>Page ref</label><input type="text" name="page_ref" placeholder="12"></div>
+  </div>
+  <label>Notes</label><input type="text" name="notes">
+  <div class="actions" style="margin-top:8px"><button class="btn small">Add entry</button></div>
+</form></div>
+{% endblock %}

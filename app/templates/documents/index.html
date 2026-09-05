@@ -18,7 +18,7 @@
       </div>
       <div class="row">
         <div><label>Folder (optional, like Pleadings/Motions)</label><input type="text" name="folder" list="folder-list" value="{{ folder }}"><datalist id="folder-list">{% for f in folders %}<option value="{{ f }}">{% endfor %}</datalist></div>
-        <div><label>Tags (comma separated)</label><input type="text" name="tags" placeholder="urgent, filed"></div>
+        <div><label>Tags (comma separated; tag past demand letters style-example so drafts follow your voice)</label><input type="text" name="tags" placeholder="urgent, filed, style-example"></div>
       </div>
       <div class="actions" style="margin-top:8px"><label style="margin:0;display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="shared_to_portal" value="1"> Share to client portal</label><button class="btn small">Upload</button></div>
     </form>

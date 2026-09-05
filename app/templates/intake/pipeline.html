@@ -21,6 +21,7 @@
     <a href="/intake/{{ l.id }}"><strong>{{ l.name }}</strong></a>
     <div class="small">{{ l.matter_type or 'no type' }}</div>
     <div class="meta">
+      {% if l.score is not none %}{% set lsc = l.score_json|score_factors %}<span class="badge {{ 'open' if l.score >= 60 else 'draft' if l.score >= 35 else 'overdue' }} score-badge" title="Case score {{ l.score }}/100: {% for f in lsc.factors %}{{ f.label }} +{{ f.points }}{{ '; ' if not loop.last }}{% endfor %}">score {{ l.score }}</span>{% endif %}
       {% if l.value_cents %}<span>{{ l.value_cents|money }}</span>{% endif %}
       {% if l.assigned_user %}<span title="{{ l.assigned_user.name }}">{{ l.assigned_user.initials or l.assigned_user.name }}</span>{% endif %}
       {% if l.next_follow_up_on %}<span class="{{ 'badge overdue' if l.next_follow_up_on < today else '' }}" title="Next follow-up">{{ 'follow up ' ~ (l.next_follow_up_on|d) }}</span>{% endif %}

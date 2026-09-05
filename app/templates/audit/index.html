@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% block title %}Case audit{% endblock %}{% block content %}
+{% macro sevbadge(s) %}<span class="badge {{ 'overdue' if s == 'high' else 'draft' if s == 'medium' else 'pending' }}">{{ s }}</span>{% endmacro %}
+<div class="topbar"><h1>Case audit</h1>
+  <div class="actions" style="margin:0">
+    {% if current_user().role == 'owner' %}<form method="post" action="/audit/run" class="inline">{{ csrf() }}<button class="btn small" title="Runs the same checks the nightly job runs (python -m app.cli case_audit)">Run audit now</button></form>{% endif %}
+    <a class="btn small secondary" href="/pi">PI board</a>
+  </div></div>
+<p class="small muted">Every open matter is checked nightly: records and bills outstanding, treatment gaps, imaging mentioned but not obtained, limitations dates without a deadline task, quiet files, liens without a contact, unanswered demands, unknown policy limits. Findings marked <span class="badge new">AI</span> came from the model reading the file and are suggestions to check, not facts.{% if run %} Last run {{ run.created_at|dt }} ({{ run.detail }}).{% else %} The audit has not run yet.{% endif %}{% if not ai_on %} AI flags are off: turn AI on in Settings and set a key to get them.{% endif %}</p>
+
+<div class="grid c4">
+  <div class="card stat"><div class="label">Open findings</div><div class="value">{{ counts.total }}</div></div>
+  <div class="card stat"><div class="label">High</div><div class="value" style="color:var(--bad)">{{ counts.severity.high }}</div></div>
+  <div class="card stat"><div class="label">Medium</div><div class="value" style="color:var(--warn)">{{ counts.severity.medium }}</div></div>
+  <div class="card stat"><div class="label">AI flags</div><div class="value">{{ counts.ai }}</div></div>
+</div>
+
+<div class="card">
+  <form method="get" action="/audit" class="searchbar">
+    <select name="severity" style="width:auto"><option value="">Any severity</option>{% for s in severities %}<option value="{{ s }}" {{ 'selected' if s == sev }}>{{ s }} ({{ counts.severity[s] }})</option>{% endfor %}</select>
+    <select name="kind" style="width:auto"><option value="">Any kind</option>{% for k, lbl in kinds %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ lbl }} ({{ counts.kind[k] }})</option>{% endfor %}</select>
+    <button class="btn small secondary">Filter</button>{% if sev or kind %} <a class="small" href="/audit">clear</a>{% endif %}
+  </form>
+</div>
+
+{% if groups %}
+{% for m, fs in groups %}
+<div class="card">
+  <div class="topbar" style="margin-bottom:8px"><h2 style="margin:0"><a href="/audit/{{ m.id }}">{{ m.label }}</a> <span class="small muted">{{ m.client.display_name }}</span></h2>
+    <div class="actions" style="margin:0"><span class="small muted">{{ fs|length }} open</span> <a class="btn small secondary" href="/pi/{{ m.id }}">PI case</a> <a class="btn small secondary" href="/matters/{{ m.id }}">Matter</a></div></div>
+  <table><tr><th>Severity</th><th>Kind</th><th>Finding</th><th>First seen</th><th>Last seen</th><th></th></tr>
+  {% for f in fs %}<tr>
+    <td>{{ sevbadge(f.severity) }}</td>
+    <td class="small">{{ f.kind|kind_label }}{% if f.origin == 'ai' %} <span class="badge new" title="Suggested by the AI model from the file text. Check it before acting.">AI</span>{% endif %}</td>
+    <td>{{ f.message }}</td>
+    <td class="nowrap small">{{ f.first_seen_on|d }}</td>
+    <td class="nowrap small">{{ f.last_seen_on|d }}</td>
+    <td class="right nowrap">
+      <form method="post" action="/audit/finding/{{ f.id }}/resolve" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/audit{{ ('?severity=' ~ sev ~ '&kind=' ~ kind) if (sev or kind) else '' }}"><button class="btn small secondary" title="Fixed or handled. The nightly run reopens it if the condition comes back.">Resolve</button></form>
+      <form method="post" action="/audit/finding/{{ f.id }}/dismiss" class="inline">{{ csrf() }}<input type="hidden" name="next" value="/audit{{ ('?severity=' ~ sev ~ '&kind=' ~ kind) if (sev or kind) else '' }}"><button class="btn small secondary" title="Not relevant here. Stays dismissed even if the condition persists.">Dismiss</button></form>
+    </td></tr>{% endfor %}
+  </table>
+</div>
+{% endfor %}
+{% else %}<div class="empty">{% if counts.total %}No open findings match that filter.{% else %}No open findings.{% if not run %} Run the audit to check every open matter.{% endif %}{% endif %}</div>{% endif %}
+{% endblock %}

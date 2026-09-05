@@ -35,6 +35,10 @@
       <dt>Demand</dt><dd>{{ c.demand_amount_cents|money if c.demand_amount_cents else '' }}</dd>
       <dt>Offer</dt><dd>{{ c.offer_cents|money if c.offer_cents else '' }}</dd>
     </dl>
+    <div class="small" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+      {% if row.findings %}<a href="/audit/{{ m.id }}" class="badge {{ 'overdue' if row.findings >= 3 else 'draft' }}" title="Open case audit findings">{{ row.findings }} finding{{ '' if row.findings == 1 else 's' }}</a>{% endif %}
+      {% if c.case_score is not none %}<span class="badge {{ 'open' if c.case_score >= 60 else 'draft' if c.case_score >= 35 else 'overdue' }}" title="Case score (rules based)">score {{ c.case_score }}</span>{% endif %}
+    </div>
   </div>
   {% endfor %}
 </div>

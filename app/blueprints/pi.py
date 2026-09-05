@@ -416,10 +416,15 @@ def build_worksheet_pdf(matter, ws):
 def index():
     cases = PiCase.query.join(Matter, PiCase.matter_id == Matter.id).order_by(Matter.number).all()
     cols = {k: [] for k in STAGE_KEYS}
+    try:  # Agent N: open audit finding count per matter for the board badge
+        from .caseaudit import open_counts_by_matter
+        findings = open_counts_by_matter()
+    except Exception:
+        findings = {}
     for c in cases:
         cols.setdefault(c.stage if c.stage in cols else "intake", []).append({
             "case": c, "matter": c.matter, "billed": total_billed_cents(c.matter),
-            "liens": liens_payable_cents(c.matter)})
+            "liens": liens_payable_cents(c.matter), "findings": findings.get(c.matter_id, 0)})
     have = {c.matter_id for c in cases}
     open_matters = [m for m in Matter.query.filter(Matter.status != "closed").order_by(Matter.number).all()
                     if m.id not in have]
@@ -475,7 +480,13 @@ def case(matter_id):
                                  Document.folder.in_(["Medical records", "Liens", "Demand", "Settlement"])).order_by(
         Document.created_at.desc()).all()
     tasks = Task.query.filter_by(matter_id=m.id, done=False).order_by(Task.due_on.asc().nulls_last()).all()
+    try:  # Agent N: case audit card (open findings, last run)
+        from .caseaudit import case_audit_summary
+        audit_info = case_audit_summary(m)
+    except Exception:
+        audit_info = None
     return render_template("pi/case.html", m=m, c=c, providers=providers, liens=liens, stages=STAGES,
+                           audit_info=audit_info,
                            incident_types=INCIDENT_TYPES, treatment_statuses=TREATMENT_STATUSES,
                            lien_types=LIEN_TYPES, lien_statuses=LIEN_STATUSES,
                            total_billed=sum(int(p.total_billed_cents or 0) for p in providers),

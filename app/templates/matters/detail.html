@@ -6,6 +6,7 @@
     <a class="btn small" href="/time/new?matter_id={{ m.id }}">Log time</a>
     <a class="btn small secondary" href="/invoices/new?matter_id={{ m.id }}">New invoice</a>
     {# Agent K #}<a class="btn small secondary" href="/pi/{{ m.id }}" title="Providers, records, liens, demand and the settlement worksheet. Starts a PI case on this matter if there is none.">Personal injury</a>
+    {# Agent M #}<a class="btn small secondary" href="/discovery?matter_id={{ m.id }}" title="Propound interrogatories, requests for production and admissions from starter sets, or respond to a served set with AI-drafted responses and objections">Discovery</a><a class="btn small secondary" href="/discovery/depositions?matter_id={{ m.id }}" title="Summarise a transcript: key testimony with page:line cites and contradictions against the chronology">Depositions</a>
     <a class="btn small secondary" href="/matters/{{ m.id }}/edit">Edit</a>
     {% if m.status == 'closed' %}<form method="post" action="/matters/{{ m.id }}/reopen" class="inline">{{ csrf() }}<button class="btn small secondary">Reopen</button></form>
     {% else %}<form method="post" action="/matters/{{ m.id }}/close" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Close this matter?">Close matter</button></form>{% endif %}

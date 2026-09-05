@@ -136,6 +136,7 @@ def submit():
                       source=(f.get("source", "web").strip() or "web")[:100])
     db.session.add(lead)
     db.session.flush()
+    _score(lead)
     audit("create", "intake_lead", lead.id, f"{lead.name} via {lead.source} from {ip}")
     db.session.commit()
     firm = Firm.get()
@@ -153,6 +154,15 @@ def submit():
 def _esc(s):
     from markupsafe import escape
     return str(escape(s or ""))
+
+
+def _score(lead):
+    """Agent N: deterministic case score on create and update. Never blocks the intake flow."""
+    try:
+        from .caseaudit import score_lead
+        score_lead(lead)
+    except Exception as e:  # scoring is a convenience; a bug there must not lose a lead
+        current_app.logger.warning("lead scoring failed: %s", e)
 
 
 @bp.route("/embed")
@@ -251,6 +261,7 @@ def fields(id):
     lead.assigned_user_id = f.get("assigned_user_id", type=int) or None
     lead.next_follow_up_on = parse_date(f.get("next_follow_up_on"))
     lead.lost_reason = f.get("lost_reason", "").strip()[:200]
+    _score(lead)
     db.session.commit()
     flash("Lead updated.", "ok")
     return redirect(url_for("intake.detail", id=lead.id))
