@@ -23,21 +23,29 @@
     <a class="nav {{ 'active' if _path.startswith('/matters') }}" href="/matters">Matters</a>
     <a class="nav {{ 'active' if _path.startswith('/conflicts') }}" href="/conflicts">Conflict check</a>
     <a class="nav {{ 'active' if _path.startswith('/engagements') }}" href="/engagements">Engagement letters</a>
+    <a class="nav {{ 'active' if _path.startswith('/questionnaires') }}" href="/questionnaires">Questionnaires</a>
+    <a class="nav {{ 'active' if _path.startswith('/bookings') }}" href="/bookings">Bookings</a>
     <a class="nav {{ 'active' if _path.startswith('/messages') }}" href="/messages">Messages</a>
     <a class="nav {{ 'active' if _path.startswith('/signatures') }}" href="/signatures">Signatures</a>
     <div class="sec">Work</div>
-    <a class="nav {{ 'active' if _path.startswith('/time') }}" href="/time">Time &amp; expenses</a>
+    <a class="nav {{ 'active' if _path.startswith('/time') and not _path.startswith('/time/suggestions') }}" href="/time">Time &amp; expenses</a>
+    <a class="nav {{ 'active' if _path.startswith('/time/suggestions') }}" href="/time/suggestions">Time suggestions</a>
     <a class="nav {{ 'active' if _path.startswith('/tasks') }}" href="/tasks">Tasks &amp; deadlines</a>
     <a class="nav {{ 'active' if _path.startswith('/calendar') }}" href="/calendar">Calendar</a>
     <a class="nav {{ 'active' if _path.startswith('/documents') }}" href="/documents">Documents</a>
+    <a class="nav {{ 'active' if _path.startswith('/pdftools') }}" href="/pdftools">PDF tools</a>
     <a class="nav {{ 'active' if _path.startswith('/doctemplates') }}" href="/doctemplates">Document templates</a>
     <a class="nav {{ 'active' if _path.startswith('/ai') }}" href="/ai/search">Ask Coil</a>
     <a class="nav {{ 'active' if _path.startswith('/research') }}" href="/research">Research</a>
     <a class="nav {{ 'active' if _path.startswith('/pi') }}" href="/pi">Personal injury</a>
+    <a class="nav {{ 'active' if _path.startswith('/criminal') }}" href="/criminal">Criminal defense</a>
+    <a class="nav {{ 'active' if _path.startswith('/litigation') }}" href="/litigation">Litigation</a>
+    <a class="nav {{ 'active' if _path.startswith('/dockets') }}" href="/dockets">Dockets</a>
     <div class="sec">Money</div>
     <a class="nav {{ 'active' if _path.startswith('/invoices') }}" href="/invoices">Invoices</a>
     <a class="nav {{ 'active' if _path.startswith('/statements') }}" href="/statements">Client statements</a>
     <a class="nav {{ 'active' if _path.startswith('/payments') }}" href="/payments">Payments</a>
+    <a class="nav {{ 'active' if _path.startswith('/money') }}" href="/money/plans">Plans &amp; splits</a>
     <a class="nav {{ 'active' if _path.startswith('/trust') }}" href="/trust">Trust accounting</a>
     <a class="nav {{ 'active' if _path.startswith('/accounting') }}" href="/accounting">Accounting</a>
     <a class="nav {{ 'active' if _path.startswith('/reports') }}" href="/reports">Reports</a>

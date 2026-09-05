@@ -89,6 +89,11 @@ class Firm(db.Model):
     monthly_billing_day = db.Column(db.Integer, default=0)
     monthly_billing_send = db.Column(db.Boolean, default=False)  # send automatically, otherwise leave as drafts
     courtlistener_token = db.Column(db.String(120), default="")  # optional, raises the research rate limit
+    review_url = db.Column(db.String(500), default="")  # Google review link sent after a matter closes
+    review_request_enabled = db.Column(db.Boolean, default=False)
+    review_request_days = db.Column(db.Integer, default=3)  # days after close
+    booking_slug = db.Column(db.String(60), default="")  # public booking page /book/<slug>
+    booking_intro = db.Column(db.Text, default="")
     ai_enabled = db.Column(db.Boolean, default=False)  # AI features also need an API key in the environment
     sequences_auto_send = db.Column(db.Boolean, default=False)  # follow-up sequences send only when this is on; otherwise drafts
 
@@ -132,6 +137,12 @@ class Contact(db.Model):
     custom_fields_json = db.Column(db.Text, default="{}")
     language = db.Column(db.String(5), default="")  # "" = firm default; en | es for client-facing pages and emails
     ledes_client_id = db.Column(db.String(40), default="")  # CLIENT_ID the carrier assigns
+    # Card on file (Stripe): customer + default payment method, for charge-on-invoice and payment plans
+    stripe_customer_id = db.Column(db.String(80), default="")
+    stripe_payment_method_id = db.Column(db.String(80), default="")
+    card_brand = db.Column(db.String(20), default="")
+    card_last4 = db.Column(db.String(4), default="")
+    card_authorised_on = db.Column(db.Date)  # when the client agreed to charge-on-invoice
 
     matters = db.relationship("Matter", back_populates="client", foreign_keys="Matter.client_id")
 
@@ -196,6 +207,10 @@ class Matter(db.Model):
     ledes_matter_id = db.Column(db.String(40), default="")  # CLIENT_MATTER_ID the carrier assigns
     template_id = db.Column(db.Integer, db.ForeignKey("matter_templates.id"))
     auto_invoice_monthly = db.Column(db.Boolean, default=False)  # include in the monthly invoicing run
+    # Client-facing stage timeline (Hona / Case Status lane)
+    stage_set_id = db.Column(db.Integer, db.ForeignKey("stage_sets.id"))
+    stage = db.Column(db.String(80), default="")
+    stage_changed_at = db.Column(db.DateTime)
 
     client = db.relationship("Contact", back_populates="matters", foreign_keys=[client_id])
     responsible = db.relationship("User", foreign_keys=[responsible_user_id])
@@ -203,6 +218,8 @@ class Matter(db.Model):
     office = db.relationship("Office", foreign_keys=[office_id])
     template = db.relationship("MatterTemplate", foreign_keys=[template_id])
     payers = db.relationship("MatterPayer", back_populates="matter", cascade="all, delete-orphan")
+    stage_set = db.relationship("StageSet", foreign_keys=[stage_set_id])
+    fee_splits = db.relationship("MatterFeeSplit", back_populates="matter", cascade="all, delete-orphan")
     parties = db.relationship("MatterParty", back_populates="matter", cascade="all, delete-orphan")
     milestones = db.relationship("FlatFeeMilestone", back_populates="matter", cascade="all, delete-orphan",
                                  order_by="FlatFeeMilestone.sort")
@@ -1264,6 +1281,294 @@ class SavedAuthority(db.Model):
     created_at = db.Column(db.DateTime, default=now)
     matter = db.relationship("Matter")
     saved_by = db.relationship("User")
+
+
+class StageSet(db.Model):
+    """Named stages a client sees on their matter, per practice area. stages_json: [{"key","label","client_note"}]."""
+    __tablename__ = "stage_sets"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    practice_area = db.Column(db.String(100), default="")
+    stages_json = db.Column(db.Text, default="[]")
+    notify_client = db.Column(db.Boolean, default=True)  # text/email the client when the stage changes
+    is_active = db.Column(db.Boolean, default=True)
+
+    @property
+    def stages(self):
+        try:
+            return json.loads(self.stages_json or "[]")
+        except Exception:
+            return []
+
+
+class BookingType(db.Model):
+    """A bookable consult: length, price (0 = free), who takes it."""
+    __tablename__ = "booking_types"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(60), default="")
+    description = db.Column(db.Text, default="")
+    minutes = db.Column(db.Integer, default=30)
+    price_cents = db.Column(db.Integer, default=0)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    location = db.Column(db.String(200), default="Phone")  # Phone | Video | Office
+    # availability: JSON {"mon":[["09:00","12:00"],["13:00","17:00"]], ...}; buffer minutes; days ahead
+    availability_json = db.Column(db.Text, default='{"mon":[["09:00","17:00"]],"tue":[["09:00","17:00"]],"wed":[["09:00","17:00"]],"thu":[["09:00","17:00"]],"fri":[["09:00","17:00"]]}')
+    buffer_minutes = db.Column(db.Integer, default=15)
+    days_ahead = db.Column(db.Integer, default=21)
+    require_conflict_check = db.Column(db.Boolean, default=True)
+    is_active = db.Column(db.Boolean, default=True)
+    user = db.relationship("User")
+
+    @property
+    def availability(self):
+        try:
+            return json.loads(self.availability_json or "{}")
+        except Exception:
+            return {}
+
+
+class Booking(db.Model):
+    __tablename__ = "bookings"
+    id = db.Column(db.Integer, primary_key=True)
+    booking_type_id = db.Column(db.Integer, db.ForeignKey("booking_types.id"), nullable=False)
+    name = db.Column(db.String(200), default="")
+    email = db.Column(db.String(200), default="")
+    phone = db.Column(db.String(50), default="")
+    notes = db.Column(db.Text, default="")
+    adverse_party = db.Column(db.String(300), default="")
+    starts_at = db.Column(db.DateTime, nullable=False)
+    ends_at = db.Column(db.DateTime)
+    status = db.Column(db.String(20), default="pending")  # pending_payment | confirmed | cancelled | no_show | completed
+    paid_cents = db.Column(db.Integer, default=0)
+    stripe_checkout_session = db.Column(db.String(120), default="")
+    token = db.Column(db.String(80), unique=True, default=new_token)  # manage/cancel link
+    lead_id = db.Column(db.Integer, db.ForeignKey("intake_leads.id"))
+    contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"))
+    calendar_event_id = db.Column(db.Integer, db.ForeignKey("calendar_events.id"))
+    conflict_check_id = db.Column(db.Integer, db.ForeignKey("conflict_checks.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    booking_type = db.relationship("BookingType")
+    lead = db.relationship("IntakeLead")
+    contact = db.relationship("Contact")
+    calendar_event = db.relationship("CalendarEvent")
+
+
+class Questionnaire(db.Model):
+    """Intake questionnaire per practice area. questions_json: [{"key","label","type","options","required","maps_to"}]
+    where maps_to is a matter custom field name, a contact field, or blank."""
+    __tablename__ = "questionnaires"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    practice_area = db.Column(db.String(100), default="")
+    intro = db.Column(db.Text, default="")
+    questions_json = db.Column(db.Text, default="[]")
+    doc_template_id = db.Column(db.Integer, db.ForeignKey("doc_templates.id"))  # guided document: generate on submit
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=now)
+    doc_template = db.relationship("DocTemplate")
+
+    @property
+    def questions(self):
+        try:
+            return json.loads(self.questions_json or "[]")
+        except Exception:
+            return []
+
+
+class QuestionnaireResponse(db.Model):
+    __tablename__ = "questionnaire_responses"
+    id = db.Column(db.Integer, primary_key=True)
+    questionnaire_id = db.Column(db.Integer, db.ForeignKey("questionnaires.id"), nullable=False)
+    token = db.Column(db.String(80), unique=True, default=new_token)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"))
+    contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"))
+    lead_id = db.Column(db.Integer, db.ForeignKey("intake_leads.id"))
+    answers_json = db.Column(db.Text, default="{}")
+    status = db.Column(db.String(20), default="sent")  # sent | viewed | submitted | applied
+    sent_to = db.Column(db.String(200), default="")
+    sent_at = db.Column(db.DateTime)
+    submitted_at = db.Column(db.DateTime)
+    applied_at = db.Column(db.DateTime)
+    generated_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    questionnaire = db.relationship("Questionnaire")
+    matter = db.relationship("Matter")
+    contact = db.relationship("Contact")
+    lead = db.relationship("IntakeLead")
+
+    @property
+    def answers(self):
+        try:
+            return json.loads(self.answers_json or "{}")
+        except Exception:
+            return {}
+
+
+class MatterFeeSplit(db.Model):
+    """Who gets credit for the fee on a matter: originating and working percentages (CosmoLex lane)."""
+    __tablename__ = "matter_fee_splits"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    role = db.Column(db.String(20), default="working")  # originating | working | referral
+    percent = db.Column(db.Float, default=0.0)
+    matter = db.relationship("Matter", back_populates="fee_splits")
+    user = db.relationship("User")
+
+
+class PaymentPlan(db.Model):
+    """Installments against an invoice, charged to the card on file or requested by email."""
+    __tablename__ = "payment_plans"
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False)
+    contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"), nullable=False)
+    installment_cents = db.Column(db.Integer, default=0)
+    installments = db.Column(db.Integer, default=1)
+    paid_installments = db.Column(db.Integer, default=0)
+    frequency = db.Column(db.String(10), default="monthly")  # weekly | biweekly | monthly
+    next_charge_on = db.Column(db.Date)
+    auto_charge = db.Column(db.Boolean, default=False)  # charge the card on file; otherwise email a pay link
+    status = db.Column(db.String(20), default="active")  # active | completed | paused | failed | cancelled
+    last_error = db.Column(db.String(300), default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    invoice = db.relationship("Invoice")
+    contact = db.relationship("Contact")
+
+
+class DocketWatch(db.Model):
+    """A court docket followed for new entries (CourtListener RECAP)."""
+    __tablename__ = "docket_watches"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"))
+    source = db.Column(db.String(20), default="recap")
+    docket_id = db.Column(db.String(40), default="")
+    case_name = db.Column(db.String(400), default="")
+    court = db.Column(db.String(120), default="")
+    docket_number = db.Column(db.String(120), default="")
+    url = db.Column(db.String(500), default="")
+    last_entry_number = db.Column(db.Integer, default=0)
+    last_entry_on = db.Column(db.Date)
+    last_checked_at = db.Column(db.DateTime)
+    entries_json = db.Column(db.Text, default="[]")  # cached recent entries [{"number","date","description","url"}]
+    is_active = db.Column(db.Boolean, default=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+
+class Witness(db.Model):
+    __tablename__ = "witnesses"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(40), default="fact")  # fact | expert | party | adverse | custodian
+    side = db.Column(db.String(10), default="ours")  # ours | theirs | neutral
+    contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"))
+    phone = db.Column(db.String(50), default="")
+    email = db.Column(db.String(200), default="")
+    summary = db.Column(db.Text, default="")  # what they know
+    status = db.Column(db.String(20), default="identified")  # identified | contacted | interviewed | subpoenaed | deposed
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+
+class Exhibit(db.Model):
+    __tablename__ = "exhibits"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    number = db.Column(db.String(20), default="")  # "P-1", "D-3", "A"
+    description = db.Column(db.String(400), default="")
+    document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
+    bates_range = db.Column(db.String(80), default="")
+    sponsoring_witness_id = db.Column(db.Integer, db.ForeignKey("witnesses.id"))
+    status = db.Column(db.String(20), default="proposed")  # proposed | marked | offered | admitted | excluded
+    objections = db.Column(db.String(300), default="")
+    sort = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+    document = db.relationship("Document")
+    sponsoring_witness = db.relationship("Witness")
+
+
+class FactEntry(db.Model):
+    """A fact in a general litigation chronology, tied to evidence, witnesses and issues (CaseFleet lane)."""
+    __tablename__ = "fact_entries"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    date = db.Column(db.Date)
+    time = db.Column(db.String(10), default="")
+    description = db.Column(db.Text, nullable=False)
+    source_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
+    exhibit_id = db.Column(db.Integer, db.ForeignKey("exhibits.id"))
+    page_ref = db.Column(db.String(40), default="")
+    witness_ids_json = db.Column(db.Text, default="[]")
+    issues = db.Column(db.String(300), default="")  # comma separated issue tags
+    disputed = db.Column(db.Boolean, default=False)
+    importance = db.Column(db.String(10), default="normal")  # low | normal | key
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+    source_document = db.relationship("Document")
+    exhibit = db.relationship("Exhibit")
+
+
+class TimeSuggestion(db.Model):
+    """Captured activity (browser tab, email subject, calendar) waiting to become a time entry."""
+    __tablename__ = "time_suggestions"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    source = db.Column(db.String(20), default="extension")  # extension | email | calendar
+    started_at = db.Column(db.DateTime, nullable=False)
+    minutes = db.Column(db.Integer, default=0)
+    title = db.Column(db.String(300), default="")
+    url = db.Column(db.String(500), default="")
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"))  # guessed, editable
+    status = db.Column(db.String(12), default="pending")  # pending | accepted | dismissed
+    time_entry_id = db.Column(db.Integer, db.ForeignKey("time_entries.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    user = db.relationship("User")
+    matter = db.relationship("Matter")
+
+
+class CriminalCase(db.Model):
+    __tablename__ = "criminal_cases"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), unique=True, nullable=False)
+    court = db.Column(db.String(200), default="")
+    cause_number = db.Column(db.String(100), default="")
+    arrest_on = db.Column(db.Date)
+    bond_cents = db.Column(db.Integer, default=0)
+    bond_status = db.Column(db.String(40), default="")  # posted | denied | pr | held
+    custody_status = db.Column(db.String(40), default="out")  # out | in
+    prosecutor = db.Column(db.String(200), default="")
+    prosecutor_email = db.Column(db.String(200), default="")
+    judge = db.Column(db.String(200), default="")
+    next_setting_on = db.Column(db.Date)
+    next_setting_type = db.Column(db.String(60), default="")  # arraignment | announcement | pretrial | plea | trial
+    discovery_received_on = db.Column(db.Date)
+    plea_offer = db.Column(db.Text, default="")
+    stage = db.Column(db.String(30), default="arrest")  # arrest | charged | discovery | negotiation | pretrial | trial | disposed
+    notes = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
+
+
+class Charge(db.Model):
+    __tablename__ = "charges"
+    id = db.Column(db.Integer, primary_key=True)
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"), nullable=False)
+    statute = db.Column(db.String(120), default="")
+    description = db.Column(db.String(300), nullable=False)
+    degree = db.Column(db.String(60), default="")  # e.g. Class A misdemeanor, 3rd degree felony
+    range_text = db.Column(db.String(200), default="")  # user-entered sentencing range
+    fine_max_cents = db.Column(db.Integer, default=0)
+    enhancement = db.Column(db.String(200), default="")
+    disposition = db.Column(db.String(60), default="")  # pending | dismissed | plea | acquitted | convicted | deferred
+    disposition_on = db.Column(db.Date)
+    sentence = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=now)
+    matter = db.relationship("Matter")
 
 
 class AuditLog(db.Model):
