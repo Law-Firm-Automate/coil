@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}Client statements{% endblock %}{% block content %}
+<div class="topbar"><h1>Client statements</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/invoices">Invoices</a><a class="btn small secondary" href="/reports/ar-aging">A/R aging</a></div></div>
+<div class="grid c2">
+<div class="card">
+  <h2>Pick a client</h2>
+  <p class="small muted">A statement lists every invoice sent to the client, every payment and trust application, and the running balance, grouped by matter with subtotals. Print it, download the PDF in your invoice template, or email it to the client.</p>
+  <form method="get" action="/statements">
+    <label>Client</label>
+    <select name="client_id" required>
+      <option value="">Choose a client</option>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.display_name }}{% if c.email %} ({{ c.email }}){% endif %}</option>{% endfor %}
+    </select>
+    <div class="row" style="margin-top:8px">
+      <div><label>From (optional)</label><input type="date" name="from"></div>
+      <div><label>To (optional)</label><input type="date" name="to"></div>
+    </div>
+    <p class="small muted">Leave the dates blank for the whole history. With a start date, earlier activity is rolled into a balance forward line. You can narrow to one matter on the next page.</p>
+    <div class="actions"><button class="btn">Open statement</button></div>
+  </form>
+</div>
+<div class="card">
+  <h2>Clients with invoices</h2>
+  {% if clients %}
+  <table><tr><th>Client</th><th>Email</th><th></th></tr>
+  {% for c in clients %}<tr><td><a href="/contacts/{{ c.id }}">{{ c.display_name }}</a></td><td class="small">{{ c.email }}</td><td><a class="btn small secondary" href="/statements/{{ c.id }}">Statement</a></td></tr>{% endfor %}
+  </table>
+  {% else %}<div class="empty">No clients yet.</div>{% endif %}
+</div>
+</div>
+{% endblock %}

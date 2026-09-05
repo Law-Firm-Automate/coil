@@ -1,0 +1,62 @@
+{% extends "base.html" %}{% block title %}Invoice template{% endblock %}{% block content %}
+<div class="topbar"><h1>Invoice template</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/settings">Settings</a><a class="btn small secondary" href="/invoices">Invoices</a><a class="btn small secondary" href="/statements">Client statements</a></div></div>
+<p class="muted">Everything here applies to invoice PDFs, the public invoice page clients open from their email, and client statements. Nothing needs a designer: tick the columns you want, number their order, rename the labels, add a logo. Preview renders a sample invoice with fake data using what is on this form, without saving.</p>
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+<form method="post" action="/settings/invoice-template" enctype="multipart/form-data" id="tplform">{{ csrf() }}
+<div class="grid c2">
+  <div class="card"><h2>Look</h2>
+    <label>Logo (PNG or JPG, shown top-left)</label>
+    {% if has_logo %}<div style="margin:4px 0 8px"><img src="/p/firm-logo?v={{ now().timestamp()|int }}" alt="Current logo" style="max-height:56px;max-width:220px;display:block;border:1px solid #e3e6ea;padding:4px;background:#fff"></div>
+    <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="remove_logo" value="1"> Remove the logo</label>{% endif %}
+    <input type="file" name="logo" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
+    <div class="small muted">Under 2 MB. Printed at 16 mm high; wide logos work best. The firm name and address print beside it.</div>
+    <div class="row" style="margin-top:8px">
+      <div><label>Accent colour</label><input type="color" name="invoice_accent" value="{{ tpl.accent }}" style="height:38px;padding:2px"><div class="small muted">Title and table headings.</div></div>
+      <div><label>Title text</label><input type="text" name="invoice_title" value="{{ tpl.title }}" maxlength="60"><div class="small muted">Printed at the top: INVOICE, Statement of fees, Factura.</div></div>
+    </div>
+  </div>
+  <div class="card"><h2>Columns</h2>
+    <p class="small muted">Tick a column to show it and give it an order number (1 is leftmost). Description and Amount always print.</p>
+    <table>
+    <tr><th>Show</th><th>Column</th><th>Order</th></tr>
+    {% for key in column_keys %}
+    <tr>
+      <td><input type="checkbox" name="col_{{ key }}" value="1" {{ 'checked' if key in tpl.columns }} {{ 'disabled' if key in ('description', 'amount') }}>{% if key in ('description', 'amount') %}<input type="hidden" name="col_{{ key }}" value="1">{% endif %}</td>
+      <td><strong>{{ column_titles[key] }}</strong> <span class="small muted">{{ column_help[key] }}</span></td>
+      <td><input type="number" name="ord_{{ key }}" value="{{ order.get(key, loop.index) }}" min="1" max="9" style="width:64px"></td>
+    </tr>
+    {% endfor %}
+    </table>
+    <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink);margin-top:8px"><input type="checkbox" name="invoice_show_timekeeper" value="1" {{ 'checked' if tpl.show_timekeeper }}> Show timekeeper initials</label>
+    <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="invoice_show_activity_codes" value="1" {{ 'checked' if tpl.show_codes }}> Show UTBMS codes</label>
+    <div class="small muted">With its column ticked the value gets its own column; without one it is appended to the description in brackets. Off means it never prints.</div>
+  </div>
+  <div class="card"><h2>Labels</h2>
+    <p class="small muted">Blank keeps the default. On the public page a custom label replaces the translated one.</p>
+    {% for key in label_keys %}
+    <label>{{ default_labels[key] }}</label><input type="text" name="label_{{ key }}" value="{{ tpl.labels.get(key, '') }}" placeholder="{{ default_labels[key] }}" maxlength="60">
+    {% endfor %}
+  </div>
+  <div class="card"><h2>Wording</h2>
+    <label>Payment instructions (blank = built-in text with the pay link, surcharge note and check address)</label>
+    <textarea name="invoice_payment_instructions" style="min-height:90px" placeholder="Pay online at {link}. Checks payable to the firm.">{{ tpl.payment_instructions }}</textarea>
+    <div class="small muted">Write <code>{link}</code> where the invoice's pay link should go. Shown on the PDF and under the pay buttons on the public page; the buttons stay.</div>
+    <label>Statement footer</label>
+    <textarea name="statement_footer" style="min-height:70px" placeholder="Questions about this statement? Call us.">{{ tpl.statement_footer }}</textarea>
+    <div class="small muted">Printed at the bottom of client statements. Blank uses the invoice footer from Settings.</div>
+  </div>
+  <div class="card"><h2>Monthly invoicing</h2>
+    <div class="row">
+      <div><label>Billing day of the month (0 = off)</label><input type="number" name="monthly_billing_day" value="{{ f.monthly_billing_day or 0 }}" min="0" max="28"></div>
+      <div><label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink);margin-top:26px"><input type="checkbox" name="monthly_billing_send" value="1" {{ 'checked' if f.monthly_billing_send }}> Send automatically</label></div>
+    </div>
+    <p class="small muted">On that day <code>python -m app.cli monthly_invoicing</code> (daily cron) builds one draft per opted-in open matter with unbilled time, expenses or a due milestone, then emails you a summary. With sending on, each draft goes straight to clients who have an email address; otherwise they wait under Invoices, Draft. Opt matters in on the matter form or all at once under <a href="/invoices/bulk">Bulk invoicing</a>. Each matter is billed at most once per month.</p>
+  </div>
+</div>
+<div class="actions">
+  <button class="btn" name="action" value="save">Save template</button>
+  <button class="btn secondary" name="action" value="preview" formtarget="_blank" title="Opens a sample invoice PDF with fake data using the settings on this form, without saving">Preview PDF</button>
+</div>
+</form>
+{% endblock %}

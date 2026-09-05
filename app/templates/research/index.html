@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}Research{% endblock %}{% block content %}
+<div class="topbar"><h1>Research</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/research/saved">Saved authorities</a><a class="btn small secondary" href="/research/cite-check">Citation check</a></div></div>
+{% include "research/_disclaimer.html" %}
+<div class="card">
+  <form method="get" action="/research">
+    <div class="searchbar"><input type="text" name="q" value="{{ q }}" placeholder="Search case law, like: custodial interrogation waiver" aria-label="Search case law" required><button class="btn">Search</button></div>
+    <div class="row">
+      <div><label>Court</label><select name="court"><option value="">Any court</option>{% for id, name in courts %}<option value="{{ id }}" {{ 'selected' if id == court }}>{{ name }}</option>{% endfor %}</select></div>
+      <div><label>Filed after</label><input type="date" name="filed_after" value="{{ filed_after }}"></div>
+      <div><label>Filed before</label><input type="date" name="filed_before" value="{{ filed_before }}"></div>
+      <div><label>Order</label><select name="order_by">{% for key, name in orderings %}<option value="{{ key }}" {{ 'selected' if key == order_by }}>{{ name }}</option>{% endfor %}</select></div>
+    </div>
+    <p class="small muted" style="margin-bottom:0">Searches published and unpublished opinions. Put a phrase in quotes for an exact match. {% if not has_token %}Anonymous searches are rate limited; a free CourtListener token under Settings raises the limit and unlocks full opinion text.{% endif %}</p>
+  </form>
+</div>
+{% include "research/_notice.html" %}
+{% if q and not api_error %}
+<div class="card">
+  <h2>{{ '{:,}'.format(count) }} result{{ '' if count == 1 else 's' }} for "{{ q }}"{% if court %} in {{ dict(courts).get(court) }}{% endif %}</h2>
+  {% if results %}
+  {% for r in results %}
+  <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+    <div><strong><a href="/research/opinion/{{ r.opinion_id }}?cluster_id={{ r.cluster_id }}&amp;q={{ q|urlencode }}">{{ highlight(r.case_name, q) }}</a></strong>
+      {% if r.citations %}<span class="muted">, {{ r.citations|join('; ') }}</span>{% endif %}
+      {% if r.status and r.status != 'Published' %}<span class="badge draft">{{ r.status }}</span>{% endif %}</div>
+    <div class="small muted">{{ r.court }}{% if r.date_filed %}, {{ r.date_filed }}{% endif %}{% if r.docket_number %}, No. {{ r.docket_number }}{% endif %}{% if r.cite_count %}, cited {{ r.cite_count }} time{{ '' if r.cite_count == 1 else 's' }}{% endif %}
+      {% if r.url %}, <a href="{{ r.url }}" target="_blank" rel="noopener">CourtListener</a>{% endif %}</div>
+    {% if r.snippet %}<p class="small" style="margin:6px 0">{{ highlight(r.snippet, q) }}</p>{% endif %}
+    {% include "research/_save_form.html" %}
+  </div>
+  {% endfor %}
+  {% if next_cursor %}<div class="actions"><a class="btn secondary" href="/research?q={{ q|urlencode }}&amp;court={{ court }}&amp;filed_after={{ filed_after }}&amp;filed_before={{ filed_before }}&amp;order_by={{ order_by|urlencode }}&amp;cursor={{ next_cursor|urlencode }}">Next page</a></div>{% endif %}
+  {% else %}<div class="empty">No opinions matched. Try fewer words, drop the court filter, or widen the dates.</div>{% endif %}
+</div>
+{% elif not q %}
+<div class="card"><h2>How this works</h2>
+  <p class="small">Search opinions from the U.S. Supreme Court, the federal circuits, and state courts, open the full text, and save the ones that matter to a matter with a note. Export the saved list as a research memo PDF onto the matter, and run any brief through the <a href="/research/cite-check">citation check</a> before filing to catch citations that do not resolve.</p>
+</div>
+{% endif %}
+<style>mark{background:#fff1a8;padding:0 1px}</style>
+{% endblock %}

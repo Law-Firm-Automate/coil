@@ -74,7 +74,13 @@ Scheduled jobs (cron on the host):
 */10 * * * * docker compose exec -T web python -m app.cli emailin
 */15 * * * * docker compose exec -T web python -m app.cli webhooks
 0  6 1 * *  docker compose exec -T web python -m app.cli interest
+0  7 * * *  docker compose exec -T web python -m app.cli monthly_invoicing
 ```
+
+`monthly_invoicing` runs daily but only acts on the billing day set under Settings, Invoice template
+(0 turns it off). It builds one draft per opted-in matter with unbilled work, sends it when
+"send automatically" is on and the client has an email, and emails the owner a summary. Add
+`--force` to run it on any day; each matter is still invoiced at most once per month.
 
 ## Money handling notes
 

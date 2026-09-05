@@ -40,6 +40,24 @@
 </div>
 {% endif %}
 </form>
+
+{# ---- monthly invoicing opt-in (python -m app.cli monthly_invoicing) ---- #}
+<form method="post" action="{{ url_for('invoices.bulk_monthly') }}" class="card" id="monthly">{{ csrf() }}
+  <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Monthly invoicing</h2><span class="small muted">{{ monthly_count }} of {{ open_matters|length }} open matters opted in</span></div>
+  <p class="small muted">{% if firm_settings.monthly_billing_day %}On day {{ firm_settings.monthly_billing_day }} of each month, <code>python -m app.cli monthly_invoicing</code> builds one draft per ticked matter with everything unbilled, {{ 'sends it to the client' if firm_settings.monthly_billing_send else 'and leaves it as a draft for you to send' }}, and emails you a summary.{% else %}The monthly run is off. Set a billing day under <a href="/settings/invoice-template">Settings, Invoice template</a>; the ticks below are kept until then.{% endif %} Each matter has the same setting on its edit form.</p>
+  {% if open_matters %}
+  <table>
+  <tr><th><input type="checkbox" data-toggle="monthly_ids" {{ 'checked' if monthly_count == open_matters|length }}></th><th>Matter</th><th>Client</th><th>Billing</th><th>Client email</th></tr>
+  {% for m in open_matters %}
+  <tr><td><input type="checkbox" name="monthly_ids" value="{{ m.id }}" {{ 'checked' if m.auto_invoice_monthly }}></td>
+      <td><a href="/matters/{{ m.id }}">{{ m.number }}</a> <span class="small muted">{{ m.name }}</span></td>
+      <td>{{ m.client.display_name }}</td><td>{{ m.billing_type }}</td>
+      <td>{% if m.client.email %}{{ m.client.email }}{% else %}<span class="badge overdue">none</span> <span class="small muted">drafts only</span>{% endif %}</td></tr>
+  {% endfor %}
+  </table>
+  <div class="actions"><button class="btn secondary">Save monthly invoicing picks</button></div>
+  {% else %}<div class="empty">No open matters.</div>{% endif %}
+</form>
 {% endblock %}
 {% block scripts %}
 <script>

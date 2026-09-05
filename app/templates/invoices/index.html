@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block title %}Invoices{% endblock %}{% block content %}
 <div class="topbar"><h1>Invoices</h1>
-<div class="actions" style="margin:0"><a class="btn small" href="{{ url_for('invoices.new') }}">New invoice</a> <a class="btn small secondary" href="{{ url_for('invoices.bulk') }}">Bulk invoicing</a></div></div>
+<div class="actions" style="margin:0"><a class="btn small" href="{{ url_for('invoices.new') }}">New invoice</a> <a class="btn small secondary" href="{{ url_for('invoices.bulk') }}">Bulk invoicing</a> <a class="btn small secondary" href="/statements" title="Every invoice, payment and trust application for one client with a running balance">Client statement</a></div></div>
 <div class="tabs">
 {% for t in tabs %}<a class="{{ 'active' if t.key == status }}" href="{{ url_for('invoices.index', status=t.key) }}">{{ 'Pending approval' if t.key == 'pending' else t.key|capitalize }} <span class="muted small">{{ t.count }}{% if t.key not in ('void', 'draft', 'pending') and t.balance %} / {{ t.balance|money }}{% elif t.key in ('draft', 'pending') and t.total %} / {{ t.total|money }}{% endif %}</span></a>{% endfor %}
 </div>

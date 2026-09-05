@@ -5,6 +5,7 @@
   <div class="actions" style="margin:0">
     <a class="btn small" href="/time/new?matter_id={{ m.id }}">Log time</a>
     <a class="btn small secondary" href="/invoices/new?matter_id={{ m.id }}">New invoice</a>
+    {# Agent K #}<a class="btn small secondary" href="/pi/{{ m.id }}" title="Providers, records, liens, demand and the settlement worksheet. Starts a PI case on this matter if there is none.">Personal injury</a>
     <a class="btn small secondary" href="/matters/{{ m.id }}/edit">Edit</a>
     {% if m.status == 'closed' %}<form method="post" action="/matters/{{ m.id }}/reopen" class="inline">{{ csrf() }}<button class="btn small secondary">Reopen</button></form>
     {% else %}<form method="post" action="/matters/{{ m.id }}/close" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Close this matter?">Close matter</button></form>{% endif %}
@@ -23,7 +24,7 @@
 
 {% if tab == 'overview' %}
 <div class="grid c2">
-  <div class="card"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Details</h2>{# Agent H #}<form method="post" action="/ai/matter/{{ m.id }}/summary" class="inline">{{ csrf() }}<button class="btn small secondary" title="About 150 words plus open items, from notes, time, tasks and messages; you can save it as a note">AI summary</button></form></div>
+  <div class="card"><div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">Details</h2>{# Agent H #}<form method="post" action="/ai/matter/{{ m.id }}/summary" class="inline">{{ csrf() }}<button class="btn small secondary" title="About 150 words plus open items, from notes, time, tasks and messages; you can save it as a note">AI summary</button></form>{# Agent I #}<form method="post" action="/ai/matter/{{ m.id }}/update-email" class="inline">{{ csrf() }}<button class="btn small secondary" title="Drafts a status update email to the client from recent notes, work, completed tasks and upcoming dates. You edit it before anything is sent.">AI: client update</button></form>{# Agent J #}<a class="btn small secondary" href="/research/saved?matter_id={{ m.id }}" title="Case law saved to this matter, memo export, citation check">Research</a></div>
     <dl class="kv">
       <dt>Client</dt><dd><a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a></dd>
       <dt>Practice area</dt><dd>{{ m.practice_area or '' }}</dd>

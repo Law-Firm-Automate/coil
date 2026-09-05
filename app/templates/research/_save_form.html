@@ -1,0 +1,14 @@
+{# Save-to-matter form. Expects r (dict with case_name, citations, court, date_filed, url, snippet, cluster_id) and matters. #}
+<form method="post" action="/research/save" class="searchbar" style="flex-wrap:wrap;margin-top:6px">{{ csrf() }}
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <input type="hidden" name="source_id" value="{{ r.cluster_id or '' }}">
+  <input type="hidden" name="case_name" value="{{ r.case_name }}">
+  <input type="hidden" name="citation" value="{{ r.citations|join('; ') }}">
+  <input type="hidden" name="court" value="{{ r.court or '' }}">
+  <input type="hidden" name="decided_on" value="{{ r.date_filed or '' }}">
+  <input type="hidden" name="url" value="{{ r.url or '' }}">
+  <input type="hidden" name="snippet" value="{{ (r.snippet or '')[:2000] }}">
+  <select name="matter_id" required style="width:auto;max-width:100%" aria-label="Matter"><option value="">Save to matter</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == request.args.get('matter_id')|int }}>{{ m.label }}</option>{% endfor %}</select>
+  <input type="text" name="note" placeholder="Note (optional)" style="width:auto;flex:1;min-width:160px" aria-label="Note">
+  <button class="btn small secondary">Save</button>
+</form>

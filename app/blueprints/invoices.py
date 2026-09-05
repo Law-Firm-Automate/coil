@@ -1,5 +1,6 @@
 """Invoices: builder (flat fee, hourly, hybrid, contingency), bulk builder, split billing across payers,
 approval workflow, interest on overdue balances, detail, edit, send, PDF, public view, open pixel."""
+import json
 import os
 import secrets
 from datetime import date, timedelta
@@ -8,6 +9,7 @@ from html import escape
 from types import SimpleNamespace
 from flask import (Blueprint, render_template, request, redirect, url_for, flash, abort, current_app,
                    send_file, Response)
+from fpdf.fonts import FontFace
 from werkzeug.datastructures import MultiDict
 from ..extensions import db
 from ..models import (Firm, Matter, Invoice, InvoiceLine, InvoiceEvent, TimeEntry, Expense, FlatFeeMilestone,
@@ -80,6 +82,222 @@ def _next_number(firm):
     return number
 
 
+# ---------------------------------------------------------------- invoice template (Settings > Invoice template)
+COLUMN_KEYS = ["date", "description", "timekeeper", "code", "qty", "rate", "amount"]
+COLUMN_TITLES = {"date": "Date", "description": "Description", "timekeeper": "Tk", "code": "Code", "qty": "Qty",
+                 "rate": "Rate", "amount": "Amount"}
+COLUMN_HELP = {"date": "Date of the work or expense", "description": "What was done", "timekeeper": "Initials of who did it",
+               "code": "UTBMS activity, task or expense code", "qty": "Hours on time lines", "rate": "Hourly rate",
+               "amount": "Line total"}
+DEFAULT_COLUMNS = ["date", "description", "qty", "rate", "amount"]
+LABEL_KEYS = ["bill_to", "matter", "invoice_number", "due", "balance_due"]
+DEFAULT_LABELS = {"bill_to": "Bill to", "matter": "Matter", "invoice_number": "Invoice number", "due": "Due",
+                  "balance_due": "Balance due"}
+DEFAULT_ACCENT = "#1f5f8b"
+DEFAULT_TITLE = "INVOICE"
+LOGO_EXTS = ("png", "jpg", "jpeg")
+LOGO_DIR = "firm"  # under UPLOAD_DIR
+
+
+def hex_rgb(h, default=DEFAULT_ACCENT):
+    """'#1f5f8b' -> (31, 95, 139). Anything malformed falls back to the default accent."""
+    h = (h or "").strip()
+    if not (len(h) == 7 and h.startswith("#")):
+        h = default
+    try:
+        return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+    except ValueError:
+        return hex_rgb(default, default)
+
+
+def valid_hex(h):
+    h = (h or "").strip().lower()
+    return h if len(h) == 7 and h[0] == "#" and all(c in "0123456789abcdef" for c in h[1:]) else ""
+
+
+def logo_abs_path(rel):
+    if not rel:
+        return None
+    path = os.path.join(current_app.config["UPLOAD_DIR"], rel)
+    return path if os.path.isfile(path) else None
+
+
+def invoice_settings(firm=None, override=None):
+    """The resolved invoice template: columns in order, labels, accent, title, flags, logo, payment text.
+
+    `override` is a dict of the same keys from an unsaved form (the Preview button in Settings). Every value
+    is validated here so the PDF and public page never see a bad column or colour."""
+    firm = firm or Firm.get()
+    o = override or {}
+    cols = o.get("columns")
+    if cols is None:
+        try:
+            cols = json.loads(firm.invoice_columns_json or "")
+        except (TypeError, ValueError):
+            cols = None
+    cols = [c for c in (cols or []) if c in COLUMN_KEYS]
+    if not cols:
+        cols = list(DEFAULT_COLUMNS)
+    for must in ("description", "amount"):
+        if must not in cols:
+            cols.insert(0, must) if must == "description" else cols.append(must)
+    labels = o.get("labels")
+    if labels is None:
+        try:
+            labels = json.loads(firm.invoice_labels_json or "{}")
+        except (TypeError, ValueError):
+            labels = {}
+    labels = {k: str(v).strip()[:60] for k, v in (labels or {}).items() if k in LABEL_KEYS and str(v).strip()}
+    accent = valid_hex(o.get("accent") if "accent" in o else firm.invoice_accent) or DEFAULT_ACCENT
+    title = (o.get("title") if "title" in o else firm.invoice_title) or DEFAULT_TITLE
+    logo_rel = o.get("logo_path") if "logo_path" in o else (firm.invoice_logo_path or "")
+    return SimpleNamespace(
+        columns=cols, labels=labels, accent=accent, accent_rgb=hex_rgb(accent), title=str(title).strip()[:60] or DEFAULT_TITLE,
+        show_timekeeper=bool(o["show_timekeeper"] if "show_timekeeper" in o else firm.invoice_show_timekeeper),
+        show_codes=bool(o["show_codes"] if "show_codes" in o else firm.invoice_show_activity_codes),
+        payment_instructions=str((o.get("payment_instructions") if "payment_instructions" in o
+                                  else firm.invoice_payment_instructions) or "").strip(),
+        statement_footer=str((o.get("statement_footer") if "statement_footer" in o else firm.statement_footer) or "").strip(),
+        logo_path=logo_rel or "", logo_abs=logo_abs_path(logo_rel),
+        label=lambda key, fallback=None: labels.get(key) or (fallback if fallback is not None else DEFAULT_LABELS.get(key, key)),
+    )
+
+
+def _initials(user):
+    if not user:
+        return ""
+    if user.initials:
+        return user.initials
+    return "".join(w[0] for w in (user.name or "").split() if w)[:3].upper()
+
+
+def line_meta(line):
+    """(timekeeper initials, UTBMS code) for an invoice line, read from its source time entry or expense.
+    Copied split lines and hand-typed lines have neither."""
+    meta = getattr(line, "meta", None)
+    if meta is not None:
+        return meta
+    if getattr(line, "time_entry_id", None):
+        t = db.session.get(TimeEntry, line.time_entry_id)
+        if t:
+            return _initials(t.user), (t.activity_code or t.task_code or "")
+    if getattr(line, "expense_id", None):
+        e = db.session.get(Expense, line.expense_id)
+        if e:
+            return _initials(e.user) if e.user_id else "", (e.expense_code or "")
+    return "", ""
+
+
+def line_description(line, tpl):
+    """Description text with initials and code appended when the firm wants them shown but has not given them
+    their own column."""
+    desc = line.description or ""
+    initials, code = line_meta(line) if (tpl.show_timekeeper or tpl.show_codes) else ("", "")
+    extra = []
+    if tpl.show_timekeeper and initials and "timekeeper" not in tpl.columns:
+        extra.append(initials)
+    if tpl.show_codes and code and "code" not in tpl.columns:
+        extra.append(code)
+    return desc + (" [" + " ".join(extra) + "]" if extra else "")
+
+
+def visible_columns(tpl):
+    """Columns to render: the ticked list, minus timekeeper/code when their flag is off."""
+    out = []
+    for c in tpl.columns:
+        if c == "timekeeper" and not tpl.show_timekeeper:
+            continue
+        if c == "code" and not tpl.show_codes:
+            continue
+        out.append(c)
+    return out
+
+
+def line_cells(line, cols, tpl, money):
+    """One string per visible column for a line. `money` formats cents in the invoice currency."""
+    initials, code = line_meta(line) if ("timekeeper" in cols or "code" in cols) else ("", "")
+    is_time = line.kind == "time"
+    cells = []
+    for c in cols:
+        if c == "date":
+            cells.append(line.date.strftime("%m/%d/%Y") if line.date else "")
+        elif c == "description":
+            cells.append(line_description(line, tpl))
+        elif c == "timekeeper":
+            cells.append(initials)
+        elif c == "code":
+            cells.append(code)
+        elif c == "qty":
+            cells.append(f"{line.quantity:.2f}" if is_time else "")
+        elif c == "rate":
+            cells.append(money(line.unit_cents) if is_time else "")
+        elif c == "amount":
+            cells.append(money(line.amount_cents))
+    return cells
+
+
+_COL_WIDTH = {"date": 22, "timekeeper": 12, "code": 16, "qty": 16, "rate": 22, "amount": 22}
+_COL_ALIGN = {"date": "LEFT", "description": "LEFT", "timekeeper": "CENTER", "code": "LEFT", "qty": "RIGHT",
+              "rate": "RIGHT", "amount": "RIGHT"}
+
+
+def column_widths(cols, total=174):
+    """Description takes whatever the fixed columns leave over."""
+    fixed = sum(_COL_WIDTH.get(c, 0) for c in cols if c != "description")
+    return tuple(_COL_WIDTH[c] if c != "description" else max(40, total - fixed) for c in cols)
+
+
+class TemplatePDF(DocPDF):
+    """DocPDF with the firm's invoice template: logo top-left (the firm block moves right of it) and an accent
+    colour for the title and table headings. Used by invoices and client statements."""
+
+    def __init__(self, firm, title, tpl):
+        super().__init__(firm, title)
+        self.tpl = tpl
+        self.core_fonts_encoding = "cp1252"
+        self._logo_w = 0
+        if tpl.logo_abs:
+            try:
+                from PIL import Image
+                with Image.open(tpl.logo_abs) as im:
+                    w, h = im.size
+                self._logo_w = min(45.0, 16.0 * (w / float(h or 1)))
+            except Exception:  # unreadable image: print without it
+                self._logo_w = 0
+
+    def header(self):
+        if self._logo_w:
+            try:
+                self.image(self.tpl.logo_abs, x=18, y=14, w=self._logo_w, h=16)
+                self.set_left_margin(18 + self._logo_w + 6)
+                self.set_x(18 + self._logo_w + 6)
+                super().header()
+            finally:
+                self.set_left_margin(18)
+            self.set_x(18)
+            if self.get_y() < 36:
+                self.set_y(36)
+            return
+        super().header()
+
+    def heading(self, text):
+        self.set_font("Helvetica", "B", 20)
+        self.set_text_color(*self.tpl.accent_rgb)
+        self.cell(0, 10, _pdf_txt(text), new_x="LMARGIN", new_y="NEXT")
+        self.set_text_color(0, 0, 0)
+        self.set_font("Helvetica", "", 10)
+
+    def heading_style(self):
+        return FontFace(emphasis="BOLD", color=(255, 255, 255), fill_color=self.tpl.accent_rgb)
+
+    def sample_mark(self):
+        self.set_font("Helvetica", "B", 44)
+        self.set_text_color(215, 215, 215)
+        with self.rotation(20, x=105, y=150):
+            self.text(55, 160, "SAMPLE")
+        self.set_text_color(0, 0, 0)
+
+
 # ---------------------------------------------------------------- list
 @bp.route("/invoices")
 @login_required
@@ -112,8 +330,8 @@ def index():
 
 
 # ---------------------------------------------------------------- builder
-def _builder_context(matter):
-    u = current_user()
+def _builder_context(matter, user=None):
+    u = user or current_user()
     milestones = [m for m in matter.milestones if m.invoice_id is None]
     time_entries = [t for t in sorted(matter.time_entries, key=lambda t: (t.date, t.id))
                     if t.billable and t.invoice_id is None]
@@ -320,25 +538,53 @@ def new():
 
 
 # ---------------------------------------------------------------- bulk builder
+def bulk_row(m, today=None):
+    """What is billable on one matter today, or None when nothing is: unbilled time, unbilled expenses, and
+    flat-fee milestones due on or before today."""
+    today = today or date.today()
+    times = [t for t in m.time_entries if t.billable and t.invoice_id is None]
+    exps = [e for e in m.expenses if e.billable and e.invoice_id is None]
+    ms = [x for x in m.milestones if x.invoice_id is None and x.due_on and x.due_on <= today] \
+        if m.billing_type in ("flat", "hybrid") else []
+    if not (times or exps or ms):
+        return None
+    t_total = sum(t.amount_cents for t in times)
+    e_total = sum(e.amount_cents for e in exps)
+    m_total = sum(x.amount_cents for x in ms)
+    payers = list(m.payers)
+    return {"matter": m, "time": times, "expenses": exps, "milestones": ms, "time_total": t_total,
+            "expense_total": e_total, "milestone_total": m_total, "total": t_total + e_total + m_total,
+            "payers": payers, "payers_ok": payers_total_ok(payers)}
+
+
 def bulk_rows(today=None):
-    """Every open matter with something billable today: unbilled time, unbilled expenses, or milestones due."""
+    """Every open matter with something billable today."""
     today = today or date.today()
     rows = []
     for m in Matter.query.filter(Matter.status != "closed").order_by(Matter.number).all():
-        times = [t for t in m.time_entries if t.billable and t.invoice_id is None]
-        exps = [e for e in m.expenses if e.billable and e.invoice_id is None]
-        ms = [x for x in m.milestones if x.invoice_id is None and x.due_on and x.due_on <= today] \
-            if m.billing_type in ("flat", "hybrid") else []
-        if not (times or exps or ms):
-            continue
-        t_total = sum(t.amount_cents for t in times)
-        e_total = sum(e.amount_cents for e in exps)
-        m_total = sum(x.amount_cents for x in ms)
-        payers = list(m.payers)
-        rows.append({"matter": m, "time": times, "expenses": exps, "milestones": ms, "time_total": t_total,
-                     "expense_total": e_total, "milestone_total": m_total, "total": t_total + e_total + m_total,
-                     "payers": payers, "payers_ok": payers_total_ok(payers)})
+        r = bulk_row(m, today)
+        if r:
+            rows.append(r)
     return rows
+
+
+def build_for_matter(matter, user, issued_on, due_on, today=None):
+    """Bulk-style build for one matter with no request context: every unbilled time entry and expense plus the
+    milestones due. Returns the invoices created (empty when nothing is billable). Caller commits.
+    Raises ValueError when split payers do not total 100%."""
+    r = bulk_row(matter, today)
+    if not r:
+        return []
+    if not r["payers_ok"]:
+        raise ValueError("split payers do not total 100%")
+    ctx = _builder_context(matter, user=user)
+    picks = MultiDict([("milestone_ids", str(x.id)) for x in r["milestones"]]
+                      + [("time_ids", str(t.id)) for t in r["time"]]
+                      + [("expense_ids", str(e.id)) for e in r["expenses"]])
+    lines, pt, pe, pm = _lines_from_form(matter, ctx, picks, issued_on)
+    if not lines:
+        return []
+    return create_invoices(matter, user, lines, pt, pe, pm, issued_on, due_on)
 
 
 @bp.route("/invoices/bulk", methods=["GET", "POST"])
@@ -348,9 +594,11 @@ def bulk():
     firm = Firm.get()
     rows = bulk_rows(today)
     if request.method == "GET":
+        open_matters = Matter.query.filter(Matter.status != "closed").order_by(Matter.number).all()
         return render_template("invoices/bulk.html", rows=rows, today=today, firm_settings=firm,
                                issued_on=today, due_on=today + timedelta(days=firm.invoice_terms_days or 30),
-                               grand_total=sum(r["total"] for r in rows))
+                               grand_total=sum(r["total"] for r in rows), open_matters=open_matters,
+                               monthly_count=sum(1 for m in open_matters if m.auto_invoice_monthly))
     u = current_user()
     wanted = {int(x) for x in request.form.getlist("matter_ids") if x.isdigit()}
     issued_on = parse_date(request.form.get("issued_on"), today)
@@ -383,6 +631,27 @@ def bulk():
     for s in skipped:
         flash(f"Skipped {s}.", "error")
     return redirect(url_for("invoices.index", status="draft"))
+
+
+@bp.route("/invoices/bulk/monthly", methods=["POST"])
+@login_required
+def bulk_monthly():
+    """Bulk toggle: which open matters are in the monthly invoicing run (Matter.auto_invoice_monthly)."""
+    wanted = {int(x) for x in request.form.getlist("monthly_ids") if x.isdigit()}
+    on = off = 0
+    for m in Matter.query.filter(Matter.status != "closed").all():
+        want = m.id in wanted
+        if bool(m.auto_invoice_monthly) != want:
+            m.auto_invoice_monthly = want
+            on += want
+            off += (not want)
+    firm = Firm.get()
+    audit("update", "firm", firm.id, f"monthly invoicing: {on} matter(s) added, {off} removed", current_user().id)
+    db.session.commit()
+    day = firm.monthly_billing_day or 0
+    when = f"on day {day} of each month" if day else "when a billing day is set under Settings, Invoice template"
+    flash(f"Monthly invoicing: {len(wanted)} matter(s) opted in. Drafts are built {when}.", "ok")
+    return redirect(url_for("invoices.bulk"))
 
 
 # ---------------------------------------------------------------- detail
@@ -662,31 +931,57 @@ def _letterhead(firm, inv):
                            email=office.email or firm.email, website=firm.website)
 
 
-def build_pdf(inv):
-    """Render the invoice PDF, save it to PDF_DIR, set inv.pdf_path (caller commits). Returns the path."""
+def _sample_invoice(firm):
+    """A made-up invoice for the template preview. Clearly fake names and a SAMPLE watermark on the page."""
+    today = date.today()
+    client = SimpleNamespace(display_name="Sample Client LLC", address="100 Example Street\nSuite 400\nAustin, TX 78701",
+                             email="sample@example.com")
+    matter = SimpleNamespace(label=f"{firm.matter_prefix or 'M-'}0000 Sample matter (preview)", office=None)
+    L = SimpleNamespace
+    lines = [
+        L(kind="time", date=today - timedelta(days=9), description="Reviewed the contract and drafted a summary of the open issues for the client",
+          quantity=1.5, unit_cents=35000, amount_cents=52500, time_entry_id=None, expense_id=None, meta=("AB", "A104")),
+        L(kind="time", date=today - timedelta(days=6), description="Telephone call with opposing counsel regarding the settlement proposal",
+          quantity=0.5, unit_cents=35000, amount_cents=17500, time_entry_id=None, expense_id=None, meta=("AB", "A106")),
+        L(kind="expense", date=today - timedelta(days=5), description="Postage: certified mail to the court",
+          quantity=1.0, unit_cents=1245, amount_cents=1245, time_entry_id=None, expense_id=None, meta=("", "E108")),
+        L(kind="flat", date=today - timedelta(days=2), description="Flat fee: preparation of the engagement documents",
+          quantity=1.0, unit_cents=50000, amount_cents=50000, time_entry_id=None, expense_id=None, meta=("", "")),
+    ]
+    subtotal = sum(l.amount_cents for l in lines)
+    return SimpleNamespace(id=0, number=f"{firm.invoice_prefix or ''}0000", issued_on=today,
+                           due_on=today + timedelta(days=firm.invoice_terms_days or 30), currency=firm.currency or "USD",
+                           client=client, matter=matter, split_group="", split_pct=100.0, lines=lines,
+                           subtotal_cents=subtotal, tax_cents=0, paid_cents=25000, balance_cents=subtotal - 25000,
+                           notes="Thank you for the opportunity to help with this matter.", public_token="sample")
+
+
+def render_invoice_pdf(inv, tpl=None, sample=False):
+    """Build the fpdf object for an invoice using the firm's template. `inv` may be a SimpleNamespace stand-in
+    (the Settings preview). Nothing is saved here."""
     firm = Firm.get()
+    tpl = tpl or invoice_settings(firm)
     cur = inv.currency or "USD"
 
     def money(c):
         return _pdf_txt(fmt_money(c, cur))
 
-    pdf = DocPDF(_letterhead(firm, inv), f"Invoice {inv.number}")
-    pdf.core_fonts_encoding = "cp1252"
+    pdf = TemplatePDF(_letterhead(firm, inv), f"Invoice {inv.number}", tpl)
     pdf.alias_nb_pages()
     pdf.add_page()
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.cell(0, 10, "INVOICE", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, _pdf_txt(f"Invoice number: {inv.number}"), new_x="LMARGIN", new_y="NEXT")
+    if sample:
+        pdf.sample_mark()
+    pdf.heading(tpl.title)
+    pdf.cell(0, 5, _pdf_txt(f"{tpl.label('invoice_number')}: {inv.number}"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 5, _pdf_txt(f"Issued: {inv.issued_on.strftime('%B %d, %Y') if inv.issued_on else ''}"),
              new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 5, _pdf_txt(f"Due: {inv.due_on.strftime('%B %d, %Y') if inv.due_on else 'On receipt'}"),
+    pdf.cell(0, 5, _pdf_txt(f"{tpl.label('due')}: {inv.due_on.strftime('%B %d, %Y') if inv.due_on else 'On receipt'}"),
              new_x="LMARGIN", new_y="NEXT")
     if cur != "USD":
         pdf.cell(0, 5, _pdf_txt(f"Currency: {cur}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, "Bill to", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _pdf_txt(tpl.label("bill_to")), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 5, _pdf_txt(inv.client.display_name), new_x="LMARGIN", new_y="NEXT")
     for line in (inv.client.address or "").splitlines():
@@ -696,7 +991,8 @@ def build_pdf(inv):
         pdf.cell(0, 5, _pdf_txt(inv.client.email), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(22, 5, "Matter:")
+    matter_label = _pdf_txt(tpl.label("matter")) + ":"
+    pdf.cell(max(22, pdf.get_string_width(matter_label) + 3), 5, matter_label)
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 5, _pdf_txt(inv.matter.label), new_x="LMARGIN", new_y="NEXT")
     if inv.split_group:
@@ -707,29 +1003,23 @@ def build_pdf(inv):
         pdf.set_font("Helvetica", "", 10)
     pdf.ln(4)
 
+    cols = visible_columns(tpl)
     pdf.set_font("Helvetica", "", 9.5)
-    with pdf.table(col_widths=(22, 92, 16, 22, 22), text_align=("LEFT", "LEFT", "RIGHT", "RIGHT", "RIGHT"),
-                   line_height=5.5, borders_layout="HORIZONTAL_LINES") as table:
+    with pdf.table(col_widths=column_widths(cols), text_align=tuple(_COL_ALIGN[c] for c in cols),
+                   line_height=5.5, borders_layout="HORIZONTAL_LINES", headings_style=pdf.heading_style()) as table:
         row = table.row()
-        for h in ("Date", "Description", "Qty", "Rate", "Amount"):
-            row.cell(h)
+        for c in cols:
+            row.cell(COLUMN_TITLES[c])
         for l in inv.lines:
             row = table.row()
-            row.cell(l.date.strftime("%m/%d/%Y") if l.date else "")
-            row.cell(_pdf_txt(l.description))
-            if l.kind == "time":
-                row.cell(f"{l.quantity:.2f}")
-                row.cell(money(l.unit_cents))
-            else:
-                row.cell("")
-                row.cell("")
-            row.cell(money(l.amount_cents))
+            for cell in line_cells(l, cols, tpl, money):
+                row.cell(_pdf_txt(cell))
     pdf.ln(3)
 
     def total_row(label, amount, bold=False):
         pdf.set_font("Helvetica", "B" if bold else "", 10)
-        pdf.cell(130, 6, "")
-        pdf.cell(22, 6, label, align="R")
+        pdf.cell(110, 6, "")
+        pdf.cell(42, 6, _pdf_txt(label), align="R")
         pdf.cell(22, 6, money(amount), align="R", new_x="LMARGIN", new_y="NEXT")
 
     total_row("Subtotal", inv.subtotal_cents)
@@ -737,20 +1027,25 @@ def build_pdf(inv):
         total_row("Tax", inv.tax_cents)
     if inv.paid_cents:
         total_row("Paid", -(inv.paid_cents or 0))
-    total_row("Balance due", inv.balance_cents, bold=True)
+    total_row(tpl.label("balance_due"), inv.balance_cents, bold=True)
     pdf.ln(6)
 
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 5, "Payment instructions", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 9.5)
     link = public_url(inv)
-    _para(pdf, _pdf_txt(f"Pay online by bank transfer (no fee) or card at: {link}"))
-    if firm.surcharge_enabled and firm.surcharge_bps:
-        _para(pdf, _pdf_txt(f"A {firm.surcharge_bps / 100:.2f}% surcharge applies to card payments. "
-                                      f"Bank transfers carry no surcharge."))
-    head = _letterhead(firm, inv)
-    mail_to = " ".join([x.strip() for x in (head.address or "").splitlines() if x.strip()])
-    _para(pdf, _pdf_txt(f"Checks payable to {firm.name}" + (f", mailed to {mail_to}." if mail_to else ".")))
+    if tpl.payment_instructions:
+        for para in tpl.payment_instructions.replace("{link}", link).split("\n"):
+            if para.strip():
+                _para(pdf, _pdf_txt(para.strip()))
+    else:
+        _para(pdf, _pdf_txt(f"Pay online by bank transfer (no fee) or card at: {link}"))
+        if firm.surcharge_enabled and firm.surcharge_bps:
+            _para(pdf, _pdf_txt(f"A {firm.surcharge_bps / 100:.2f}% surcharge applies to card payments. "
+                                f"Bank transfers carry no surcharge."))
+        head = _letterhead(firm, inv)
+        mail_to = " ".join([x.strip() for x in (head.address or "").splitlines() if x.strip()])
+        _para(pdf, _pdf_txt(f"Checks payable to {firm.name}" + (f", mailed to {mail_to}." if mail_to else ".")))
     if inv.notes:
         pdf.ln(3)
         pdf.set_font("Helvetica", "B", 10)
@@ -761,10 +1056,23 @@ def build_pdf(inv):
         pdf.ln(4)
         pdf.set_font("Helvetica", "I", 9)
         _para(pdf, _pdf_txt(firm.invoice_footer))
+    return pdf
+
+
+def build_pdf(inv):
+    """Render the invoice PDF, save it to PDF_DIR, set inv.pdf_path (caller commits). Returns the path."""
+    pdf = render_invoice_pdf(inv)
     safe_number = "".join(ch for ch in inv.number if ch.isalnum() or ch in "-_") or str(inv.id)
     path = save_pdf(pdf, f"invoice-{safe_number}.pdf")
     inv.pdf_path = path
     return path
+
+
+def sample_pdf_bytes(tpl=None):
+    """The Settings preview: a sample invoice rendered with `tpl` (unsaved settings) and marked SAMPLE."""
+    firm = Firm.get()
+    pdf = render_invoice_pdf(_sample_invoice(firm), tpl or invoice_settings(firm), sample=True)
+    return bytes(pdf.output())
 
 
 def _pdf_bytes(inv):
@@ -921,8 +1229,20 @@ def public_view(token):
     firm = Firm.get()
     surcharge_pct = (firm.surcharge_bps or 0) / 100.0 if firm.surcharge_enabled else 0
     trust_balance = inv.client.trust_balance_cents()
+    tpl = invoice_settings(firm)
     return render_template("invoices/public.html", inv=inv, firm_settings=firm, surcharge_pct=surcharge_pct,
-                           trust_balance=trust_balance, payments=[p for p in inv.payments])
+                           trust_balance=trust_balance, payments=[p for p in inv.payments], tpl=tpl,
+                           columns=visible_columns(tpl), line_meta=line_meta, line_description=line_description,
+                           column_titles=COLUMN_TITLES)
+
+
+@bp.route("/p/firm-logo")
+def firm_logo():
+    """The firm's invoice logo (Settings > Invoice template). Public because the invoice page is public."""
+    path = logo_abs_path(Firm.get().invoice_logo_path)
+    if not path:
+        abort(404)
+    return send_file(path, max_age=300)
 
 
 @bp.route("/p/<token>/pdf")

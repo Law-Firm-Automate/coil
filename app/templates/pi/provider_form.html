@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block title %}{{ 'Add provider' if is_new else p.name }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'Add provider' if is_new else 'Edit provider' }} <span class="small muted">{{ m.label }}</span></h1><a class="btn small secondary" href="/pi/{{ m.id }}#providers">Back to case</a></div>
+<div class="card" style="max-width:820px">
+<form method="post">{{ csrf() }}
+  <div class="row">
+    <div><label>Provider name</label><input type="text" name="name" value="{{ p.name or '' }}" required placeholder="Austin Spine and Sport"></div>
+    <div><label>Specialty</label><input type="text" name="specialty" value="{{ p.specialty or '' }}" placeholder="Chiropractic, orthopedics, ER"></div>
+  </div>
+  <div class="row">
+    <div><label>Phone</label><input type="text" name="phone" value="{{ p.phone or '' }}"></div>
+    <div><label>Fax</label><input type="text" name="fax" value="{{ p.fax or '' }}"></div>
+    <div><label>Email</label><input type="text" name="email" value="{{ p.email or '' }}"></div>
+  </div>
+  <label>Address (for the request letter)</label><textarea name="address" rows="3">{{ p.address or '' }}</textarea>
+  <div class="row">
+    <div><label>First visit</label><input type="date" name="first_visit_on" value="{{ p.first_visit_on|iso }}"></div>
+    <div><label>Last visit</label><input type="date" name="last_visit_on" value="{{ p.last_visit_on|iso }}"></div>
+    <div><label>Total billed</label><input type="text" name="total_billed" value="{{ (p.total_billed_cents / 100)|round(2) if p.total_billed_cents else '' }}" placeholder="4,250.00"></div>
+  </div>
+  <div class="row">
+    <div><label>Records requested</label><input type="date" name="records_requested_on" value="{{ p.records_requested_on|iso }}"></div>
+    <div><label>Records received</label><input type="date" name="records_received_on" value="{{ p.records_received_on|iso }}"></div>
+    <div><label>Bills requested</label><input type="date" name="bills_requested_on" value="{{ p.bills_requested_on|iso }}"></div>
+    <div><label>Bills received</label><input type="date" name="bills_received_on" value="{{ p.bills_received_on|iso }}"></div>
+  </div>
+  <label>Notes</label><textarea name="notes" rows="3">{{ p.notes or '' }}</textarea>
+  <div class="actions"><button class="btn">Save</button><a class="btn secondary" href="/pi/{{ m.id }}#providers">Cancel</a></div>
+</form>
+</div>
+{% endblock %}

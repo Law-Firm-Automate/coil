@@ -11,6 +11,8 @@ FEATURE_MAP = [
         "company": "Clio Manage",
         "blurb": "Core practice management. Clio's plans run $49 to $149 per user per month.",
         "features": [
+            ("Client statement: every invoice, payment and trust application with a running balance", "/statements", "built"),
+            ("Invoice template editor: logo, colour, columns, labels, payment wording, preview", "/settings/invoice-template", "built"),
             ("Contacts and matters with custom fields", "/matters", "built"),
             ("Time tracking with a timer (6-minute rounding)", "/time", "built"),
             ("Expenses with receipt capture", "/time/expenses", "built"),
@@ -50,6 +52,9 @@ FEATURE_MAP = [
         "company": "Clio Manage AI",
         "blurb": "The $10 add-on people on Reddit actually use: dates from documents, client update emails, monthly invoicing, AR questions.",
         "features": [
+            ("Scheduled monthly invoicing per matter (python -m app.cli monthly_invoicing)", "/invoices/bulk", "built"),
+            ("Draft client update email from notes, work, tasks and dates", "/matters", "built"),
+            ("A/R and hours questions answered from your data without the model", "/ai/search", "built"),
             ("Pull dates from a document into tasks and calendar", "/documents", "built"),
             ("Matter summary", "/matters", "built"),
             ("Invoice narrative cleanup", "/invoices", "built"),
@@ -59,7 +64,13 @@ FEATURE_MAP = [
     {
         "company": "Clio Work",
         "blurb": "Research and drafting. Several Reddit users say it replaces Westlaw or Lexis at about $200 per attorney.",
-        "features": [],
+        "features": [
+            ("Case law search on CourtListener (free public database)", "/research", "built"),
+            ("Full opinion reader with optional AI summary and holding", "/research", "built"),
+            ("Save authorities to a matter with notes", "/research/saved", "built"),
+            ("Research memo export as a PDF filed on the matter", "/research/saved", "built"),
+            ("Citation check that flags citations which do not resolve", "/research/cite-check", "built"),
+        ],
     },
     {
         "company": "Clio Payments / LawPay",
@@ -74,7 +85,14 @@ FEATURE_MAP = [
     {
         "company": "Filevine",
         "blurb": "Personal-injury case management: providers, records, liens, settlement.",
-        "features": [],
+        "features": [
+            ("PI case facts and stage board", "/pi", "built"),
+            ("Provider and records tracking with request letters", "/pi", "built"),
+            ("Lien tracking with reduction letters", "/pi", "built"),
+            ("Demand package builder", "/pi", "built"),
+            ("Settlement disbursement worksheet with trust postings", "/pi", "built"),
+            ("Standard PI task set", "/pi", "built"),
+        ],
     },
     {
         "company": "NetDocuments",

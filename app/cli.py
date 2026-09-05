@@ -1,4 +1,5 @@
-"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders`, `... interest` or `... emailin`.
+"""Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders`, `... interest`, `... emailin`
+or `... monthly_invoicing [--force]`.
 
 All three are idempotent: agenda and reminders write an AuditLog row and skip work that already has one today
 (evergreen top-up requests use a 14-day window), interest checks Invoice.last_interest_on for the month.
@@ -260,15 +261,116 @@ def run_sequences(today=None):
     return sent, drafted
 
 
+# ---------------------------------------------------------------------------
+# monthly invoicing (Agent I; Clio Manage AI parity: "automates monthly invoicing")
+# ---------------------------------------------------------------------------
+def run_monthly_invoicing(today=None, force=False):
+    """On Firm.monthly_billing_day (or any day with force=True), build one draft invoice per open matter that has
+    auto_invoice_monthly on and something billable (unbilled time or expenses, or a flat-fee milestone due). When
+    Firm.monthly_billing_send is on and the client has an email, the draft is sent right away. Idempotent per
+    matter per month through AuditLog action="monthly_invoiced" detail=YYYY-MM. The owner gets one summary
+    email listing what was built, sent and skipped.
+
+    Returns dict(built=[Invoice], sent=[Invoice], skipped=[(matter, reason)], ran=bool, reason=str).
+    """
+    from .blueprints.invoices import build_for_matter, _send_invoice_email
+    today = today or date.today()
+    firm = Firm.get()
+    out = {"built": [], "sent": [], "skipped": [], "ran": False, "reason": ""}
+    day = firm.monthly_billing_day or 0
+    if not day and not force:
+        out["reason"] = "monthly billing day is 0 (off) in Settings, Invoice template"
+        return out
+    if day and today.day != day and not force:
+        out["reason"] = f"today is day {today.day}, billing day is {day}"
+        return out
+    out["ran"] = True
+    ym = today.strftime("%Y-%m")
+    owner = (User.query.filter_by(role="owner", is_active=True).order_by(User.id).first()
+             or User.query.filter_by(is_active=True).order_by(User.id).first())
+    issued_on = today
+    due_on = today + timedelta(days=firm.invoice_terms_days or 30)
+    matters = Matter.query.filter(Matter.status != "closed", Matter.auto_invoice_monthly == True).order_by(  # noqa: E712
+        Matter.number).all()
+    for m in matters:
+        done = AuditLog.query.filter_by(action="monthly_invoiced", entity="matter", entity_id=m.id, detail=ym).first()
+        if done:
+            out["skipped"].append((m, f"already invoiced for {ym}"))
+            continue
+        try:
+            created = build_for_matter(m, owner, issued_on, due_on, today)
+        except ValueError as e:
+            out["skipped"].append((m, str(e)))
+            continue
+        if not created:
+            out["skipped"].append((m, "nothing unbilled"))
+            continue
+        audit("monthly_invoiced", "matter", m.id, ym, owner.id if owner else None)
+        db.session.commit()
+        out["built"].extend(created)
+        if firm.monthly_billing_send:
+            for inv in created:
+                if not (inv.client and inv.client.email):
+                    out["skipped"].append((m, f"{inv.number} left as draft: client has no email"))
+                    continue
+                err = _send_invoice_email(inv)
+                if err:
+                    out["skipped"].append((m, f"{inv.number} not sent: {err}"))
+                    continue
+                db.session.add(InvoiceEvent(invoice_id=inv.id, event="sent", detail=f"to {inv.sent_to} (monthly run)"))
+                audit("send", "invoice", inv.id, f"{inv.number} to {inv.sent_to} (monthly run)", owner.id if owner else None)
+                db.session.commit()
+                out["sent"].append(inv)
+    _monthly_summary_email(firm, owner, out, today)
+    return out
+
+
+def _monthly_summary_email(firm, owner, out, today):
+    to = (firm.email or (owner.email if owner else "") or "").strip()
+    if not to:
+        return
+    built = out["built"]
+    sent_ids = {i.id for i in out["sent"]}
+
+    def inv_item(i):
+        state = "sent to " + escape(i.sent_to) if i.id in sent_ids else "draft"
+        return (f"{_link(f'/invoices/{i.id}', i.number)} {escape(i.matter.label if i.matter else '')}, "
+                f"{escape(i.client.display_name if i.client else '')}, {cents_to_str(i.total_cents)} ({state})")
+
+    sections = [
+        ("Invoices built", [inv_item(i) for i in built]),
+        ("Skipped", [f"{_link(f'/matters/{m.id}', m.label)}: {escape(reason)}" for m, reason in out["skipped"]]),
+    ]
+    title = f"Monthly invoicing for {today:%B %Y}"
+    n_sent = len(out["sent"])
+    summary = (f"{len(built)} invoice{'s' if len(built) != 1 else ''} built, {n_sent} sent, "
+               f"{len(out['skipped'])} skipped")
+    html = _wrap(title, sections).replace("<p>Nothing on the list today.</p>",
+                                          "<p>No opted-in matter had anything to bill.</p>")
+    html = html.replace(f"<h2 style='font-size:18px'>{escape(title)}</h2>",
+                        f"<h2 style='font-size:18px'>{escape(title)}</h2><p>{summary}. Drafts wait under "
+                        f"{_link('/invoices?status=draft', 'Invoices, Draft')}.</p>")
+    send_email(to, f"{title}: {summary}", html, text=f"{summary}. Review at {_base()}/invoices?status=draft")
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
-    if not argv or argv[0] not in ("agenda", "reminders", "interest", "emailin", "sequences", "webhooks"):
-        print("usage: python -m app.cli agenda|reminders|interest|emailin|sequences|webhooks")
+    if not argv or argv[0] not in ("agenda", "reminders", "interest", "emailin", "sequences", "webhooks",
+                                   "monthly_invoicing"):
+        print("usage: python -m app.cli agenda|reminders|interest|emailin|sequences|webhooks|monthly_invoicing [--force]")
         return 2
     from . import create_app
     app = create_app()
     with app.app_context():
-        if argv[0] == "webhooks":
+        if argv[0] == "monthly_invoicing":
+            r = run_monthly_invoicing(force="--force" in argv[1:])
+            if not r["ran"]:
+                print(f"monthly_invoicing: skipped, {r['reason']} (use --force to run today)")
+            else:
+                print(f"monthly_invoicing: {len(r['built'])} built, {len(r['sent'])} sent, {len(r['skipped'])} skipped")
+                for m, reason in r["skipped"]:
+                    print(f"  skipped {m.number}: {reason}")
+        elif argv[0] == "webhooks":
             r, ok, bad = run_webhooks()
             print(f"webhooks: {r} retried, {ok} delivered, {bad} still failing")
         elif argv[0] == "agenda":

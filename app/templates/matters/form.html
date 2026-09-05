@@ -72,6 +72,9 @@
     <div><label>Evergreen retainer minimum</label><input type="text" name="trust_minimum" value="{{ (m.trust_minimum_cents / 100)|round(2) if m.trust_minimum_cents else '' }}" placeholder="0.00" inputmode="decimal"><div class="small muted">When this matter's trust balance drops below this, the client is asked to top up. Blank = off.</div></div>
     <div><label>Replenish to</label><input type="text" name="trust_replenish_to" value="{{ (m.trust_replenish_to_cents / 100)|round(2) if m.trust_replenish_to_cents else '' }}" placeholder="0.00" inputmode="decimal"><div class="small muted">Target balance for the top-up request. Blank = the minimum. Sent by the nightly reminders job, at most every 14 days.</div></div>
   </div>
+  {# Agent I: monthly invoicing opt-in #}
+  <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink);margin-top:10px"><input type="checkbox" name="auto_invoice_monthly" value="1" {{ 'checked' if m.auto_invoice_monthly }}> Invoice this matter automatically each month</label>
+  <div class="small muted">On the firm's billing day (Settings, Invoice template) a draft is built from everything unbilled and, if sending is on, emailed to the client. Bulk invoicing has the same switch for every matter.</div>
   {# ---- end Agent A block ---- #}
 
   <h3 style="margin-top:18px">Deadlines and court</h3>

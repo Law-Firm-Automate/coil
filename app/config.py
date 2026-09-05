@@ -45,3 +45,5 @@ class Config:
     LLM_ENABLED = os.environ.get("LLM_ENABLED", "true")  # 0/false/no/off turns every model call off
     LLM_DAILY_CAP = int(os.environ.get("LLM_DAILY_CAP", "0") or 0)  # max model calls per UTC day, 0 = no limit
     BOOKING_URL = os.environ.get("BOOKING_URL", "")  # consult booking page, shown after intake and as {{ booking_url }}
+    # Research (Agent J). Optional, free token from courtlistener.com; Firm.courtlistener_token in Settings wins over this.
+    COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_TOKEN", "")

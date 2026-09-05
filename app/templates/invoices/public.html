@@ -2,45 +2,62 @@
 {% block head %}<style>
 .paidstamp{display:inline-block;border:3px solid var(--ok);color:var(--ok);font-weight:800;letter-spacing:.12em;padding:4px 14px;border-radius:6px;transform:rotate(-6deg);font-size:1.3rem}
 .paybtn{display:block;text-align:center;padding:14px 18px;font-size:1.05rem}
+.invtitle{color:{{ tpl.accent }}}
+table th.acc{background:{{ tpl.accent }};color:#fff}
+.firmlogo{max-height:56px;max-width:200px;display:block;margin-bottom:8px}
 </style>{% endblock %}
 {% block content %}
 {% set lang = lang_for(inv.client) %}
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
     <div>
-      <h1>{{ t('inv.heading', lang, number=inv.number) }}</h1>
+      {% if tpl.logo_abs %}<img class="firmlogo" src="/p/firm-logo" alt="{{ firm_settings.name }}">{% endif %}
+      <h1 class="invtitle">{% if tpl.title and tpl.title != 'INVOICE' %}{{ tpl.title }} {{ inv.number }}{% else %}{{ t('inv.heading', lang, number=inv.number) }}{% endif %}</h1>
       <div class="muted">{{ inv.matter.name }}</div>
     </div>
     <div class="right">
       {% if inv.status == 'void' %}<span class="badge void">{{ t('inv.void', lang) }}</span>
       {% elif inv.balance_cents == 0 and inv.total_cents > 0 %}<span class="paidstamp">{{ t('inv.paid_stamp', lang) }}</span>
-      {% else %}<div class="small muted">{{ t('inv.balance_due', lang) }}</div><div style="font-size:1.6rem;font-weight:700">{{ inv.balance_cents|money }}</div>{% endif %}
+      {% else %}<div class="small muted">{{ tpl.label('balance_due', t('inv.balance_due', lang)) }}</div><div style="font-size:1.6rem;font-weight:700">{{ inv.balance_cents|money }}</div>{% endif %}
     </div>
   </div>
   <div class="grid c2" style="margin-top:14px">
     <dl class="kv">
-      <dt>{{ t('inv.bill_to', lang) }}</dt><dd>{{ inv.client.display_name }}{% if inv.client.address %}<br><span class="small muted">{{ inv.client.address|replace('\n', ', ') }}</span>{% endif %}</dd>
-      <dt>{{ t('inv.matter', lang) }}</dt><dd>{{ inv.matter.number }} {{ inv.matter.name }}</dd>
+      <dt>{{ tpl.label('bill_to', t('inv.bill_to', lang)) }}</dt><dd>{{ inv.client.display_name }}{% if inv.client.address %}<br><span class="small muted">{{ inv.client.address|replace('\n', ', ') }}</span>{% endif %}</dd>
+      <dt>{{ tpl.label('matter', t('inv.matter', lang)) }}</dt><dd>{{ inv.matter.number }} {{ inv.matter.name }}</dd>
     </dl>
     <dl class="kv">
+      <dt>{{ tpl.label('invoice_number', t('inv.heading', lang, number='')|trim) }}</dt><dd>{{ inv.number }}</dd>
       <dt>{{ t('inv.issued', lang) }}</dt><dd>{{ inv.issued_on|d }}</dd>
-      <dt>{{ t('inv.due', lang) }}</dt><dd>{{ inv.due_on|d if inv.due_on else t('inv.on_receipt', lang) }}</dd>
+      <dt>{{ tpl.label('due', t('inv.due', lang)) }}</dt><dd>{{ inv.due_on|d if inv.due_on else t('inv.on_receipt', lang) }}</dd>
       <dt>{{ t('inv.from', lang) }}</dt><dd>{{ firm_settings.name }}{% if firm_settings.address %}<br><span class="small muted">{{ firm_settings.address|replace('\n', ', ') }}</span>{% endif %}</dd>
     </dl>
   </div>
 </div>
 
 <div class="card">
+{# Columns and their order come from Settings > Invoice template. Translated where a string exists; the
+   timekeeper and code headings are short and left as is. #}
+{% set col_label = {'date': t('inv.date', lang), 'description': t('inv.description', lang), 'qty': t('inv.qty', lang),
+                    'rate': t('inv.rate', lang), 'amount': t('inv.amount', lang), 'timekeeper': column_titles['timekeeper'],
+                    'code': column_titles['code']} %}
+{% set span = columns|length - 1 %}
 <table>
-<tr><th>{{ t('inv.date', lang) }}</th><th>{{ t('inv.description', lang) }}</th><th class="num">{{ t('inv.qty', lang) }}</th><th class="num">{{ t('inv.rate', lang) }}</th><th class="num">{{ t('inv.amount', lang) }}</th></tr>
+<tr>{% for c in columns %}<th class="acc{% if c in ('qty', 'rate', 'amount') %} num{% endif %}">{{ col_label[c] }}</th>{% endfor %}</tr>
 {% for l in inv.lines %}
-<tr><td class="nowrap">{{ l.date|d }}</td><td>{{ l.description }}</td>
-    <td class="num">{% if l.kind == 'time' %}{{ '%.2f' % l.quantity }}{% endif %}</td><td class="num">{% if l.kind == 'time' %}{{ l.unit_cents|money }}{% endif %}</td><td class="num">{{ l.amount_cents|money }}</td></tr>
+{% set meta = line_meta(l) if ('timekeeper' in columns or 'code' in columns) else ('', '') %}
+<tr>{% for c in columns %}{% if c == 'date' %}<td class="nowrap">{{ l.date|d }}</td>
+{% elif c == 'description' %}<td>{{ line_description(l, tpl) }}</td>
+{% elif c == 'timekeeper' %}<td>{{ meta[0] }}</td>
+{% elif c == 'code' %}<td>{{ meta[1] }}</td>
+{% elif c == 'qty' %}<td class="num">{% if l.kind == 'time' %}{{ '%.2f' % l.quantity }}{% endif %}</td>
+{% elif c == 'rate' %}<td class="num">{% if l.kind == 'time' %}{{ l.unit_cents|money }}{% endif %}</td>
+{% elif c == 'amount' %}<td class="num">{{ l.amount_cents|money }}</td>{% endif %}{% endfor %}</tr>
 {% endfor %}
-<tr><th colspan="4" class="right">{{ t('inv.subtotal', lang) }}</th><th class="num">{{ inv.subtotal_cents|money }}</th></tr>
-{% if inv.tax_cents %}<tr><th colspan="4" class="right">{{ t('inv.tax', lang) }}</th><th class="num">{{ inv.tax_cents|money }}</th></tr>{% endif %}
-{% if inv.paid_cents %}<tr><th colspan="4" class="right">{{ t('inv.paid', lang) }}</th><th class="num">{{ inv.paid_cents|money }}</th></tr>{% endif %}
-<tr><th colspan="4" class="right">{{ t('inv.balance_due', lang) }}</th><th class="num">{{ inv.balance_cents|money }}</th></tr>
+<tr><th colspan="{{ span }}" class="right">{{ t('inv.subtotal', lang) }}</th><th class="num">{{ inv.subtotal_cents|money }}</th></tr>
+{% if inv.tax_cents %}<tr><th colspan="{{ span }}" class="right">{{ t('inv.tax', lang) }}</th><th class="num">{{ inv.tax_cents|money }}</th></tr>{% endif %}
+{% if inv.paid_cents %}<tr><th colspan="{{ span }}" class="right">{{ t('inv.paid', lang) }}</th><th class="num">{{ inv.paid_cents|money }}</th></tr>{% endif %}
+<tr><th colspan="{{ span }}" class="right">{{ tpl.label('balance_due', t('inv.balance_due', lang)) }}</th><th class="num">{{ inv.balance_cents|money }}</th></tr>
 </table>
 {% if inv.notes %}<p class="small" style="margin-top:10px">{{ inv.notes }}</p>{% endif %}
 </div>
@@ -58,7 +75,8 @@
     </div>
   </div>
   {% if trust_balance > 0 %}<p class="small muted" style="margin-top:12px">{{ t('inv.trust_note', lang, amount=trust_balance|money, phone=(firm_settings.phone or t('inv.our_office', lang))) }}</p>{% endif %}
-  <p class="small muted">{{ t('inv.check', lang, firm=firm_settings.name, send_to=(t('inv.send_to', lang, address=firm_settings.address|replace('\n', ', ')) if firm_settings.address else '')) }}</p>
+  {% if tpl.payment_instructions %}<p class="small muted" style="white-space:pre-line">{{ tpl.payment_instructions|replace('{link}', url_for('invoices.public_view', token=inv.public_token, _external=True)) }}</p>
+  {% else %}<p class="small muted">{{ t('inv.check', lang, firm=firm_settings.name, send_to=(t('inv.send_to', lang, address=firm_settings.address|replace('\n', ', ')) if firm_settings.address else '')) }}</p>{% endif %}
 </div>
 {% endif %}
 

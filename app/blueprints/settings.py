@@ -2,8 +2,9 @@
 /dev/outbox is outside /settings, so no url_prefix. Access is gated by app.permissions.enforce (owner for
 everything here except a user editing their own account, and reading the template list)."""
 import json
+import os
 from datetime import datetime, timedelta
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, session, Response
 from sqlalchemy import func
 from ..extensions import db
 from ..models import Firm, User, Office, Matter, MatterTemplate, AuditLog, audit
@@ -11,11 +12,15 @@ from ..helpers import login_required, owner_required, current_user, parse_money,
 from ..permissions import ROLES, ROLE_DESCRIPTIONS, canonical_role
 from ..services.mail import dev_outbox
 from ..services import sms as smssvc
+from .invoices import (invoice_settings, sample_pdf_bytes, COLUMN_KEYS, COLUMN_TITLES, COLUMN_HELP, DEFAULT_COLUMNS,
+                       LABEL_KEYS, DEFAULT_LABELS, DEFAULT_ACCENT, DEFAULT_TITLE, LOGO_EXTS, LOGO_DIR, valid_hex,
+                       logo_abs_path)
 
 bp = Blueprint("settings", __name__)
 
 TEXT_FIELDS = ("name", "address", "phone", "email", "website", "timezone", "invoice_prefix", "matter_prefix",
-               "invoice_footer", "trust_bank_name", "operating_bank_name", "trust_account_last4", "ledes_firm_id")
+               "invoice_footer", "trust_bank_name", "operating_bank_name", "trust_account_last4", "ledes_firm_id",
+               "courtlistener_token")
 INT_FIELDS = ("invoice_terms_days", "next_invoice_number", "next_matter_number", "interest_grace_days")
 LANGUAGES = [("en", "English"), ("es", "Spanish")]
 TASK_KINDS = ["task", "deadline", "court_date"]
@@ -89,6 +94,117 @@ def index():
         flash("Settings saved.", "ok")
         return redirect(url_for("settings.index"))
     return render_template("settings/index.html", f=f, currencies=CURRENCIES, languages=LANGUAGES)
+
+
+# ---- invoice template (Agent I) ----
+def _template_form(form):
+    """Unsaved template settings from the editor form, as the override dict invoice_settings() accepts."""
+    picked = []
+    for key in COLUMN_KEYS:
+        if form.get(f"col_{key}") == "1":
+            picked.append((_int(form.get(f"ord_{key}"), 99) or 99, COLUMN_KEYS.index(key), key))
+    columns = [k for _, _, k in sorted(picked)]
+    labels = {k: (form.get(f"label_{k}") or "").strip()[:60] for k in LABEL_KEYS}
+    return {
+        "columns": columns or list(DEFAULT_COLUMNS),
+        "labels": {k: v for k, v in labels.items() if v},
+        "accent": valid_hex(form.get("invoice_accent")) or DEFAULT_ACCENT,
+        "title": (form.get("invoice_title") or "").strip()[:60] or DEFAULT_TITLE,
+        "show_timekeeper": form.get("invoice_show_timekeeper") == "1",
+        "show_codes": form.get("invoice_show_activity_codes") == "1",
+        "payment_instructions": (form.get("invoice_payment_instructions") or "").strip()[:4000],
+        "statement_footer": (form.get("statement_footer") or "").strip()[:2000],
+    }
+
+
+def _save_logo(file, name="logo"):
+    """Store an uploaded png/jpg under UPLOAD_DIR/firm/. Returns the relative path, or an error string."""
+    if not file or not file.filename:
+        return None
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in LOGO_EXTS:
+        return "Logo must be a PNG or JPG file."
+    data = file.read()
+    if not data:
+        return "The logo file is empty."
+    if len(data) > 2 * 1024 * 1024:
+        return "Logo must be under 2 MB."
+    try:
+        from PIL import Image
+        import io
+        with Image.open(io.BytesIO(data)) as im:
+            im.verify()
+    except Exception:
+        return "That file is not a readable image."
+    folder = os.path.join(current_app.config["UPLOAD_DIR"], LOGO_DIR)
+    os.makedirs(folder, exist_ok=True)
+    rel = f"{LOGO_DIR}/{name}.{'jpg' if ext == 'jpeg' else ext}"
+    for old in LOGO_EXTS:  # one logo at a time
+        stale = os.path.join(folder, f"{name}.{old}")
+        if os.path.exists(stale):
+            os.remove(stale)
+    with open(os.path.join(current_app.config["UPLOAD_DIR"], rel), "wb") as fh:
+        fh.write(data)
+    return rel
+
+
+def _template_page(f, tpl, error=None):
+    order = {k: i + 1 for i, k in enumerate(tpl.columns)}
+    return render_template("settings/invoice_template.html", f=f, tpl=tpl, column_keys=COLUMN_KEYS,
+                           column_titles=COLUMN_TITLES, column_help=COLUMN_HELP, order=order, label_keys=LABEL_KEYS,
+                           default_labels=DEFAULT_LABELS, has_logo=bool(logo_abs_path(f.invoice_logo_path)),
+                           error=error)
+
+
+@bp.route("/settings/invoice-template", methods=["GET", "POST"])
+@owner_required
+def invoice_template():
+    f = Firm.get()
+    if request.method == "GET":
+        return _template_page(f, invoice_settings(f))
+    form = request.form
+    o = _template_form(form)
+    if form.get("action") == "preview":
+        override = dict(o)
+        logo = request.files.get("logo")
+        if logo and logo.filename:
+            r = _save_logo(logo, name="logo-preview")
+            if r and "/" in r:
+                override["logo_path"] = r
+            elif r:
+                return _template_page(f, invoice_settings(f, o), error=r)
+        elif form.get("remove_logo") == "1":
+            override["logo_path"] = ""
+        data = sample_pdf_bytes(invoice_settings(f, override))
+        return Response(data, mimetype="application/pdf",
+                        headers={"Content-Disposition": 'inline; filename="invoice-preview-SAMPLE.pdf"'})
+    # save
+    logo = request.files.get("logo")
+    if logo and logo.filename:
+        r = _save_logo(logo)
+        if r and "/" not in r:
+            return _template_page(f, invoice_settings(f, o), error=r)
+        f.invoice_logo_path = r
+    elif form.get("remove_logo") == "1":
+        path = logo_abs_path(f.invoice_logo_path)
+        if path:
+            os.remove(path)
+        f.invoice_logo_path = ""
+    f.invoice_columns_json = json.dumps(o["columns"])
+    f.invoice_labels_json = json.dumps(o["labels"])
+    f.invoice_accent = o["accent"]
+    f.invoice_title = o["title"]
+    f.invoice_show_timekeeper = o["show_timekeeper"]
+    f.invoice_show_activity_codes = o["show_codes"]
+    f.invoice_payment_instructions = o["payment_instructions"]
+    f.statement_footer = o["statement_footer"]
+    day = _int(form.get("monthly_billing_day"), 0) or 0
+    f.monthly_billing_day = day if 0 <= day <= 28 else 0
+    f.monthly_billing_send = form.get("monthly_billing_send") == "1"
+    audit("update", "firm", f.id, "invoice template saved", current_user().id)
+    db.session.commit()
+    flash("Invoice template saved. Existing invoice PDFs are rebuilt with it the next time they are sent or opened.", "ok")
+    return redirect(url_for("settings.invoice_template"))
 
 
 # ---- users ----
@@ -544,6 +660,15 @@ def integrations():
              else "Twilio is not configured. Messages are stored but not delivered.",
              env="TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER",
              webhook=f"{base}/webhooks/twilio", webhook_note="Twilio Console > Phone number > Messaging > A message comes in (HTTP POST)"),
+        # Agent J: research on CourtListener. The token is optional; the Firm field in Settings wins over the env.
+        dict(name="Research (CourtListener)", ok=bool((Firm.get().courtlistener_token or "").strip() or c.get("COURTLISTENER_TOKEN")),
+             detail=("Token set" + (" in Settings." if (Firm.get().courtlistener_token or "").strip() else " from the environment.")
+                     + " Searches, full opinion text and the citation check use it.")
+             if ((Firm.get().courtlistener_token or "").strip() or c.get("COURTLISTENER_TOKEN"))
+             else "No token. Case law search still works with a lower rate limit; full opinion text and the citation check "
+                  "need a token, which is optional and free from courtlistener.com. Paste it under Settings, Research.",
+             env="COURTLISTENER_TOKEN (or the Research field on the firm settings form)",
+             link=("/research", "Open research")),
     ]
     return render_template("settings/integrations.html", cards=cards, base=base,
                            intake_url=f"{base}/intake/form")

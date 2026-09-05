@@ -5,12 +5,16 @@ is unavailable (no key, AI off in Settings, daily cap, provider error) each page
 search, a plain substring search that always works.
 """
 import json
+import re
 from datetime import date, datetime, timedelta
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
+from html import escape
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 from ..extensions import db
-from ..models import (Matter, Contact, Invoice, TimeEntry, Task, CalendarEvent, Document, Note, Message, User,
-                      AiRun, audit)
+from ..models import (Matter, Contact, Invoice, TimeEntry, Expense, Task, CalendarEvent, Document, Note, Message,
+                      User, TrustTransaction, Firm, AiRun, audit, now)
 from ..helpers import login_required, current_user, parse_date
+from ..services.mail import send_email
+from ..i18n import lang_for
 from .. import llm
 from ..llm import LLMUnavailable
 
@@ -332,6 +336,355 @@ def document_dates_create(id):
 
 
 # ---------------------------------------------------------------------------
+# 5. client update email (Agent I; Clio Manage AI parity: "drafts case update emails to clients")
+# ---------------------------------------------------------------------------
+UPDATE_SCHEMA = {
+    "type": "object",
+    "properties": {"subject": {"type": "string"}, "body": {"type": "string"}},
+    "required": ["subject", "body"], "additionalProperties": False,
+}
+UPDATE_DAYS = 30
+INTERNAL_PREFIX = "[internal]"
+
+
+def _is_internal(note):
+    return (note.body or "").lstrip().lower().startswith(INTERNAL_PREFIX)
+
+
+def update_facts(m, today=None):
+    """Client-safe facts for a status update: recent notes (never ones starting with [internal]), recent work
+    descriptions (no hours, rates or amounts), tasks finished recently, upcoming deadlines and events.
+    Fees and invoices are deliberately left out."""
+    today = today or date.today()
+    since = today - timedelta(days=UPDATE_DAYS)
+    since_dt = datetime.combine(since, datetime.min.time())
+    notes = [n for n in sorted(m.notes, key=lambda n: n.created_at or datetime.min, reverse=True)
+             if not _is_internal(n) and n.created_at and n.created_at >= since_dt][:8]
+    work = [t for t in sorted(m.time_entries, key=lambda t: (t.date or date.min, t.id), reverse=True)
+            if t.date and t.date >= since and (t.description or "").strip()][:10]
+    done = Task.query.filter(Task.matter_id == m.id, Task.done == True, Task.done_at != None,  # noqa: E712,E711
+                             Task.done_at >= since_dt).order_by(Task.done_at.desc()).limit(8).all()
+    upcoming = Task.query.filter(Task.matter_id == m.id, Task.done == False, Task.due_on != None,  # noqa: E712,E711
+                                 Task.due_on >= today, Task.kind.in_(["deadline", "court_date"])).order_by(
+        Task.due_on).limit(8).all()
+    events = CalendarEvent.query.filter(CalendarEvent.matter_id == m.id,
+                                        CalendarEvent.starts_at >= datetime.combine(today, datetime.min.time())
+                                        ).order_by(CalendarEvent.starts_at).limit(6).all()
+    return {"notes": notes, "work": work, "done": done, "upcoming": upcoming, "events": events, "since": since}
+
+
+def _facts_text(m, facts):
+    parts = [f"Matter: {m.name} (our reference {m.number})",
+             f"Client: {m.client.display_name if m.client else ''}",
+             f"Responsible attorney: {m.responsible.name if m.responsible else 'the firm'}",
+             f"Status: {m.status}. Practice area: {m.practice_area or ''}"]
+    if facts["notes"]:
+        parts.append("Recent notes:\n" + "\n".join(f"- {n.created_at:%Y-%m-%d}: {n.body.strip()}" for n in facts["notes"]))
+    if facts["work"]:
+        parts.append("Work done recently:\n" + "\n".join(f"- {t.date}: {t.description.strip()}" for t in facts["work"]))
+    if facts["done"]:
+        parts.append("Tasks completed:\n" + "\n".join(f"- {t.done_at:%Y-%m-%d}: {t.title}" for t in facts["done"]))
+    if facts["upcoming"]:
+        parts.append("Upcoming deadlines and court dates:\n" + "\n".join(
+            f"- {t.due_on}: {t.title} ({t.kind.replace('_', ' ')})" for t in facts["upcoming"]))
+    if facts["events"]:
+        parts.append("Upcoming events:\n" + "\n".join(f"- {e.starts_at:%Y-%m-%d %H:%M}: {e.title}" for e in facts["events"]))
+    return "\n\n".join(parts)
+
+
+_UPDATE_T = {
+    "en": {
+        "subject": "Update on {matter}",
+        "greeting": "Dear {name},",
+        "intro": "Here is a short update on your matter, {matter}.",
+        "work": "Since {since}, we have:",
+        "done": "Completed:",
+        "upcoming": "Coming up:",
+        "events": "Scheduled:",
+        "nothing": "There has been no new activity on the file since {since}. We are monitoring it and will let you know as soon as anything changes.",
+        "close": "Please reply to this email or call the office if you have any questions.",
+        "sign": "Kind regards,\n{attorney}\n{firm}",
+        "ymd": "%B %-d, %Y",
+    },
+    "es": {
+        "subject": "Actualización sobre {matter}",
+        "greeting": "Estimado/a {name}:",
+        "intro": "Le escribimos para informarle brevemente sobre el estado de su asunto, {matter}.",
+        "work": "Desde el {since}, hemos realizado lo siguiente:",
+        "done": "Tareas completadas:",
+        "upcoming": "Próximos plazos:",
+        "events": "Citas programadas:",
+        "nothing": "No ha habido novedades en su expediente desde el {since}. Seguimos pendientes y le avisaremos en cuanto haya algún cambio.",
+        "close": "Si tiene alguna pregunta, responda a este correo o llame a nuestra oficina.",
+        "sign": "Atentamente,\n{attorney}\n{firm}",
+        "ymd": "%-d de %B de %Y",
+    },
+}
+
+
+def _first_name(contact):
+    if not contact:
+        return ""
+    return (contact.first_name or "").strip() or contact.display_name
+
+
+def template_update(m, facts, lang="en"):
+    """Plain update email from the facts, no model needed. Returns (subject, body)."""
+    T = _UPDATE_T.get(lang) or _UPDATE_T["en"]
+    firm = Firm.get()
+    attorney = m.responsible.name if m.responsible else firm.name
+    since = facts["since"].strftime(T["ymd"])
+    lines = [T["greeting"].format(name=_first_name(m.client)), "", T["intro"].format(matter=m.name), ""]
+    items = [t.description.strip() for t in facts["work"]] + [n.body.strip() for n in facts["notes"]]
+    if items:
+        lines.append(T["work"].format(since=since))
+        lines += [f"- {x}" for x in items]
+        lines.append("")
+    if facts["done"]:
+        lines.append(T["done"])
+        lines += [f"- {t.title}" for t in facts["done"]]
+        lines.append("")
+    if facts["upcoming"]:
+        lines.append(T["upcoming"])
+        lines += [f"- {t.due_on.strftime(T['ymd'])}: {t.title}" for t in facts["upcoming"]]
+        lines.append("")
+    if facts["events"]:
+        lines.append(T["events"])
+        lines += [f"- {e.starts_at.strftime(T['ymd'])}: {e.title}" for e in facts["events"]]
+        lines.append("")
+    if not (items or facts["done"] or facts["upcoming"] or facts["events"]):
+        lines += [T["nothing"].format(since=since), ""]
+    lines += [T["close"], "", T["sign"].format(attorney=attorney, firm=firm.name)]
+    return T["subject"].format(matter=m.name), "\n".join(lines)
+
+
+def _update_page(m, subject, body, source, error=None):
+    return render_template("ai/update_email.html", m=m, subject=subject, body=body, source=source, error=error,
+                           to=(m.client.email if m.client else "") or "", lang=lang_for(m.client))
+
+
+@bp.route("/matter/<int:id>/update-email", methods=["POST"])
+@login_required
+def matter_update_email(id):
+    m = db.session.get(Matter, id) or abort(404)
+    facts = update_facts(m)
+    lang = lang_for(m.client)
+    language = {"es": "Spanish (formal usted)"}.get(lang, "English")
+    firm = Firm.get()
+    attorney = m.responsible.name if m.responsible else firm.name
+    ctx, _cut = llm.clip(_facts_text(m, facts), 9000)
+    prompt = (f"Today is {date.today().isoformat()}. Write a short status update email from the law firm to its "
+              f"client about the matter below, in {language}. Address the client by name, say plainly what has "
+              "been done since the last update, what was completed, and what is coming up with dates. Use only "
+              "the facts given; if there is little activity, say so honestly. Never mention fees, hours, rates, "
+              "invoices or internal opinions. Warm, professional, no marketing, no jargon, about 120 to 180 "
+              f"words, plain text with blank lines between paragraphs. Sign off as {attorney}, {firm.name}. "
+              "Return JSON {\"subject\": \"...\", \"body\": \"...\"}.\n\n" + ctx)
+    try:
+        data = llm.complete_json(prompt, UPDATE_SCHEMA, system=SYSTEM, max_tokens=900, kind="client_update",
+                                 entity="matter", entity_id=m.id, user_id=_uid())
+        subject = str(data.get("subject") or "").strip() if isinstance(data, dict) else ""
+        body = str(data.get("body") or "").strip() if isinstance(data, dict) else ""
+        if not body:
+            raise llm.LLMBadOutput("The AI answered in an unexpected format.")
+        subject = subject or template_update(m, facts, lang)[0]
+        return _update_page(m, subject, body, source="model")
+    except LLMUnavailable as e:
+        subject, body = template_update(m, facts, lang)
+        return _update_page(m, subject, body, source="template", error=str(e))
+
+
+def _body_html(body):
+    paras = [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    return ("<div style=\"font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1c2430;max-width:600px\">"
+            + "".join(f"<p>{escape(p).replace(chr(10), '<br>')}</p>" for p in paras) + "</div>")
+
+
+def _update_message(m, to, subject, body, status):
+    u = current_user()
+    msg = Message(contact_id=m.client_id, matter_id=m.id, direction="out", channel="email", to_addr=to,
+                  from_addr=current_app.config.get("MAIL_FROM", ""), subject=subject[:300], body=body, status=status,
+                  user_id=u.id if u else None, provider_id=f"client-update:{m.id}:{now():%Y%m%d%H%M%S}")
+    db.session.add(msg)
+    db.session.flush()
+    return msg
+
+
+@bp.route("/matter/<int:id>/update-email/send", methods=["POST"])
+@login_required
+def matter_update_send(id):
+    m = db.session.get(Matter, id) or abort(404)
+    f = request.form
+    subject = (f.get("subject") or "").strip()[:300]
+    body = (f.get("body") or "").strip()
+    to = (f.get("to") or (m.client.email if m.client else "") or "").strip()
+    if not (subject and body):
+        flash("Subject and body are both needed.", "error")
+        return _update_page(m, subject, body, source="edited"), 400
+    if not to:
+        flash("The client has no email address. Add one on the contact, or save this as a draft.", "error")
+        return _update_page(m, subject, body, source="edited"), 400
+    firm = Firm.get()
+    send_email(to, subject, _body_html(body), text=body, reply_to=firm.email or None)
+    msg = _update_message(m, to, subject, body, "sent")
+    audit("send", "message", msg.id, f"client update on {m.number} to {to}", _uid())
+    db.session.commit()
+    flash(f"Update sent to {to}.", "ok")
+    return redirect(url_for("matters.detail", id=m.id))
+
+
+@bp.route("/matter/<int:id>/update-email/draft", methods=["POST"])
+@login_required
+def matter_update_draft(id):
+    m = db.session.get(Matter, id) or abort(404)
+    f = request.form
+    subject = (f.get("subject") or "").strip()[:300]
+    body = (f.get("body") or "").strip()
+    to = (f.get("to") or (m.client.email if m.client else "") or "").strip()
+    if not body:
+        flash("Nothing to save.", "error")
+        return redirect(url_for("matters.detail", id=m.id))
+    msg = _update_message(m, to, subject, body, "draft")
+    audit("create", "message", msg.id, f"client update draft on {m.number}", _uid())
+    db.session.commit()
+    flash("Saved as a draft. Send it from Intake, Drafts when you are ready.", "ok")
+    return redirect("/intake/drafts")
+
+
+# ---------------------------------------------------------------------------
+# 6. aggregate questions answered without the model (Agent I; "what is in AR over 90 days")
+# ---------------------------------------------------------------------------
+_OPEN = ("sent", "viewed", "partial")
+_CMP_LESS = ("less than", "fewer than", "under", "below", "at most", "no more than", "<")
+_CMP_MORE = ("more than", "over", "above", "at least", "exceeding", ">")
+_CMP = "|".join(re.escape(c) for c in _CMP_LESS + _CMP_MORE)
+_AR_WORDS = r"(?:a/?r\b|accounts?\s+receivable|receivables?|outstanding|owed|owing|unpaid|past\s+due|overdue|aged|ag(?:e)?ing)"
+
+
+def _cmp_kind(word):
+    return "less" if word in _CMP_LESS else "more"
+
+
+def _month_bounds(q, today):
+    if re.search(r"\blast\s+month\b", q):
+        first_this = today.replace(day=1)
+        last_prev = first_this - timedelta(days=1)
+        return last_prev.replace(day=1), last_prev, f"{last_prev:%B %Y}"
+    return today.replace(day=1), today, f"{today:%B %Y}"
+
+
+def answer_aggregate(q, today=None):
+    """Recognise a handful of numeric questions and answer them straight from the database. Returns a dict
+    (title, answer, amount or number, link, link_label, rows, columns) or None when the question is not one of
+    them. No model call is made here, so it works with AI off."""
+    today = today or date.today()
+    ql = " ".join((q or "").lower().split())
+    if not ql:
+        return None
+
+    # hours per timekeeper with a threshold: "which timekeeper has less than 150 billable hours this month"
+    m = (re.search(rf"(?P<cmp>{_CMP})\s*(?P<n>\d+(?:\.\d+)?)\s*(?:billable\s+)?(?:hours?|hrs?)\b", ql)
+         or re.search(rf"(?:hours?|hrs?)\s+(?P<cmp>{_CMP})\s*(?P<n>\d+(?:\.\d+)?)", ql))
+    if m and re.search(r"\b(hours?|hrs?)\b", ql):
+        kind = _cmp_kind(m.group("cmp"))
+        threshold = float(m.group("n"))
+        start, end, label = _month_bounds(ql, today)
+        billable_only = "billable" in ql or "non-billable" not in ql
+        rows_q = TimeEntry.query.filter(TimeEntry.date >= start, TimeEntry.date <= end)
+        if billable_only:
+            rows_q = rows_q.filter(TimeEntry.billable == True)  # noqa: E712
+        minutes = {}
+        for t in rows_q.all():
+            minutes[t.user_id] = minutes.get(t.user_id, 0) + (t.minutes or 0)
+        users = User.query.filter_by(is_active=True).order_by(User.name).all()
+        rows, matched = [], []
+        for u in users:
+            hrs = minutes.get(u.id, 0) / 60.0
+            hit = hrs < threshold if kind == "less" else hrs > threshold
+            rows.append({"cells": [u.name, f"{hrs:.2f}"], "hit": hit})
+            if hit:
+                matched.append(f"{u.name} ({hrs:.2f} h)")
+        word = "under" if kind == "less" else "over"
+        answer = (f"{len(matched)} timekeeper{'s' if len(matched) != 1 else ''} {word} {threshold:g} "
+                  f"{'billable ' if billable_only else ''}hours in {label}: " + (", ".join(matched) or "none"))
+        return {"title": f"Hours per timekeeper, {label}", "answer": answer, "number": len(matched),
+                "link": f"/reports/productivity?from={start.isoformat()}&to={end.isoformat()}",
+                "link_label": "Productivity report", "columns": ["Timekeeper", "Hours"], "rows": rows}
+
+    # AR over N days: "what amount do we have in AR aged over 90 days"
+    m = re.search(rf"(?:over|older\s+than|more\s+than|past|beyond|aged|greater\s+than|>)\s*(?P<n>\d+)\s*(?:\+\s*)?days", ql)
+    if m and re.search(_AR_WORDS, ql):
+        n = int(m.group("n"))
+        cutoff = today - timedelta(days=n)
+        invs = [i for i in Invoice.query.filter(Invoice.status.in_(_OPEN)).all()
+                if i.balance_cents > 0 and (i.due_on or i.issued_on or today) < cutoff]
+        total = sum(i.balance_cents for i in invs)
+        rows = [{"cells": [i.number, i.client.display_name if i.client else "", i.due_on.isoformat() if i.due_on else "",
+                           _fmt_money(i.balance_cents)], "hit": True, "href": f"/invoices/{i.id}"} for i in invs]
+        return {"title": f"A/R over {n} days", "amount": total,
+                "answer": f"{_fmt_money(total)} across {len(invs)} invoice{'s' if len(invs) != 1 else ''} whose due date "
+                          f"is more than {n} days ago.",
+                "link": "/reports/ar-aging", "link_label": "A/R aging report",
+                "columns": ["Invoice", "Client", "Due", "Balance"], "rows": rows}
+
+    # overdue invoices (count + total)
+    if re.search(r"\b(overdue|past\s+due|late)\b", ql) and re.search(r"\binvoices?\b", ql):
+        invs = [i for i in Invoice.query.filter(Invoice.status.in_(_OPEN), Invoice.due_on != None,  # noqa: E711
+                                                Invoice.due_on < today).order_by(Invoice.due_on).all() if i.balance_cents > 0]
+        total = sum(i.balance_cents for i in invs)
+        rows = [{"cells": [i.number, i.client.display_name if i.client else "", i.due_on.isoformat(),
+                           str((today - i.due_on).days), _fmt_money(i.balance_cents)], "hit": True,
+                 "href": f"/invoices/{i.id}"} for i in invs]
+        return {"title": "Overdue invoices", "number": len(invs), "amount": total,
+                "answer": f"{len(invs)} overdue invoice{'s' if len(invs) != 1 else ''} totalling {_fmt_money(total)}.",
+                "link": "/invoices?status=overdue", "link_label": "Overdue invoices",
+                "columns": ["Invoice", "Client", "Due", "Days late", "Balance"], "rows": rows}
+
+    # unbilled WIP
+    if re.search(r"\b(unbilled|wip|work\s+in\s+progress|uninvoiced|not\s+(?:yet\s+)?(?:billed|invoiced))\b", ql):
+        t_cents = sum(t.amount_cents for t in TimeEntry.query.filter(TimeEntry.billable == True,  # noqa: E712
+                                                                      TimeEntry.invoice_id == None).all())  # noqa: E711
+        e_cents = sum(e.amount_cents or 0 for e in Expense.query.filter(Expense.billable == True,  # noqa: E712
+                                                                        Expense.invoice_id == None).all())  # noqa: E711
+        total = t_cents + e_cents
+        return {"title": "Unbilled work in progress", "amount": total,
+                "answer": f"{_fmt_money(total)} unbilled: {_fmt_money(t_cents)} in time and {_fmt_money(e_cents)} in expenses.",
+                "link": "/reports/wip", "link_label": "WIP report", "columns": ["Kind", "Amount"],
+                "rows": [{"cells": ["Time", _fmt_money(t_cents)], "hit": True},
+                         {"cells": ["Expenses", _fmt_money(e_cents)], "hit": True}]}
+
+    # trust total
+    if re.search(r"\b(trust|iolta|retainer)\b", ql) and re.search(r"\b(balance|total|held|hold|have|much|funds?|account)\b", ql):
+        total = int(db.session.query(db.func.coalesce(db.func.sum(TrustTransaction.amount_cents), 0)).scalar() or 0)
+        by_client = {}
+        for t in TrustTransaction.query.all():
+            by_client[t.client_id] = by_client.get(t.client_id, 0) + (t.amount_cents or 0)
+        rows = []
+        for cid, cents in sorted(by_client.items(), key=lambda kv: -kv[1]):
+            if cents:
+                c = db.session.get(Contact, cid)
+                rows.append({"cells": [c.display_name if c else str(cid), _fmt_money(cents)], "hit": True,
+                             "href": f"/trust/ledger/{cid}"})
+        return {"title": "Trust balance", "amount": total,
+                "answer": f"{_fmt_money(total)} held in trust across {len(rows)} client{'s' if len(rows) != 1 else ''}.",
+                "link": "/reports/trust-balances", "link_label": "Trust balances report",
+                "columns": ["Client", "Balance"], "rows": rows}
+
+    # AR total
+    if re.search(_AR_WORDS, ql) and re.search(r"\b(total|how\s+much|what|amount|balance|sum|all)\b", ql):
+        invs = [i for i in Invoice.query.filter(Invoice.status.in_(_OPEN)).all() if i.balance_cents > 0]
+        total = sum(i.balance_cents for i in invs)
+        overdue = sum(i.balance_cents for i in invs if i.due_on and i.due_on < today)
+        return {"title": "Accounts receivable", "amount": total,
+                "answer": f"{_fmt_money(total)} outstanding on {len(invs)} open invoice{'s' if len(invs) != 1 else ''}, "
+                          f"of which {_fmt_money(overdue)} is past due.",
+                "link": "/reports/ar-aging", "link_label": "A/R aging report", "columns": ["Bucket", "Amount"],
+                "rows": [{"cells": ["Not yet due", _fmt_money(total - overdue)], "hit": True},
+                         {"cells": ["Past due", _fmt_money(overdue)], "hit": True}]}
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 4. natural-language search
 # ---------------------------------------------------------------------------
 SEARCH_SCHEMA = {
@@ -508,6 +861,10 @@ def search():
     q = request.args.get("q", "").strip()[:500]
     if not q:
         return render_template("ai/search.html", q="", structured=None, filters=None, plain=None, error=None)
+    answer = answer_aggregate(q)
+    if answer:  # a number question: answered from the database, no model call
+        return render_template("ai/search.html", q=q, structured=None, filters=None, plain=None, error=None,
+                               answer=answer)
     prompt = (f"Today is {date.today().isoformat()}. Turn this question from a law firm staff member into search "
               "filters over the practice management database. entities: which of matters, contacts, invoices, "
               "time, tasks to search (pick the ones that answer the question). text: a short keyword to match "

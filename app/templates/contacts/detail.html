@@ -4,6 +4,7 @@
   <a class="btn small" href="/matters/new?contact_id={{ c.id }}">New matter</a>
   <a class="btn small secondary" href="/messages/{{ c.id }}">Messages</a>
   <a class="btn small secondary" href="/trust/ledger/{{ c.id }}">Trust ledger</a>
+  <a class="btn small secondary" href="/statements/{{ c.id }}" title="Every invoice, payment and trust application with a running balance">Statement</a>
   <a class="btn small secondary" href="/conflicts?q={{ c.display_name|urlencode }}">Conflict check</a>
   <a class="btn small secondary" href="/contacts/{{ c.id }}/edit">Edit</a>
 </div></div>

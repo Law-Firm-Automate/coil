@@ -1,0 +1,159 @@
+{% extends "base.html" %}{% block title %}PI: {{ m.label }}{% endblock %}{% block content %}
+{% macro dollars(c) %}{{ (c / 100)|round(2) if c else '' }}{% endmacro %}
+<div class="topbar">
+  <div><h1>Personal injury <span style="font-weight:500">{{ m.number }} {{ m.name }}</span> <span class="badge {{ 'open' if c.stage in ('settled',) else 'closed' if c.stage == 'closed' else 'pending' }}">{{ c.stage }}</span></h1>
+    <div class="small muted">Client <a href="/contacts/{{ m.client_id }}">{{ m.client.display_name }}</a>{% if dob %} &middot; DOB {{ dob }}{% endif %}{% if c.date_of_loss %} &middot; date of loss {{ c.date_of_loss|d }}{% endif %} &middot; <a href="/matters/{{ m.id }}">matter page</a> &middot; <a href="/pi">board</a></div></div>
+  <div class="tabs" style="margin:0;border:0">
+    <a href="#facts">Facts</a><a href="#providers">Providers</a><a href="#liens">Liens</a><a href="#demand">Demand</a><a href="#settlement">Settlement</a><a href="#tasks">Tasks</a>
+  </div>
+</div>
+<div class="grid c4">
+  <div class="card stat"><div class="label">Policy limits</div><div class="value">{{ c.policy_limits_cents|money }}</div><div class="small muted">UM/UIM {{ c.um_uim_limits_cents|money }}</div></div>
+  <div class="card stat"><div class="label">Total billed</div><div class="value">{{ total_billed|money }}</div><div class="small muted">{{ providers|length }} provider{{ '' if providers|length == 1 else 's' }}</div></div>
+  <div class="card stat"><div class="label">Liens payable</div><div class="value">{{ liens_payable|money }}</div><div class="small muted">{{ liens|length }} lien{{ '' if liens|length == 1 else 's' }}</div></div>
+  <div class="card stat"><div class="label">Demand / offer</div><div class="value" style="font-size:1.15rem">{{ c.demand_amount_cents|money }} / {{ c.offer_cents|money }}</div><div class="small muted">{% if c.demand_sent_on %}sent {{ c.demand_sent_on|d }}{% else %}demand not sent{% endif %}</div></div>
+</div>
+
+{# ---------------- Facts ---------------- #}
+<div class="card" id="facts"><h2>Facts</h2>
+<form method="post" action="/pi/{{ m.id }}/facts">{{ csrf() }}
+  <div class="row">
+    <div><label>Date of loss</label><input type="date" name="date_of_loss" value="{{ c.date_of_loss|iso }}"></div>
+    <div><label>Incident type</label><select name="incident_type"><option value="">Choose</option>{% for k, lbl in incident_types %}<option value="{{ k }}" {% if c.incident_type == k %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+    <div><label>Treatment status</label><select name="treatment_status">{% for k, lbl in treatment_statuses %}<option value="{{ k }}" {% if c.treatment_status == k %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+    <div><label>Stage</label><select name="stage">{% for k, lbl in stages %}<option value="{{ k }}" {% if c.stage == k %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+  </div>
+  <label>What happened</label><textarea name="incident_description" rows="3" placeholder="Rear-ended at a red light on Lamar; other driver cited.">{{ c.incident_description }}</textarea>
+  <label>Injuries</label><textarea name="injuries" rows="3" placeholder="Cervical strain, L4-L5 disc bulge on MRI, headaches.">{{ c.injuries }}</textarea>
+  <div class="row">
+    <div><label>Insurer</label><input type="text" name="insurer" value="{{ c.insurer }}"></div>
+    <div><label>Claim number</label><input type="text" name="claim_number" value="{{ c.claim_number }}"></div>
+    <div><label>Policy limits</label><input type="text" name="policy_limits" value="{{ dollars(c.policy_limits_cents) }}" placeholder="30,000.00"></div>
+    <div><label>UM/UIM limits</label><input type="text" name="um_uim_limits" value="{{ dollars(c.um_uim_limits_cents) }}" placeholder="50,000.00"></div>
+  </div>
+  <div class="row">
+    <div><label>Adjuster name</label><input type="text" name="adjuster_name" value="{{ c.adjuster_name }}"></div>
+    <div><label>Adjuster phone</label><input type="text" name="adjuster_phone" value="{{ c.adjuster_phone }}"></div>
+    <div><label>Adjuster email</label><input type="text" name="adjuster_email" value="{{ c.adjuster_email }}"></div>
+  </div>
+  <label>Liability notes</label><textarea name="liability_notes" rows="2" placeholder="Police report favors client; witness statement on file.">{{ c.liability_notes }}</textarea>
+  <div class="actions" style="margin-top:8px"><button class="btn small">Save facts</button>{% if not dob %}<span class="small muted">Add a custom field named "dob" on the client contact and the letters will include the date of birth.</span>{% endif %}</div>
+</form></div>
+
+{# ---------------- Providers ---------------- #}
+<div class="card" id="providers"><div class="topbar" style="margin-bottom:10px"><h2>Treating providers</h2><div class="actions" style="margin:0"><a class="btn small" href="/pi/{{ m.id }}/providers/new">Add provider</a></div></div>
+{% if providers %}<div style="overflow-x:auto"><table><tr><th>Provider</th><th>Visits</th><th>Records</th><th>Bills</th><th class="num">Billed</th><th></th></tr>
+{% for p in providers %}<tr>
+  <td><a href="/pi/{{ m.id }}/providers/{{ p.id }}/edit">{{ p.name }}</a>{% if p.specialty %}<br><span class="small muted">{{ p.specialty }}</span>{% endif %}</td>
+  <td class="nowrap small">{{ p.first_visit_on|d or '?' }} to {{ p.last_visit_on|d or 'present' }}</td>
+  <td class="small">{% if p.records_received_on %}<span class="badge open">received {{ p.records_received_on|d }}</span>{% elif p.records_requested_on %}<span class="badge pending">requested {{ p.records_requested_on|d }}</span>{% else %}<span class="muted">not requested</span>{% endif %}</td>
+  <td class="small">{% if p.bills_received_on %}<span class="badge open">received {{ p.bills_received_on|d }}</span>{% elif p.bills_requested_on %}<span class="badge pending">requested {{ p.bills_requested_on|d }}</span>{% else %}<span class="muted">not requested</span>{% endif %}</td>
+  <td class="num">{{ p.total_billed_cents|money }}</td>
+  <td class="right nowrap">
+    <form method="post" action="/pi/{{ m.id }}/providers/{{ p.id }}/request-records" class="inline">{{ csrf() }}<button class="btn small secondary" title="Generates a records request letter PDF into Documents and sets the requested date">Request records</button></form>
+    <form method="post" action="/pi/{{ m.id }}/providers/{{ p.id }}/request-bills" class="inline">{{ csrf() }}<button class="btn small secondary" title="Generates an itemized billing request letter PDF into Documents and sets the requested date">Request bills</button></form>
+    <form method="post" action="/pi/{{ m.id }}/providers/{{ p.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Remove {{ p.name }}?">Delete</button></form>
+  </td></tr>{% endfor %}
+<tr><td colspan="4" class="right"><strong>Total billed</strong></td><td class="num"><strong>{{ total_billed|money }}</strong></td><td></td></tr></table></div>
+{% else %}<div class="empty">No providers yet. Add each place the client treated; the demand chronology and specials come from this list.</div>{% endif %}
+<p class="small muted">Request letters are drafts on firm letterhead for attorney review. Attach the client's signed HIPAA authorization before sending.</p></div>
+
+{# ---------------- Liens ---------------- #}
+<div class="card" id="liens"><div class="topbar" style="margin-bottom:10px"><h2>Liens</h2><div class="actions" style="margin:0"><a class="btn small" href="/pi/{{ m.id }}/liens/new">Add lien</a></div></div>
+{% if liens %}<div style="overflow-x:auto"><table><tr><th>Holder</th><th>Type</th><th class="num">Original</th><th class="num">Reduced</th><th class="num">Payable</th><th>Status</th><th></th></tr>
+{% for l in liens %}<tr>
+  <td><a href="/pi/{{ m.id }}/liens/{{ l.id }}/edit">{{ l.holder }}</a>{% if l.contact %}<br><span class="small muted">{{ l.contact }}</span>{% endif %}</td>
+  <td>{{ l.type.replace('_', ' ') }}</td>
+  <td class="num">{{ l.original_cents|money }}</td>
+  <td class="num">{% if l.reduced_cents is not none %}{{ l.reduced_cents|money }}{% else %}<span class="muted">none yet</span>{% endif %}</td>
+  <td class="num">{{ l.payable_cents|money }}</td>
+  <td><span class="badge {{ 'paid' if l.status == 'paid' else 'pending' if l.status == 'negotiating' else 'open' if l.status == 'resolved' else 'draft' }}">{{ l.status }}</span></td>
+  <td class="right nowrap">
+    {% if l.status != 'paid' %}<form method="post" action="/pi/{{ m.id }}/liens/{{ l.id }}/reduction-letter" class="inline">{{ csrf() }}<input type="text" name="pct" value="33" size="3" style="width:52px;display:inline-block;padding:4px 6px" aria-label="Reduction percent"> % <button class="btn small secondary" title="Letter asking the holder to reduce by this percentage, saved to Documents">Reduction request letter</button></form>{% endif %}
+    <form method="post" action="/pi/{{ m.id }}/liens/{{ l.id }}/delete" class="inline">{{ csrf() }}<button class="btn small secondary" data-confirm="Remove the lien from {{ l.holder }}?">Delete</button></form>
+  </td></tr>{% endfor %}
+<tr><td colspan="4" class="right"><strong>Payable (not yet paid)</strong></td><td class="num"><strong>{{ liens_payable|money }}</strong></td><td colspan="2"></td></tr></table></div>
+{% else %}<div class="empty">No liens recorded. Health plans, Medicare, Medicaid, hospital and provider liens all belong here so the worksheet catches them.</div>{% endif %}</div>
+
+{# ---------------- Demand ---------------- #}
+<div class="card" id="demand"><h2>Demand</h2>
+<div class="grid c2">
+  <form method="post" action="/pi/{{ m.id }}/demand">{{ csrf() }}
+    <div class="row">
+      <div><label>Demand sent on</label><input type="date" name="demand_sent_on" value="{{ c.demand_sent_on|iso }}"></div>
+      <div><label>Demand amount</label><input type="text" name="demand_amount" value="{{ dollars(c.demand_amount_cents) }}" placeholder="75,000.00"></div>
+      <div><label>Current offer</label><input type="text" name="offer" value="{{ dollars(c.offer_cents) }}" placeholder="25,000.00"></div>
+    </div>
+    <div class="actions" style="margin-top:8px"><button class="btn small">Save demand and offer</button></div>
+  </form>
+  <form method="post" action="/pi/{{ m.id }}/demand/package">{{ csrf() }}
+    <label>Build demand package</label>
+    <p class="small muted" style="margin-top:0">Assembles one PDF: cover letter to the insurer with the facts, liability notes and injuries; a treatment chronology from the providers; a specials table totalling {{ total_billed|money }}; and the demand figure. Saved to Documents in the Demand folder.</p>
+    <div class="row">
+      <div><label>Demand amount</label><input type="text" name="demand_amount" value="{{ dollars(c.demand_amount_cents) }}" placeholder="75,000.00"></div>
+      <div><label style="display:inline-flex;gap:6px;align-items:center;margin-top:26px"><input type="checkbox" name="mark_sent" value="1"> Mark as sent today</label></div>
+    </div>
+    <div class="actions" style="margin-top:8px"><button class="btn small" {% if not providers and not c.incident_description %}title="Add facts and providers first"{% endif %}>Build demand package</button></div>
+  </form>
+</div></div>
+
+{# ---------------- Settlement ---------------- #}
+<div class="card" id="settlement"><h2>Settlement worksheet</h2>
+{% if current %}
+<div class="topbar" style="margin-bottom:8px"><div><strong>Current worksheet #{{ current.id }}</strong> <span class="badge {{ 'paid' if current.status == 'disbursed' else 'open' if current.status == 'approved' else 'draft' }}">{{ current.status }}</span> <span class="small muted">prepared {{ current.created_at|d }}{% if current.approved_on %}, approved {{ current.approved_on|d }}{% endif %}{% if current.disbursed_on %}, disbursed {{ current.disbursed_on|d }}{% endif %}</span></div>
+  <div class="actions" style="margin:0">
+    {% if current.status == 'draft' %}<form method="post" action="/pi/{{ m.id }}/worksheet/{{ current.id }}/approve" class="inline">{{ csrf() }}<button class="btn small">Approve</button></form>{% endif %}
+    <form method="post" action="/pi/{{ m.id }}/worksheet/{{ current.id }}/pdf" class="inline">{{ csrf() }}<button class="btn small secondary">Worksheet PDF</button></form>
+  </div></div>
+<table>
+  <tr><td>Gross settlement</td><td class="num"><strong>{{ current.gross_cents|money }}</strong></td></tr>
+  <tr><td>Attorney fee ({{ current.fee_pct }}% of gross)</td><td class="num">({{ current.fee_cents|money }})</td></tr>
+  {% for e in current_detail.expenses %}<tr><td class="small muted" style="padding-left:24px">Cost: {{ e.description or 'expense' }}{% if e.date %} ({{ e.date }}){% endif %}{% if not e.billable %} [non-billable]{% endif %}</td><td class="num small muted">({{ e.cents|money }})</td></tr>{% endfor %}
+  {% for e in current_detail.extras %}<tr><td class="small muted" style="padding-left:24px">Cost: {{ e.description }}</td><td class="num small muted">({{ e.cents|money }})</td></tr>{% endfor %}
+  <tr><td>Costs</td><td class="num">({{ current.costs_cents|money }})</td></tr>
+  {% for l in current_detail.liens %}<tr><td class="small muted" style="padding-left:24px">Lien: {{ l.holder }} ({{ l.type.replace('_', ' ') }}){% if l.cents != l.original %}, reduced from {{ l.original|money }}{% endif %}</td><td class="num small muted">({{ l.cents|money }})</td></tr>{% endfor %}
+  <tr><td>Liens</td><td class="num">({{ current.liens_cents|money }})</td></tr>
+  <tr><td>Other deductions{% if current_detail.other_payee %} ({{ current_detail.other_payee }}){% endif %}</td><td class="num">({{ current.other_deductions_cents|money }})</td></tr>
+  <tr><td><strong>Net to client</strong></td><td class="num"><strong>{{ current.net_to_client_cents|money }}</strong></td></tr>
+  {% set parts = current.fee_cents + current.costs_cents + current.liens_cents + current.other_deductions_cents + current.net_to_client_cents %}
+  <tr><td class="small">Balance check: fee + costs + liens + other + net</td><td class="num small">{{ parts|money }} {% if parts == current.gross_cents %}<span class="badge open">balanced</span>{% else %}<span class="badge overdue">out of balance</span>{% endif %}</td></tr>
+</table>
+{% if current.status == 'approved' %}
+<form method="post" action="/pi/{{ m.id }}/worksheet/{{ current.id }}/disburse" style="margin-top:10px">{{ csrf() }}
+  <p class="small">Client trust balance now: <strong>{{ trust_balance|money }}</strong>. Marking disbursed posts to the trust ledger: the fee and costs to operating, each lien to its holder, and the net to {{ m.client.display_name }}. A posting that would take the client or matter below zero is refused.</p>
+  <label style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" name="record_deposit" value="1" checked> Record the settlement deposit of {{ current.gross_cents|money }} to trust first</label>
+  <div class="actions" style="margin-top:8px"><button class="btn" data-confirm="Post the disbursement to the trust ledger?">Mark disbursed</button></div>
+</form>
+{% elif current.status == 'disbursed' %}<p class="small muted">Posted to the <a href="/trust/ledger/{{ m.client_id }}">trust ledger</a> on {{ current.disbursed_on|d }} (reference WS-{{ current.id }}).</p>{% endif %}
+{% else %}<div class="empty">No worksheet yet. Enter the gross below; the fee, the matter's expenses and the open liens fill in from the file.</div>{% endif %}
+
+{% if not current or current.status != 'disbursed' %}
+<details style="margin-top:12px" {% if not current %}open{% endif %}><summary><strong>{{ 'New worksheet (replaces the current one; it is kept below)' if current else 'Build the worksheet' }}</strong></summary>
+<form method="post" action="/pi/{{ m.id }}/worksheet" style="margin-top:8px">{{ csrf() }}
+  <div class="row">
+    <div><label>Gross settlement</label><input type="text" name="gross" value="{{ dollars(current.gross_cents if current else c.offer_cents) }}" placeholder="100,000.00" required></div>
+    <div><label>Fee percent</label><input type="text" name="fee_pct" value="{{ current.fee_pct if current else default_fee_pct }}"><span class="small muted">{% if m.contingency_pct and m.contingency_pct > 0 %}from the matter's contingency rate{% else %}default 33.33; the matter has no contingency rate set{% endif %}</span></div>
+    <div><label>Other deductions</label><input type="text" name="other_deductions" value="{{ dollars(current.other_deductions_cents) if current else '' }}" placeholder="0.00"></div>
+    <div><label>Other deductions payee</label><input type="text" name="other_payee" value="{{ current_detail.other_payee if current else '' }}"></div>
+  </div>
+  <p class="small muted">Costs from the matter's expenses (billable or not): <strong>{{ (preview.expenses|sum(attribute='cents'))|money }}</strong> across {{ preview.expenses|length }} entr{{ 'y' if preview.expenses|length == 1 else 'ies' }}. Liens not yet paid: <strong>{{ preview.liens_total|money }}</strong>. Add extra costs that are not logged as expenses:</p>
+  <div class="row"><div><label>Extra cost</label><input type="text" name="extra_desc" placeholder="Records fees paid by client"></div><div><label>Amount</label><input type="text" name="extra_amount" placeholder="0.00"></div></div>
+  <div class="row"><div><input type="text" name="extra_desc" placeholder="Another extra cost"></div><div><input type="text" name="extra_amount" placeholder="0.00"></div></div>
+  <div class="actions" style="margin-top:8px"><button class="btn small">Save worksheet</button></div>
+</form></details>
+{% endif %}
+
+{% if prior %}<h3 style="margin-top:14px">Prior worksheets</h3><table><tr><th>#</th><th>Prepared</th><th class="num">Gross</th><th class="num">Fee</th><th class="num">Costs</th><th class="num">Liens</th><th class="num">Net</th><th>Status</th><th></th></tr>
+{% for w in prior %}<tr><td>{{ w.id }}</td><td class="nowrap">{{ w.created_at|d }}</td><td class="num">{{ w.gross_cents|money }}</td><td class="num">{{ w.fee_cents|money }}</td><td class="num">{{ w.costs_cents|money }}</td><td class="num">{{ w.liens_cents|money }}</td><td class="num">{{ w.net_to_client_cents|money }}</td><td>{{ w.status }}</td><td class="right"><form method="post" action="/pi/{{ m.id }}/worksheet/{{ w.id }}/pdf" class="inline">{{ csrf() }}<button class="btn small secondary">PDF</button></form></td></tr>{% endfor %}</table>{% endif %}
+</div>
+
+{# ---------------- Tasks and documents ---------------- #}
+<div class="grid c2">
+<div class="card" id="tasks"><div class="topbar" style="margin-bottom:10px"><h2>Tasks</h2><div class="actions" style="margin:0"><form method="post" action="/pi/{{ m.id }}/tasks/standard" class="inline">{{ csrf() }}<button class="btn small" title="Records requests 30 days after the loss, follow-ups 30 days after each request, a limitations check at two years, and a demand follow-up. Safe to click again.">Create standard PI tasks</button></form><a class="btn small secondary" href="/tasks/new?matter_id={{ m.id }}">New task</a></div></div>
+{% if tasks %}<table><tr><th>Task</th><th>Kind</th><th>Due</th></tr>{% for t in tasks %}<tr><td><a href="/tasks/{{ t.id }}">{{ t.title }}</a></td><td>{{ t.kind.replace('_', ' ') }}</td><td class="nowrap">{% if t.is_overdue %}<span class="badge overdue">overdue</span> {% endif %}{{ t.due_on|d }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">No open tasks.</div>{% endif %}
+<p class="small muted">The limitations task is a two-year placeholder. Confirm the period for this state and claim type.</p></div>
+<div class="card" id="documents"><div class="topbar" style="margin-bottom:10px"><h2>PI documents</h2><div class="actions" style="margin:0"><a class="btn small secondary" href="/documents?matter_id={{ m.id }}">All documents</a></div></div>
+{% if docs %}<table><tr><th>Name</th><th>Folder</th><th>Created</th></tr>{% for d in docs %}<tr><td><a href="/documents/{{ d.id }}/download">{{ d.name }}</a></td><td>{{ d.folder }}</td><td class="nowrap">{{ d.created_at|d }}</td></tr>{% endfor %}</table>{% else %}<div class="empty">Letters, the demand package and worksheet PDFs will show here.</div>{% endif %}
+<p class="small muted">Every generated PDF is a draft for attorney review and says so in its footer.</p></div>
+</div>
+{% endblock %}

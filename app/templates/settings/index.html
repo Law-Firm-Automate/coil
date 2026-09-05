@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Settings{% endblock %}{% block content %}
 {% set u = current_user() %}
 <div class="topbar"><h1>Settings</h1>
-<div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/users">Users</a><a class="btn small secondary" href="/settings/offices">Offices</a><a class="btn small secondary" href="/settings/templates">Matter templates</a><a class="btn small secondary" href="/settings/audit">Audit log</a><a class="btn small secondary" href="/settings/integrations">Integrations</a><a class="btn small secondary" href="/settings/api">API tokens</a><a class="btn small secondary" href="/settings/webhooks">Webhooks</a><a class="btn small secondary" href="/engagements/templates">Letter templates</a>{% if u.role == 'owner' %}<a class="btn small secondary" href="/dev/outbox">Dev outbox</a>{% endif %}</div></div>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/settings/users">Users</a><a class="btn small secondary" href="/settings/offices">Offices</a><a class="btn small secondary" href="/settings/templates">Matter templates</a><a class="btn small secondary" href="/settings/invoice-template">Invoice template</a><a class="btn small secondary" href="/settings/audit">Audit log</a><a class="btn small secondary" href="/settings/integrations">Integrations</a><a class="btn small secondary" href="/settings/api">API tokens</a><a class="btn small secondary" href="/settings/webhooks">Webhooks</a><a class="btn small secondary" href="/engagements/templates">Letter templates</a>{% if u.role == 'owner' %}<a class="btn small secondary" href="/dev/outbox">Dev outbox</a>{% endif %}</div></div>
 {% if u.role != 'owner' %}<div class="flash">Only the owner can change settings. You can read them here.</div>{% endif %}
 <form method="post" {% if u.role != 'owner' %}onsubmit="return false"{% endif %}>
   {{ csrf() }}<input type="hidden" name="_form" value="1">
@@ -37,6 +37,7 @@
         <div><label>Next matter number</label><input type="number" name="next_matter_number" value="{{ f.next_matter_number }}" min="1"></div>
       </div>
       <label>Invoice footer</label><textarea name="invoice_footer" style="min-height:60px">{{ f.invoice_footer }}</textarea>
+      <p class="small muted">Logo, colour, columns, labels and payment wording live under <a href="/settings/invoice-template">Invoice template</a>, along with the monthly invoicing run.</p>
     </div>
     <div class="card"><h2>Card surcharge</h2>
       <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="surcharge_enabled" value="1" {{ 'checked' if f.surcharge_enabled }}> Add a surcharge to card payments</label>
@@ -61,6 +62,10 @@
       <p class="small muted">Also needs OPENROUTER_API_KEY or ANTHROPIC_API_KEY in the environment. Matter text is sent to that provider when a staff member presses an AI button; nothing is sent otherwise. Daily spend is capped by AI_DAILY_CAP_CENTS. See <a href="/ai">AI status</a>.</p>
       <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink);margin-top:8px"><input type="checkbox" name="sequences_auto_send" value="1" {{ 'checked' if f.sequences_auto_send }}> Send follow-up sequence emails automatically</label>
       <p class="small muted">Off by default. While this is off, nothing is sent: each due step is saved as a draft under <a href="/intake/drafts">Intake, Drafts</a> and goes out only when someone presses Send. Turn it on and <code>python -m app.cli sequences</code> emails due steps to leads without review.</p>
+    </div>
+    <div class="card"><h2>Research (CourtListener)</h2>{# Agent J #}
+      <label>CourtListener API token</label><input type="text" name="courtlistener_token" value="{{ f.courtlistener_token or '' }}" autocomplete="off" placeholder="Optional">
+      <p class="small muted">The token is optional and free from courtlistener.com: it raises the search rate limit and unlocks full opinion text and the citation check. Status on <a href="/settings/integrations">Integrations</a>.</p>
     </div>
     <div class="card"><h2>LEDES billing</h2>
       <label>Law firm id (LAW_FIRM_ID, usually your tax id)</label><input type="text" name="ledes_firm_id" value="{{ f.ledes_firm_id }}">

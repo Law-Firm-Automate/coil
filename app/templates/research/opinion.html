@@ -1,0 +1,55 @@
+{% extends "base.html" %}{% block title %}{{ meta.case_name if meta else 'Opinion' }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ meta.case_name if meta else 'Opinion ' ~ opinion_id }}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/research{% if q %}?q={{ q|urlencode }}{% endif %}">Back to search</a><a class="btn small secondary" href="/research/saved">Saved authorities</a></div></div>
+{% include "research/_disclaimer.html" %}
+{% include "research/_notice.html" %}
+{% if fallback %}<div class="flash">Full opinion text needs a CourtListener token, so this page shows the search record and excerpt instead.{% if meta and meta.url %} Read the whole opinion on <a href="{{ meta.url }}" target="_blank" rel="noopener">CourtListener</a>.{% endif %}</div>{% endif %}
+{% if meta or op %}
+<div class="grid c2">
+  <div class="card"><h2>Details</h2>
+    <dl class="kv">
+      {% if meta %}
+      {% if meta.case_name_full and meta.case_name_full != meta.case_name %}<dt>Full name</dt><dd>{{ meta.case_name_full }}</dd>{% endif %}
+      <dt>Citation{{ 's' if meta.citations|length > 1 }}</dt><dd>{{ meta.citations|join('; ') if meta.citations else 'None recorded' }}</dd>
+      {% if meta.court %}<dt>Court</dt><dd>{{ meta.court }}</dd>{% endif %}
+      <dt>Decided</dt><dd>{{ meta.date_filed or 'Unknown' }}</dd>
+      {% if meta.docket_number %}<dt>Docket</dt><dd>{{ meta.docket_number }}</dd>{% endif %}
+      {% if meta.citation_count is not none %}<dt>Cited by</dt><dd>{{ meta.citation_count }} opinion{{ '' if meta.citation_count == 1 else 's' }} on CourtListener</dd>{% elif meta.cite_count is not none %}<dt>Cited by</dt><dd>{{ meta.cite_count }} opinion{{ '' if meta.cite_count == 1 else 's' }} on CourtListener</dd>{% endif %}
+      {% if meta.precedential_status %}<dt>Status</dt><dd>{{ meta.precedential_status }}</dd>{% elif meta.status %}<dt>Status</dt><dd>{{ meta.status }}</dd>{% endif %}
+      {% if meta.judges %}<dt>Judges</dt><dd>{{ meta.judges }}</dd>{% endif %}
+      {% endif %}
+      {% if op and op.author %}<dt>Author</dt><dd>{{ op.author }}</dd>{% endif %}
+      {% if op and op.type %}<dt>Opinion type</dt><dd>{{ op.type|replace('-', ' ') }}</dd>{% endif %}
+      <dt>Source</dt><dd>{% if meta and meta.url %}<a href="{{ meta.url }}" target="_blank" rel="noopener">CourtListener</a>{% else %}CourtListener{% endif %}{% if op and op.download_url %}, <a href="{{ op.download_url }}" target="_blank" rel="noopener">original PDF</a>{% endif %}</dd>
+    </dl>
+    {% if meta %}<h3 style="margin-bottom:4px">Save to matter</h3>{% with r=meta %}{% include "research/_save_form.html" %}{% endwith %}{% endif %}
+  </div>
+  <div class="card"><h2>AI summary</h2>
+    {% if ai_error %}<div class="flash" style="border-left:4px solid var(--warn)">{{ ai_error }}</div>{% endif %}
+    {% if summary %}
+      <p>{{ summary }}</p>
+      {% if holding %}<p><strong>Holding.</strong> {{ holding }}</p>{% endif %}
+      {% if cut %}<p class="small muted">The opinion is longer than fits in one request, so the summary covers the first part only.</p>{% endif %}
+      <p class="small muted">Written by the model from the opinion text. Read the opinion before you rely on it.</p>
+    {% elif ai.available and op %}
+      <form method="post" action="/research/opinion/{{ opinion_id }}/summarise">{{ csrf() }}<input type="hidden" name="cluster_id" value="{{ cluster_id or '' }}"><input type="hidden" name="q" value="{{ q }}">
+        <button class="btn secondary">Summarise this opinion</button></form>
+      <p class="small muted">About 200 words plus the holding, from the text on this page. Nothing is sent until you press the button.</p>
+    {% elif not op %}
+      <p class="small muted">A summary needs the full opinion text, which is not available here.</p>
+    {% else %}
+      <p class="small muted">The AI model is not configured{% if ai.reason %}: {{ ai.reason }}{% endif %} Summaries appear here once it is.</p>
+    {% endif %}
+  </div>
+</div>
+{% if meta and meta.syllabus %}<div class="card"><h2>Syllabus</h2><p>{{ meta.syllabus }}</p></div>{% endif %}
+<div class="card"><h2>Opinion{% if op %} text{% else %} excerpt{% endif %}</h2>
+  {% if op %}
+    {% if op.paragraphs %}<div class="opinion">{% for p in op.paragraphs %}<p>{{ highlight(p, q) }}</p>{% endfor %}</div>
+    {% else %}<div class="empty">CourtListener has no text for this opinion.{% if op.download_url %} Try the <a href="{{ op.download_url }}">original PDF</a>.{% endif %}</div>{% endif %}
+  {% elif meta and meta.snippet %}<p>{{ highlight(meta.snippet, q) }}</p>
+  {% else %}<div class="empty">No text available.</div>{% endif %}
+</div>
+{% endif %}
+<style>mark{background:#fff1a8;padding:0 1px}.opinion p{max-width:78ch;line-height:1.55}</style>
+{% endblock %}

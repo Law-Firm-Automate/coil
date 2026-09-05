@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Saved authorities{% endblock %}{% block content %}
+<div class="topbar"><h1>Saved authorities{% if matter %} <span style="font-weight:500">for <a href="/matters/{{ matter.id }}">{{ matter.label }}</a></span>{% endif %}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/research{% if matter_id %}?matter_id={{ matter_id }}{% endif %}">Search case law</a><a class="btn small secondary" href="/research/cite-check{% if matter_id %}?matter_id={{ matter_id }}{% endif %}">Citation check</a></div></div>
+{% include "research/_disclaimer.html" %}
+<div class="card">
+  <form method="get" class="searchbar" style="margin:0">
+    <select name="matter_id" style="width:auto;max-width:100%" aria-label="Matter"><option value="">All matters</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}{% if m.status == 'closed' %} (closed){% endif %}</option>{% endfor %}</select>
+    <button class="btn secondary">Show</button>{% if matter_id %}<a class="small" href="/research/saved">Clear</a>{% endif %}
+  </form>
+</div>
+{% if groups %}
+{% for m, rows in groups %}
+<div class="card">
+  <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0"><a href="/matters/{{ m.id }}">{{ m.label }}</a> <span class="muted small">{{ rows|length }} saved</span></h2>
+    <form method="post" action="/research/saved/export" class="inline">{{ csrf() }}<input type="hidden" name="matter_id" value="{{ m.id }}"><button class="btn small secondary" title="Builds a PDF list of these authorities with your notes and files it under Documents, Research">Export as memo</button></form></div>
+  <table>
+    <tr><th>Case</th><th>Court and date</th><th>Notes</th><th></th></tr>
+    {% for a in rows %}
+    <tr>
+      <td><strong>{% if a.source_id %}<a href="/research?q={{ ('cluster_id:' ~ a.source_id)|urlencode }}">{{ a.case_name }}</a>{% else %}{{ a.case_name }}{% endif %}</strong>{% if a.citation %}<div class="small muted">{{ a.citation }}</div>{% endif %}
+        {% if a.url %}<div class="small"><a href="{{ a.url }}" target="_blank" rel="noopener">CourtListener</a></div>{% endif %}
+        {% if a.snippet %}<div class="small muted" style="margin-top:4px">{{ a.snippet[:240] }}{% if a.snippet|length > 240 %}...{% endif %}</div>{% endif %}</td>
+      <td class="small">{{ a.court or '' }}{% if a.decided_on %}<br>{{ a.decided_on|d }}{% endif %}<br><span class="muted">Saved {{ a.created_at|d }}{% if a.saved_by %} by {{ a.saved_by.name }}{% endif %}</span></td>
+      <td><form method="post" action="/research/saved/{{ a.id }}/note">{{ csrf() }}<textarea name="notes" rows="2" style="width:100%;min-width:200px" placeholder="Why this case matters">{{ a.notes or '' }}</textarea><button class="btn small secondary" style="margin-top:4px">Save note</button></form></td>
+      <td><form method="post" action="/research/saved/{{ a.id }}/delete" class="inline" onsubmit="return confirm('Remove this authority from the matter?')">{{ csrf() }}<button class="btn small danger">Delete</button></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endfor %}
+{% else %}
+<div class="card"><div class="empty">Nothing saved{% if matter %} on this matter{% endif %} yet. <a href="/research">Search case law</a> and press Save to matter on a result.</div></div>
+{% endif %}
+{% endblock %}

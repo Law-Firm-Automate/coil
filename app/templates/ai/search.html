@@ -5,7 +5,16 @@
   {% if error %}<p class="small" style="margin:10px 0 0"><span class="badge draft">plain search</span> {{ error }} Showing plain text matches instead.</p>
   {% elif filters %}<p class="small muted" style="margin:10px 0 0">Understood as: {% for k, v in filters.items() if v not in ('', 0, false, none, []) %}<span class="badge new" style="text-transform:none">{{ k.replace('_', ' ') }}: {{ v if v is not iterable or v is string else v|join(', ') }}</span> {% endfor %}</p>{% endif %}
 </div>
-{% if q %}
+{% if answer %}
+<div class="card" style="border-left:4px solid var(--accent, #1f5f8b)">
+  <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">{{ answer.title }}</h2><span class="badge open">answered from your data</span></div>
+  {% if answer.amount is defined %}<div style="font-size:1.8rem;font-weight:700">{{ answer.amount|money }}</div>{% elif answer.number is defined %}<div style="font-size:1.8rem;font-weight:700">{{ answer.number }}</div>{% endif %}
+  <p>{{ answer.answer }}</p>
+  {% if answer.rows %}<table><tr>{% for c in answer.columns %}<th>{{ c }}</th>{% endfor %}</tr>
+  {% for r in answer.rows %}<tr {% if not r.hit %}class="muted"{% endif %}>{% for cell in r.cells %}<td>{% if loop.first and r.href %}<a href="{{ r.href }}">{{ cell }}</a>{% else %}{{ cell }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</table>{% endif %}
+  <p class="small" style="margin-top:8px"><a class="btn small secondary" href="{{ answer.link }}">{{ answer.link_label }}</a> <span class="muted">This kind of question (A/R totals and aging, overdue invoices, unbilled WIP, trust balance, hours per timekeeper against a threshold) is answered directly, with or without AI.</span></p>
+</div>
+{% elif q %}
 {% set any_structured = structured and (structured.values()|map('length')|sum) > 0 %}
 {% if structured is not none %}
   {% for key, rows in structured.items() %}

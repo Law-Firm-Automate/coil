@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% block title %}Follow-up drafts{% endblock %}{% block content %}
 <div class="topbar"><h1>Follow-up drafts</h1>
 <div class="actions" style="margin:0"><a class="btn small secondary" href="/intake/pipeline">Pipeline</a><a class="btn small secondary" href="/intake/sequences">Sequences</a></div></div>
-<p class="small muted">{% if auto %}Auto-send is on, so new sequence steps go out by themselves. Anything below was drafted before that was turned on.{% else %}Sequence steps land here when their day arrives. Nothing is emailed until you press Send. Edit the text first if you like.{% endif %} Run <code>python -m app.cli sequences</code> (daily cron) to produce the next steps.</p>
+<p class="small muted">Sequence steps and AI client update emails saved as drafts wait here. {% if auto %}Auto-send is on, so new sequence steps go out by themselves. Anything below was drafted before that was turned on.{% else %}Sequence steps land here when their day arrives. Nothing is emailed until you press Send. Edit the text first if you like.{% endif %} Run <code>python -m app.cli sequences</code> (daily cron) to produce the next steps.</p>
 {% if rows %}
 {% for m, lead in rows %}
 <form method="post" action="/intake/drafts/{{ m.id }}/send" class="card">{{ csrf() }}
-  <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">{% if lead %}<a href="/intake/{{ lead.id }}">{{ lead.name }}</a>{% else %}Draft{% endif %} <span class="badge draft">draft</span></h2><span class="small muted">created {{ m.created_at|dt }}</span></div>
+  <div class="topbar" style="margin-bottom:6px"><h2 style="margin:0">{% if lead %}<a href="/intake/{{ lead.id }}">{{ lead.name }}</a>{% elif m.matter_id %}<a href="/matters/{{ m.matter_id }}">{{ m.matter.label if m.matter else 'Matter' }}</a> <span class="small muted">client update</span>{% else %}Draft{% endif %} <span class="badge draft">draft</span></h2><span class="small muted">created {{ m.created_at|dt }}</span></div>
   <div class="row">
     <div><label>To</label><input type="email" name="to" value="{{ m.to_addr }}" required></div>
     <div><label>Subject</label><input type="text" name="subject" value="{{ m.subject }}" required></div>

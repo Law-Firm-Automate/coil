@@ -68,6 +68,7 @@ def _fill(m, form):
     if m.trust_replenish_to_cents and m.trust_replenish_to_cents < m.trust_minimum_cents:
         m.trust_replenish_to_cents = m.trust_minimum_cents
     m.ledes_matter_id = (form.get("ledes_matter_id") or "").strip()[:40]
+    m.auto_invoice_monthly = form.get("auto_invoice_monthly") == "1"  # Agent I: monthly invoicing run
     # ---- end Agent A block ----
     keys = form.getlist("cf_key")
     vals = form.getlist("cf_value")

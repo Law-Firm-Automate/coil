@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Citation check{% endblock %}{% block content %}
+<div class="topbar"><h1>Citation check</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/research">Search case law</a><a class="btn small secondary" href="/research/saved">Saved authorities</a></div></div>
+<p class="small">Paste a brief, a memo, or an AI draft, or pick a document on a matter. Every case citation is looked up on CourtListener. A citation that does not resolve may be mistyped, may be too new or too obscure for the database, or may not exist at all, so verify it before filing. {% if not has_token %}This check needs a free CourtListener token under Settings.{% endif %}</p>
+{% include "research/_disclaimer.html" %}
+{% include "research/_notice.html" %}
+<div class="card">
+  <form method="post" action="/research/cite-check">{{ csrf() }}
+    <label>Text to check (up to about 50 pages)</label>
+    <textarea name="text" rows="8" style="width:100%" placeholder="As the court held in Miranda v. Arizona, 384 U.S. 436 (1966)...">{{ text }}</textarea>
+    <div class="row">
+      <div><label>Or pick a document (used when the text box is empty)</label><select name="document_id"><option value="">None</option>{% for d in documents %}<option value="{{ d.id }}" {{ 'selected' if d.id == document_id }}>{{ d.matter.number }}: {{ d.name }}</option>{% endfor %}</select></div>
+      <div><label>Save the result as a note on</label><select name="matter_id"><option value="">Do not save</option>{% for m in matters %}<option value="{{ m.id }}" {{ 'selected' if m.id == matter_id }}>{{ m.label }}{% if m.status == 'closed' %} (closed){% endif %}</option>{% endfor %}</select></div>
+    </div>
+    <div class="actions"><button class="btn">Check citations</button></div>
+  </form>
+</div>
+{% if items is not none %}
+<div class="card">
+  {% set missing = items|rejectattr('found')|list %}
+  <h2>{{ items|length }} citation{{ '' if items|length == 1 else 's' }} found in {{ source_label }}{% if items %}, {{ items|length - missing|length }} resolved, {{ missing|length }} not found{% endif %}</h2>
+  {% if note %}<div class="flash">Saved as a note on <a href="/matters/{{ note.matter_id }}?tab=activity">{{ note.matter.label }}</a>.</div>{% endif %}
+  {% if items %}
+  <table>
+    <tr><th>Citation</th><th>Result</th><th>Matched case</th><th></th></tr>
+    {% for c in items %}
+    <tr>
+      <td><strong>{{ c.citation }}</strong>{% if c.normalized and c.normalized != c.citation %}<div class="small muted">{{ c.normalized }}</div>{% endif %}</td>
+      <td>{% if c.found and c.ambiguous %}<span class="badge pending">{{ c.match_count }} possible matches</span>{% elif c.found %}<span class="badge open">resolved</span>{% else %}<span class="badge unresolved">not found, verify before filing</span>{% endif %}
+        {% if c.error_message and not c.found %}<div class="small muted">{{ c.error_message }}</div>{% endif %}</td>
+      <td>{% if c.case_name %}{{ c.case_name }}{% if c.date_filed %} <span class="muted small">({{ c.date_filed[:4] }})</span>{% endif %}{% if c.citations %}<div class="small muted">{{ c.citations|join('; ') }}</div>{% endif %}{% else %}<span class="muted">No match on CourtListener</span>{% endif %}</td>
+      <td class="small nowrap">{% if c.url %}<a href="{{ c.url }}" target="_blank" rel="noopener">CourtListener</a>{% endif %}{% if c.cluster_id %} <a href="/research?q={{ ('cluster_id:' ~ c.cluster_id)|urlencode }}">Open</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">No case citations were recognised in that text.</div>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% block title %}Personal injury{% endblock %}{% block content %}
+<style>
+.piboard{display:grid;grid-template-columns:repeat(8,minmax(170px,1fr));gap:10px;overflow-x:auto;align-items:start}
+.picol{background:#f3f5f8;border-radius:8px;padding:8px;min-height:140px}
+.picol h3{font-size:.85rem;margin:0 0 8px;display:flex;justify-content:space-between}
+.picard{background:#fff;border:1px solid #dfe3ea;border-radius:6px;padding:8px;margin-bottom:8px;font-size:.82rem}
+.picard .kv{grid-template-columns:auto 1fr;gap:1px 8px;font-size:.78rem;margin-top:4px}
+</style>
+<div class="topbar"><h1>Personal injury</h1>
+  <div class="actions" style="margin:0"><span class="small muted">{{ count }} case{{ '' if count == 1 else 's' }}</span></div></div>
+
+<div class="card">
+  <form method="post" action="/pi/start" class="searchbar">{{ csrf() }}
+    <label style="margin:0">Start PI case on a matter</label>
+    <select name="matter_id" required style="width:auto"><option value="">Choose an open matter</option>{% for m in open_matters %}<option value="{{ m.id }}">{{ m.label }} ({{ m.client.display_name }})</option>{% endfor %}</select>
+    <button class="btn small" {% if not open_matters %}disabled{% endif %}>Start</button>
+    {% if not open_matters %}<span class="small muted">Every open matter already has a PI case.</span>{% endif %}
+  </form>
+</div>
+
+<div class="piboard">
+{% for key, label in stages %}
+<div class="picol">
+  <h3><span>{{ label }}</span><span class="muted">({{ cols[key]|length }})</span></h3>
+  {% for row in cols[key] %}{% set c = row.case %}{% set m = row.matter %}
+  <div class="picard">
+    <a href="/pi/{{ m.id }}"><strong>{{ m.number }}</strong> {{ m.name }}</a>
+    <div class="small muted">{{ m.client.display_name }}</div>
+    <dl class="kv">
+      <dt>Loss</dt><dd>{{ c.date_of_loss|d or 'not set' }}</dd>
+      <dt>Insurer</dt><dd>{{ c.insurer or '' }}</dd>
+      <dt>Limits</dt><dd>{{ c.policy_limits_cents|money if c.policy_limits_cents else '' }}</dd>
+      <dt>Billed</dt><dd>{{ row.billed|money }}</dd>
+      <dt>Liens</dt><dd>{{ row.liens|money }}</dd>
+      <dt>Demand</dt><dd>{{ c.demand_amount_cents|money if c.demand_amount_cents else '' }}</dd>
+      <dt>Offer</dt><dd>{{ c.offer_cents|money if c.offer_cents else '' }}</dd>
+    </dl>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+</div>
+{% if not count %}<div class="empty">No PI cases yet. Start one on a matter above, or open any matter and use its Personal injury button.</div>{% endif %}
+{% endblock %}

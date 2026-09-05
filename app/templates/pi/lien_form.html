@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}{{ 'Add lien' if is_new else l.holder }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ 'Add lien' if is_new else 'Edit lien' }} <span class="small muted">{{ m.label }}</span></h1><a class="btn small secondary" href="/pi/{{ m.id }}#liens">Back to case</a></div>
+<div class="card" style="max-width:820px">
+<form method="post">{{ csrf() }}
+  <div class="row">
+    <div><label>Holder</label><input type="text" name="holder" value="{{ l.holder or '' }}" required placeholder="Blue Cross, Medicare, the ER"></div>
+    <div><label>Type</label><select name="type">{% for t in lien_types %}<option value="{{ t }}" {% if l.type == t %}selected{% endif %}>{{ t.replace('_', ' ') }}</option>{% endfor %}</select></div>
+    <div><label>Status</label><select name="status">{% for s in lien_statuses %}<option value="{{ s }}" {% if l.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="row">
+    <div><label>Original amount</label><input type="text" name="original" value="{{ (l.original_cents / 100)|round(2) if l.original_cents else '' }}" placeholder="12,000.00"></div>
+    <div><label>Reduced amount (blank until negotiated)</label><input type="text" name="reduced" value="{{ (l.reduced_cents / 100)|round(2) if l.reduced_cents is not none else '' }}" placeholder="8,000.00"></div>
+    <div><label>Contact at holder</label><input type="text" name="contact" value="{{ l.contact or '' }}"></div>
+  </div>
+  <label>Notes</label><textarea name="notes" rows="3">{{ l.notes or '' }}</textarea>
+  <p class="small muted">The payable figure is the reduced amount when one is set, otherwise the original. Liens marked paid are left out of the settlement worksheet.</p>
+  <div class="actions"><button class="btn">Save</button><a class="btn secondary" href="/pi/{{ m.id }}#liens">Cancel</a></div>
+</form>
+</div>
+{% endblock %}

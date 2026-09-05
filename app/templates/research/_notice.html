@@ -1,0 +1,8 @@
+{# Calm notice when CourtListener is unavailable, throttled, or wants a token. Expects `api_error` (dict or None). #}
+{% if api_error %}
+<div class="card" style="border-left:4px solid var(--warn)">
+  <h2 style="margin-top:0">{% if api_error.error == 'rate_limited' %}CourtListener is busy{% elif api_error.error == 'auth' %}CourtListener wants a token for this{% elif api_error.error == 'not_found' %}Not found on CourtListener{% else %}CourtListener is not answering{% endif %}</h2>
+  <p>{{ api_error.message }}</p>
+  <p class="small muted">Nothing on this page was changed. {% if current_user().role == 'owner' and api_error.error in ('auth', 'rate_limited') and not has_token %}Paste a token under <a href="/settings">Settings, Research</a>.{% endif %}</p>
+</div>
+{% endif %}
