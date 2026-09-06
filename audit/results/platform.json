@@ -1,0 +1,272 @@
+[
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Contacts: person and company detection, first non-empty email and phone, tags, aliases",
+  "route": "/import",
+  "result": "pass",
+  "checked": "Uploaded a Clio-style contacts CSV (Id, Name, Type, Company, Primary Email/Phone/Address, tags) plus a second file with split Email Address (Work)/(Home) and Phone Number (Work)/(Mobile) columns. Ran preview then commit. Rita Alvarez landed as kind=person with first/last split and tags='vip'; Northwind Freight LLC as kind=company with company_name set; 'Acme Holdings Inc.' with a blank Type was detected as a company from the name; multi-column email/phone took the first non-empty value (priya.home@example.com, 555-9191). A row with no name at all was reported as an error row, not silently dropped. Three ExternalRef rows written.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Matters: linked to clients by the old id, name or email; old numbers kept when free",
+  "route": "/import",
+  "result": "fail",
+  "checked": "Imported two Clio matters linked by Client ID and by Client Name; both resolved, kept their Display Numbers (00012-Alvarez Estate, 00013-Northwind Contract), opened_on parsed from MM/DD/YYYY, status mapped. Then imported a matter whose Display Number collides with a Coil-assigned number (M-1001) for a DIFFERENT client.",
+  "notes": "The 'old numbers kept when free' rule is not enforced. prep_matters (app/blueprints/importer.py:~380) sets `existing = Matter.query.filter(lower(Matter.number)==number.lower()).first()` for ANY matter with the same number, even one Coil created itself and never imported, and then treats the CSV row as an update of it. apply_matters overwrites name, client_id, status, dates and billing on that existing matter. The seeded matter M-1001 'Alvarez Estate Planning' (client Maria Alvarez) was silently renamed 'Zed Injury Claim' and reassigned to a brand-new client Zed Newclient; on the working DB the same collision carried 7 time entries, 1 note and 2 calendar events across to the wrong client and the original matter no longer exists. The guard that was meant to catch this is dead code: `if number and not existing and Matter.query.filter(...).first(): msgs.append('Matter number ... is already taken'); number = ''` can never fire, because when the number is taken `existing` is already truthy from the identical query three lines above. The preview says 'Updates M-1001 Alvarez Estate Plan.' with no warning that the client differs. prep_bills gets this right for invoices (it only treats a number match as the same record when an ExternalRef links it), so the matters path is the outlier.",
+  "severity": "high",
+  "repro": "sh audit/seed_db.sh repro; export DATABASE_URL=<printed>; create_app; login(client). POST /import/contacts/upload source=clio with 'Id,Name,Type,Email\\nC1,Zed Newclient,Person,zed@example.com', then POST /import/preview/<token> do=commit. Then POST /import/matters/upload source=clio with 'Unique ID,Display Number,Description,Client Name,Status,Open Date\\nX1,M-1001,Zed Injury Claim,Zed Newclient,Open,03/01/2026' and commit. Before: Matter.query.filter_by(number='M-1001') is 'Alvarez Estate Plan' / Maria Alvarez. After: same row is 'Zed Injury Claim' / Zed Newclient and Matter.query.filter_by(name='Alvarez Estate Planning').count() == 0. Script: scratchpad/aud/t_repro.py"
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Time and expenses from one activities file; billed rows arrive non-billable and marked",
+  "route": "/import",
+  "result": "pass",
+  "checked": "One Clio activities CSV with TimeEntry and ExpenseEntry rows. The 2.5h TimeEntry on 00012-Alvarez Estate became minutes=150, rate_cents=30000 on the matter created by the earlier matters file (cross-file link resolved by matter number). The ExpenseEntry became a 12500c expense with category 'Filing fee'. The row with Billed=Yes arrived as billable=False with description prefixed '[billed in previous system] Contract review'. Activity Description was folded into the description as 'Drafting: Draft will'.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Bills with balances: one invoice per old bill plus a payment, so A/R matches",
+  "route": "/import",
+  "result": "pass",
+  "checked": "Clio bills CSV with Total/Paid/Balance/State. B100 (875.00 total, 375.00 paid, 500.00 balance) produced one invoice: total_cents 87500, paid_cents 37500, balance_cents 50000, status 'partial', issued 2026-03-10, due 2026-04-09, on the right client and matter, with a single 'Imported balance from Clio bill B100' line and a matching Payment row. B101 (fully paid) came in as total 25000, paid 25000, balance 0, status 'paid'. Numbers checked against expected cents, not eyeballed.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Trust ledger in date order; rows that would go negative are refused and listed; opening balances form",
+  "route": "/import",
+  "result": "pass",
+  "checked": "Clio bank-transaction CSV (Funds In / Funds Out / Cleared). Deposit 1000.00 then a 400.00 disbursement applied; the third row (900.00 out) was refused on both preview and commit with 'Refused: Rita Alvarez would go to ($300.00) in trust on 2026-03-06 (balance $600.00 before this row)'. Final balance 60000c, exactly deposit minus first disbursement. The refused row appeared in the ImportJob error list and downloaded intact from /import/jobs/<id>/failed.csv with an 'Import error' column. Separately, a file listing a 3000.00 disbursement BEFORE the 4000.00 deposit that funds it committed both rows with no error, confirming _ordered_rows sorts trust by date. POST /import/trust/opening recorded a 2500.00 opening balance (type deposit, reference 'opening', cleared) and refused a matter that does not belong to the chosen client.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Tasks and calendar with matter, assignee, done flag, start and end",
+  "route": "/import",
+  "result": "pass",
+  "checked": "Tasks CSV: 'File probate petition' landed on the right matter with due_on 2026-04-01, priority high, kind task; 'Statute of limitations deadline' was classified kind=deadline from the title. Calendar CSV: 'Hearing' on 2026-04-15 09:00 with end 10:00, location 'Courtroom 3', linked to matter id 3 by Display Number. Done flag and assignee resolution paths exercised (unknown assignee is reported and left unassigned).",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Documents by matter folder from a ZIP, filed under Imported",
+  "route": "/import",
+  "result": "pass",
+  "checked": "Uploaded a ZIP with '00012-Alvarez Estate/will-draft.txt', '00012-Alvarez Estate/sub/receipt.txt', 'No Such Matter/orphan.txt' and a blocked '.exe'. Preview matched the folder to the matter and listed the skipped .exe. Commit created 2 Documents with folder 'Imported' and 'Imported/sub' on the right matter, skipped the .exe, and reported 'Folder No Such Matter does not match a matter' as an error row. ExternalRef written per file path so a re-upload skips.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Re-import updates instead of duplicating (Coil remembers the old system's ids)",
+  "route": "/import",
+  "result": "pass",
+  "checked": "Re-uploaded the same contacts file with a changed phone and address. Contact count went 6 -> 6 (no duplicates); the ImportJob reported 0 created / 3 updated and Rita Alvarez's phone became 555-9999 and address '14 Elm St, Austin TX'. Preview labelled every row 'update' before commit. ExternalRef rows keyed on source+entity+external_id drive the match for contacts, matters, activities, bills and trust; activities and trust also fall back to a content hash so a file with no id column still de-duplicates.",
+  "notes": "Caveat, same root cause as the matters row above: for matters the update match also fires on a bare number equality against records Coil created itself, outside any ExternalRef. So 're-import updates' can update something that was never imported.",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Manual column mapping for any CSV, failed rows downloadable for a second pass",
+  "route": "/import",
+  "result": "pass",
+  "checked": "Uploaded a generic CSV with unknown headers (zzq_person, zzq_mail, zzq_tele). Preview auto-mapped nothing and listed all three as unmapped. Posted map_name=zzq_person, map_email=zzq_mail, map_phone=zzq_tele with do=commit; the contact was created as person Dana / Whitfield with phone 555-7777. Required-field enforcement checked: committing without a required mapping flashes 'Map these required fields first'. Failed rows CSV downloaded from /import/jobs/<id>/failed.csv with the original columns plus the error message.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Switching from Clio / MyCase / PracticePanther",
+  "tool": "Export steps guide per source",
+  "route": "/import/guide",
+  "result": "pass",
+  "checked": "GET /import/guide returns 200 (8.4KB) for any signed-in user and covers Clio, MyCase and PracticePanther by name with per-source export steps.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Smokeball",
+  "tool": "Time capture suggestions from the browser extension: tabs become suggested entries with a guessed matter, accept or dismiss",
+  "route": "/time/suggestions",
+  "result": "pass",
+  "checked": "POSTed six segments to /api/v1/capture with a write token. Result {created:3, merged:1, ignored:2, pending:3}: 'M-1001 will draft' guessed the matter from the number in the title and merged the later 7-minute segment into it (18+7=25 min); 'Email from Maria Alvarez about the estate' guessed M-1001 from the client display name; 'Reddit r/lawfirm' got no matter; the 1-minute segment and the unparseable started_at were ignored. /time/suggestions rendered them with the guessed matter. Accepting without a matter was refused and left the row pending; accepting with a matter created a TimeEntry of 30 minutes (25 rounded up to the next 6) at the matter rate, set status=accepted and linked time_entry_id. Dismiss, accept-all and dismiss-all all worked. Another user's suggestion was not listed for the owner, and a paralegal POSTing to dismiss it got 403.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Coil only",
+  "tool": "Priced at cost, no per-seat tiers, no add-ons",
+  "route": "/",
+  "result": "pass",
+  "checked": "Grepped app/ for seat, plan, tier, subscription, licence and max_users gating: nothing outside the feature_map blurb text. Created 10 extra users through /settings/users/new (total 15) with no limit, no upsell and no degraded behaviour. Nothing in the app meters usage or gates a feature behind a paid tier.",
+  "notes": "A pricing claim rather than a code path. What is verifiable is that no seat or tier gate exists, and that is true.",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Coil only",
+  "tool": "Self-hosted with a free install key",
+  "route": "/settings",
+  "result": "pass",
+  "checked": "Ran the first-run flow on an empty DB with requests.post monkeypatched. GET / redirects to /login which redirects to /setup; the form shows the install_key field. A good key POSTs {key, email, firm, base_url, version} to COIL_KEY_VERIFY_URL, uppercases the key, stores it on Firm.install_key, creates the owner, signs them in and redirects to /settings. A rejected key ('Key not found or already used.') and a network failure ('Could not reach lawfirmautomate.com...') both refuse and leave User.query.count()==0, so a failed check cannot half-create a firm. A blank key is refused with the free-key message. With COIL_SKIP_INSTALL_KEY=1 the field disappears and zero network calls are made. Self-host artifacts present: Dockerfile, docker-compose.selfhost.yml, install.sh.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Coil only",
+  "tool": "REST API with tokens and outgoing webhooks",
+  "route": "/settings/api",
+  "result": "pass",
+  "checked": "Minted read and read+write tokens through /settings/api, exercised every v1 endpoint, and registered a webhook. Full detail in the two Platform rows below (REST API v1 endpoints and token scopes; Outgoing webhooks with signature verification). Both halves work end to end.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Coil only",
+  "tool": "Spanish client-facing pages and emails",
+  "route": "/settings",
+  "result": "partial",
+  "checked": "app/i18n.py holds 157 keys in both en and es with no key missing on either side. Set Contact.language='es' and fetched the public invoice /p/<token> unauthenticated: real Spanish (Factura, Vencimiento, Saldo, Pagar) and no English strings. Set it back to 'en' and the same page came back in English. Cleared the contact language and set Firm.default_language='es': the page fell back to Spanish, and back to English when the firm default was 'en'. So lang_for(contact) and the firm default both work.",
+  "notes": "The rendered HTML is Spanish but the document still declares <html lang=\"en\"> (hardcoded in app/templates/public.html line 2 and base.html line 2). Screen readers and translation tools will read Spanish text as English. Cosmetic, but it is on every client-facing page.",
+  "severity": "low",
+  "repro": "Set Contact.language='es' for the client on an invoice, then GET /p/<invoice.public_token> unauthenticated. Body says 'Factura'/'Saldo'; the html tag says lang=\"en\"."
+ },
+ {
+  "group": "Coil only",
+  "tool": "Installable web app (PWA)",
+  "route": "/",
+  "result": "pass",
+  "checked": "/manifest.webmanifest serves application/manifest+json unauthenticated with name, short_name, start_url '/', scope '/', display 'standalone', theme and background colours and 4 icons, every one of which resolves 200 (192, 512, maskable 512, SVG). /sw.js serves text/javascript with Service-Worker-Allowed: / and Cache-Control: no-cache. /offline and /static/offline.html both serve. base.html links the manifest, sets theme-color and apple-touch-icon, and registers the service worker on load. All PWA files are reachable before login, which is what an install prompt needs.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Clio Manage",
+  "tool": "Roles and permissions, offices, audit log",
+  "route": "/settings",
+  "result": "partial",
+  "checked": "Permissions: built one client per role (owner, attorney, paralegal, billing, readonly) and walked 25 staff routes plus 15 POST targets. The paralegal is correctly locked out of trust (GET and POST /trust/new both 403), settings, invoices, payments, reports and exports, and could not rename the firm. Every one of the 15 readonly POSTs (tasks, contacts, time, invoices, settings, trust, payments, messages, calendar, documents, signatures, conflicts, intake, users) returned 403 with no state change. Offices: created two offices, toggled the default (exactly one stays default), assigned a user and a matter to one, confirmed delete is refused while referenced and allowed once free, and confirmed _letterhead(firm, invoice) swaps in the matter office's address and phone for the invoice PDF header. Audit log: performed three actions as the attorney (create matter, create contact, close matter) and confirmed one row each with the right user_id, action, entity, entity_id and detail ('M-1005 AUDIT LOG Matter'); filters by user, action, entity, entity_id, free text on detail and date range each returned exactly the expected rows and 0 for a no-match filter.",
+  "notes": "Offices and the audit log are clean. Permissions are not. The readonly role holds settings_view (permissions.ROLE_PERMS gives it '<area>_view' for every area) while /settings, /settings/api, /settings/integrations, /settings/webhooks and /settings/rules carry only @login_required, so the LEAST privileged role reads owner-only pages that attorney, paralegal and billing are all refused with 403. On /settings/webhooks that includes the outgoing webhook signing secret in plain text, which is enough to forge signed payloads to whatever system the firm has wired up; /settings shows the firm profile, rates, bank names and numbering. The same inversion lets readonly download /exports/trust.csv (the whole trust ledger) and /exports/contacts.csv while attorney and paralegal get 403. Separately, several data-bearing prefixes are absent from permissions.PREFIX_PERMS and so fall through to 'any signed-in user': /statements/<client_id> shows a client's full trust running balance to a paralegal who is denied /trust; /money/plans, /voice (call transcripts), /audit, /pi, /criminal and /discovery are open to every role. ROLE_DESCRIPTIONS says readonly 'can open every page an attorney can' - it opens strictly more.",
+  "severity": "high",
+  "repro": "Create a user with role='readonly'. Log in as them and GET /settings/webhooks: 200, and the page renders <code>{{ h.secret }}</code> for every webhook (app/templates/settings/webhooks.html:23). GET /exports/trust.csv: 200. Log in as an attorney and GET the same two URLs: 403 both times. Script: scratchpad/aud/t_perm.py, t_perm2.py, t_perm3.py, t_perm4.py"
+ },
+ {
+  "group": "Clio Manage",
+  "tool": "Chrome time-tracking extension",
+  "route": "/settings/api",
+  "result": "partial",
+  "checked": "The extension itself cannot be loaded here (it needs a real Chrome to run chrome.storage, chrome.tabs, chrome.idle and chrome.alarms), so this is a static read of extension/manifest.json, popup.js, background.js and README.md checked against the live API. Every endpoint the JS calls exists and the field names line up: GET /api/v1/me (uses me.user.name and me.timer), GET /api/v1/matters?q= (m.id, m.number, m.name, m.client_name), POST /api/v1/timer/start and /timer/stop, POST /api/v1/time (entry.hours, entry.matter_number), GET /api/v1/capture/pending (p.pending, p.minutes) and POST /api/v1/capture with {segments:[{started_at, minutes, title, url, source}]}. I exercised all of them directly against the server with a Bearer token and they return exactly those shapes. background.js drops the batch on 400/401/403 and keeps it on network errors and 5xx, which matches how the server answers. Manifest V3 with storage/tabs/idle/alarms permissions and a service worker; no build step.",
+  "notes": "Blocker found without a browser: README.md step 1 tells the user to 'open Settings > API tokens and create a token with the read and write scope', but /settings/api is only @login_required and permissions.enforce maps /settings to the settings area, so attorney, paralegal and billing all get 403 there. Only the owner can mint a token (readonly can view the page but its POST is refused). The extension is per-user - it runs the signed-in user's timer and files capture suggestions to that user - so every non-owner has to ask the owner to create a token under the OWNER'S account, which would then log their time and suggestions against the owner. Not verifiable here: the actual tab-watching, idle detection, alarm-driven flush and popup UI.",
+  "severity": "medium",
+  "repro": "Create a user with role='attorney'. Log in as them and GET /settings/api -> 403 (friendly permission page). POST /settings/api with name and scopes -> 403. Same URLs as the owner -> 200 and a token is issued."
+ },
+ {
+  "group": "PracticePanther",
+  "tool": "E-signature on any document",
+  "route": "/signatures",
+  "result": "pass",
+  "checked": "Uploaded a .txt to a matter, then /signatures/new?document_id= -> create -> send -> public sign -> certificate. On send, document_hash was set to the sha256 of the file bytes (verified byte for byte against hashlib.sha256(content).hexdigest()), status went sent, and the signer got a 'Please sign' email with the /sign/doc/<token> link. The public page rendered unauthenticated, /sign/doc/<token>/file returned the exact original bytes, and the GET logged a 'viewed' event moving status to viewed. Posting without the agree checkbox returned 400 and left the status at viewed. A proper POST set signer_name, signer_email, signer_ip, signer_ua, signed_at and signature_hash, which I recomputed as sha256(document_hash + name + ip + iso timestamp) and matched exactly. A certificate PDF was built to PDF_DIR and is downloadable from both /sign/doc/<token>/certificate and the staff /signatures/<id>/certificate; the signed copies email fires to the signer and the firm with the certificate and the original file attached. A second sign attempt was refused and the original signer stuck. Decline set status=declined and emailed the firm; void worked; /track/docsign/<token>.gif returns image/gif; a bad token 404s; all four status tabs render. The documents list carries a 'Request signature' link per document.",
+  "notes": "This feature is listed in the PracticePanther group in feature_map.py (the Clio Manage brief mentions it too); audited once here.",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "PracticePanther",
+  "tool": "Custom dashboard",
+  "route": "/dashboard/customize",
+  "result": "pass",
+  "checked": "Saved the subset [trust, tasks, open_matters, portal_messages, unsigned_documents] with order numbers 1-5. User.dashboard_json stored exactly that list in that order, and GET / rendered data-card attributes in exactly that sequence and nothing else (no unselected card leaked onto the page). Re-saving in reverse rendered in reverse. Non-contiguous order numbers (5, 20, 50) sorted correctly. Saving with nothing ticked was refused and left the previous selection untouched. Reset cleared dashboard_json and the page came back as DEFAULT_CARDS in the documented order. Corrupt JSON and a list containing unknown and duplicated keys both degrade safely (fall back to defaults / drop the bad keys) instead of erroring. The selection is per user: the attorney's choice did not touch the owner's.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Platform",
+  "tool": "Startup schema migration (app/migrate.py)",
+  "route": "(startup)",
+  "result": "pass",
+  "checked": "Seeded a fresh DB, then dropped nine columns of five different shapes with raw SQLite DDL: firm.interest_apr_bps (Integer default 0), firm.invoice_accent (String default '#1f5f8b'), firm.surcharge_enabled (Boolean default False), firm.invoice_columns_json (Text default a JSON literal), matters.currency (String default ''), matters.stage_changed_at (DateTime, no default), users.cost_rate_cents (Integer default 0), invoices.tax_cents (Integer default 0) and invoices.first_viewed_at (DateTime, no default). create_app() logged 'schema: added 9 missing column(s)' and every one came back with the right SQL default attached; existing rows were backfilled correctly (firm reads 0, '#1f5f8b', 0 and the full JSON column list; matters read '' and NULL). A second create_app() returned add_missing_columns() == [] - a true no-op - and /, /matters, /invoices and /settings all served 200 afterwards.",
+  "notes": "Two deliberate limits worth knowing, both documented in the module docstring: columns are only ever added, never dropped or retyped; and _sql_default returns None for callable defaults, so a newly added column whose model default is a function (created_at, public_token) comes back NULL on pre-existing rows rather than populated. Neither bit anything in this run.",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Platform",
+  "tool": "First-run setup and install-key verification (app/blueprints/auth.py)",
+  "route": "/setup",
+  "result": "pass",
+  "checked": "Covered in the 'Self-hosted with a free install key' row: empty DB routes / -> /login -> /setup; short password, missing key, rejected key and network failure all refuse with a specific message and create no user; a good key stores the uppercased key on the firm, creates the owner with derived initials and a working password hash, signs them in and redirects to /settings; /setup afterwards redirects to /login for both GET and POST and cannot create a second owner. COIL_SKIP_INSTALL_KEY hides the field and makes zero outbound calls. requests.post was monkeypatched throughout, so nothing left the machine.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Platform",
+  "tool": "PWA manifest and service worker",
+  "route": "/manifest.webmanifest, /sw.js",
+  "result": "pass",
+  "checked": "Both are served from the site root by app/blueprints/emailin.py with the right MIME types and headers (application/manifest+json; text/javascript plus Service-Worker-Allowed: / and no-cache) and both work unauthenticated. sw.js caches only the shell (app.css, app.js, offline.html, two icons, the manifest), explicitly skips non-GET, cross-origin, /api/ and /webhooks/, serves pages live with /static/offline.html as the navigate fallback, and cleans old cache versions on activate. So no per-user page is ever cached, which is the thing that would leak one user's data to another on a shared machine.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Platform",
+  "tool": "CLI commands (python -m app.cli)",
+  "route": "(cli)",
+  "result": "pass",
+  "checked": "Ran every subcommand twice against my own DB with requests patched and SMTP unset: agenda, reminders, interest, monthly_invoicing, sequences, emailin, webhooks, case_audit, payment_plans, voice_reminders. All exit 0 and all are idempotent. agenda sent 1 email on the first run and 0 on the second (AuditLog day guard). case_audit reported 2 new findings then 0 new / 2 still open. monthly_invoicing correctly skipped with 'monthly billing day is 0 (off)'; after turning auto_invoice_monthly on for a matter with unbilled time, --force built 1 invoice and the second --force built 0 and reported 'already invoiced for 2026-09'. webhooks respected the 1-minute backoff (0 retried), then delivered the pending failure once its last_at was aged past the window. voice_reminders reported 'voice reminders are off', then after enabling found 1 due reminder and, with Twilio mocked, placed it once and skipped it on the second run. emailin, sequences, interest, reminders and payment_plans all degrade cleanly with nothing configured and say why.",
+  "notes": "There is no `dockets` subcommand and no dockets blueprint (create_app logs 'blueprint dockets not present yet'); `python -m app.cli dockets` prints the usage line and exits 2, which is the right behaviour for an unknown command. Not counted as a failure since the feature map does not claim it.",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Platform",
+  "tool": "REST API v1 endpoints and token scopes",
+  "route": "/api/v1",
+  "result": "pass",
+  "checked": "Minted a read token and a read+write token through /settings/api. Auth: no Authorization header 401, unknown token 401, revoked token 401 (revoked through the UI and re-checked). Scope: POST /api/v1/time with the read token 403 'This token does not have the write scope'; with the write token 201 and the TimeEntry landed in the DB with the right minutes, matter and rate. Rate limit: with API_RATE_LIMIT=5, calls 1-5 returned 200 and 6-8 returned 429 with Retry-After: 60, and the counter is per token. Endpoints each returned what they claim: /me (user, token scopes, firm, running timer), /matters and /matters?q= (search across number, name, case number and client), /matters/<id> (adds unbilled_time_cents and unbilled_expense_cents), 404 on a missing id, /contacts?q=, /time with matter/user/date filters plus total_minutes, /invoices and ?status=open, /tasks and ?due=week, /capture/pending, and an unknown path returns a JSON 404 rather than HTML. Timer: start 201, start again 409, stop 201 creating an entry rounded up to 6 minutes, stop again 404. POST /leads is idempotent on external_id (second call returned the same lead id with created:false and 200 instead of 201). POST /capture merges, ignores and creates as documented. The browser session is ignored throughout; only the header counts.",
+  "notes": "",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Platform",
+  "tool": "Outgoing webhooks with signature verification",
+  "route": "/settings/webhooks",
+  "result": "pass",
+  "checked": "Registered a webhook for five events with a known secret, then triggered matter.created (POST /matters/new) and task.completed (POST /tasks/<id>/done) through the real UI with requests.post captured. Both fired exactly once, to the registered URL, carrying X-Coil-Event, X-Coil-Delivery (the WebhookDelivery id) and X-Coil-Signature. I recomputed hmac.new(secret, raw_body, sha256) myself and both signatures matched exactly; the body is the sorted-key JSON envelope {event, created_at, data}. Deliveries were stored with status ok / attempts 1 / response_code 200. I then made the transport return HTTP 500: the delivery was recorded status=failed, attempts=1, response_code=500, last_error='HTTP 500'. `python -m app.cli webhooks` correctly declined to retry inside the 1-minute backoff (0 retried), and after aging last_at by 10 minutes it retried once and reported '1 retried, 1 delivered, 0 still failing', leaving the row ok at attempts=2. Events are queued on the session and only flushed after_commit, with an after_rollback handler that drops them, so a rolled-back change cannot fire a webhook.",
+  "notes": "Delivery uses its own short-lived Session so it never joins the caller's transaction; MAX_ATTEMPTS 5 with 1/5/30/120/720-minute backoff.",
+  "severity": "",
+  "repro": ""
+ },
+ {
+  "group": "Platform",
+  "tool": "Voice line endpoints (app/blueprints/voice.py)",
+  "route": "/api/v1/voice",
+  "result": "pass",
+  "checked": "With Firm.voice_enabled off, all seven endpoints (config, lookup, verify, pin, note, time, calls) return 403 {ok:false, reason:'voice_disabled'} with the settings pointer, and an unauthenticated call is 401 before that. With voice on: /config returns the firm identity, greeting name, practice areas, approved lines, callback tiers and all 8 endpoint descriptions. /lookup returns only {found: true|false} and never a name, matter or balance, for both a known and an unknown number, and always sets verification_required. /verify refuses with client_status_off when Firm.voice_client_status is off; with it on, a wrong name against a known number returns name_mismatch and an unknown number returns no_match, both with 'offer a callback' and no client data; the right name returned the contact and 3 open matters with stage, balance, next event, next task and a last_update line that says WHAT changed ('a note was added by ...') and never the note body. PIN: five wrong PINs counted down attempts_left 4,3,2,1,0 and the sixth returned 423 locked, after which even the CORRECT PIN is refused with 423 - the lock holds. A good PIN opened a 30-minute session keyed to the call_id. /note and /time both return 403 pin_required without a verified PIN and created nothing in the DB; with a verified PIN the note was stored as '[by phone] ...' under the right user and matter, and 25 minutes became a 30-minute TimeEntry at the matter rate. A note posted with a different call_id was refused (sessions do not leak between calls) and a mismatched user_id on a verified call returned user_mismatch. Matter hints: no match 404, ambiguous 409 with the candidate list, zero minutes and empty description both 400. /calls stored kind, from, to, duration, outcome and a flattened transcript and shows on /voice and /voice/<id>. A read-scope token is refused on every write endpoint.",
+  "notes": "Twilio itself was mocked; the actual outbound call is the only part needing a live third party, and place_call degrades to a [VOICE-DEV] log line when Twilio is unset. Note that /voice (the call log with transcripts) is not in permissions.PREFIX_PERMS, so every role including readonly and paralegal can read it - see the permissions finding above.",
+  "severity": "",
+  "repro": ""
+ }
+]

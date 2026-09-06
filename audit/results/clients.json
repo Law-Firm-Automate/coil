@@ -1,0 +1,312 @@
+[
+  {
+    "group": "Clio Manage",
+    "tool": "Contacts and matters with custom fields",
+    "route": "/contacts, /matters",
+    "result": "pass",
+    "checked": "Created a contact with three cf_key/cf_value rows (one blank key), saw the blank key dropped and the two real pairs stored in custom_fields_json; confirmed they render on /contacts/<id> and come back pre-filled on /contacts/<id>/edit; re-posted with one key changed, one dropped and one added and confirmed the stored dict matched exactly. Repeated on /matters/new: two custom fields stored on the matter and shown on /matters/<id>.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Conflict check across names, files and messages",
+    "route": "/conflicts",
+    "result": "pass",
+    "checked": "Put the same name inside an outbound SMS body (/messages/send), inside an uploaded .txt (/documents/upload, extracted_text populated), inside a matter Note and as a MatterParty. POST /conflicts/run with that one name returned four hits at score 100 with correct source labels (message, document 'file contents', note, party 'witness') and correct URLs; outcome stored as unresolved. A misspelled variant (Krzyzewsky) still fuzzy-matched the party at 94. POST /conflicts/<id>/resolve with outcome=waived persisted outcome and notes and showed on /conflicts history.",
+    "notes": "By design (_score) fuzzy matching is skipped for text longer than 200 characters, so a misspelled name inside a long message or document body will not hit; only an exact substring will. Documented in the code, worth knowing before relying on it.",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Tasks, deadlines, limitations dates",
+    "route": "/tasks",
+    "result": "pass",
+    "checked": "Created five tasks (overdue, today, this week, +200 days, no date) across all three kinds and priorities; /tasks bucketed each into Overdue / Today / This week / Later in that order. Set matter.sol_date to +60 days and confirmed the limitations section listed the matter with its sol_basis, then set it to +400 days and confirmed it dropped out of the 120-day window. Filters by kind, assignee_id and priority each narrowed correctly. Toggled done (done_at set), toggled back (cleared), edited title/kind/priority/due date, deleted. next=//evil.test was rejected and redirected to /tasks.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Calendar with recurrence, per-user calendars, ICS feeds",
+    "route": "/calendar",
+    "result": "pass",
+    "checked": "Created a weekly event starting Mon 2026-10-05 with recurrence_until 2026-10-26. Parsed the October month grid cell by cell: the event appears on days 5, 12, 19 and 26 and nowhere else; the November grid shows zero occurrences in the grid (only the Upcoming sidebar). Created a private event for user 1, a private event for user 2 and a firm-wide event: ?user=mine showed user 1's plus firm-wide and not user 2's; ?user=<u2> showed user 2's plus firm-wide and not user 1's; ?user=all showed both. Firm feed secret equals sha256(SECRET_KEY+'ics')[:24] as the contract states. /calendar/feed/u/1/<secret>.ics contains user 1's private event and the firm-wide one but not user 2's; the reverse for user 2. Wrong secret and a swapped per-user secret both 404. The ICS body is a well-formed VCALENDAR, every line is 75 octets or fewer, and the recurring event carries RRULE:FREQ=WEEKLY;UNTIL=20261026T235959Z. Both subscribe URLs are printed on /calendar.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Court rules calendaring (generic starter sets)",
+    "route": "/settings/rules",
+    "result": "pass",
+    "checked": "Two starter sets seed on first view (FRCP 6 rules, TRCP 4 rules). Loaded 2026 US federal holidays (11 rows, observed dates correct). Checked compute_deadline against hand-worked answers: 21 calendar days after 2026-10-02 = 2026-10-23; a result landing on Sat 2026-10-24 rolled to Mon 2026-10-26; TRCP nextmonday from 2026-10-05 = 2026-10-26 and, when it lands on a Monday, moves to the following Monday (2026-11-02); 5 court days from 2026-11-23 skipped the weekend and Thanksgiving to 2026-12-01; direction=before subtracted correctly. Applied the TRCP set with trigger 'Service of citation' on 2026-10-05: one deadline task at 2026-10-26 carrying rule_id, trigger_date, rule_trigger and the generic-rule disclaimer in notes. Re-applying the same trigger date added nothing; a different trigger date added a second task. The task shows in the rule-tasks section of /tasks.",
+    "notes": "Scope is genuinely limited, matching the 'partial' status in feature_map: two hand-written generic sets, no jurisdiction-specific rule libraries, and nothing fires automatically from matter events. Every generated task carries the 'check the current rule text' disclaimer.",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Client portal with magic-link login",
+    "route": "/portal/login",
+    "result": "pass",
+    "checked": "POSTed a mixed-case email to /portal/login, read the PortalToken from the DB (30-minute expiry), authenticated at /portal/auth/<token> and landed on /portal. An unknown email produced the same neutral message and no token row. Token reuse returns 410; an expired token returns 410. The signed-in client sees only their own matter (M-1001) and neither the other client's matter nor their name. /portal/invoices/<other client's invoice id> returns 404. /portal/upload against another client's matter created no Document. /portal/documents/<id>/download for a document shared on another client's matter returns 404. Rate limit held at 3 tokens per 15 minutes. Anonymous /portal, /portal/messages and the download route all redirect to login; logout clears the session.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Secure client messaging in the portal",
+    "route": "/messages",
+    "result": "pass",
+    "checked": "Client posted a portal message against their own matter: stored channel=portal direction=in read_at NULL, and the responsible attorney got a 'New portal message from ...' email. A client post naming another client's matter_id fell back to the general thread rather than attaching. Staff /messages showed the unread portal badge; opening /messages/<contact_id> displayed the message with a portal badge and set read_at. Staff replied via /messages/portal-send: stored channel=portal direction=out with user_id, and the client notice email said a message is waiting without including the body. The client saw the reply at /portal/messages and read_at was set. A second client's /portal/messages showed neither side of the thread.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Matter templates with task workflows",
+    "route": "/settings/templates",
+    "result": "pass",
+    "checked": "Two sample templates seed on first view of /settings/templates. Created a matter from the Estate plan template with opened_on 2026-09-01 and a responsible attorney: both milestones landed with the right amounts and offsets (Retainer $1,250 on 2026-09-01, Balance $1,250 on 2026-10-16), all four tasks landed at +1/+14/+28/+45 days with the right kinds and priorities and assigned to the responsible attorney, and the three custom field defaults were merged. Created a second matter from the PI template and confirmed sol_date = opened_on + 2.0 years (2028-09-01) with the template's sol_basis. Then set one custom field to a real value and the SOL date to 2030-01-01 and POSTed /matters/<id>/apply-template again: milestone and task counts stayed the same, the custom field value was preserved, and the SOL date was not overwritten. Matter detail names the template used.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Grow",
+    "tool": "Public intake form and lead list",
+    "route": "/intake",
+    "result": "pass",
+    "checked": "GET /intake/form renders with the honeypot field. POST /intake/submit stored the lead with matter_type, adverse_party, source and a computed score, and emailed the firm inbox with a link to the lead. A submit with the honeypot filled stored nothing and still returned a thank-you. The rate limit cut in after 5 posts per IP per 10 minutes (429, no rows stored). /intake lists leads with status tabs and per-status counts; /intake/embed produces a working iframe snippet pointing at /intake/form?source=website.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Grow",
+    "tool": "Intake to signed engagement letter in one step",
+    "route": "/intake",
+    "result": "pass",
+    "checked": "POSTed /intake/<id>/convert with contact_mode=new, flat fee $3,500, split_milestones=1, an adverse party, SOL date and send_engagement=1. One submit produced: a new Contact marked is_client, matter M-1003 with the right billing type, flat fee, practice area and SOL date, two FlatFeeMilestones of $1,750 each, a MatterParty for the adverse party, a ConflictCheck linked to both the matter and the contact, and an Engagement in status=sent with the sign link emailed to the client. The lead was set status=converted stage=won with contact_id, matter_id and conflict_check_id filled in. A second convert on the same lead was refused and created no second matter. Following the emailed link, the letter signed cleanly end to end.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Grow",
+    "tool": "Engagement letters with open and signature tracking",
+    "route": "/engagements",
+    "result": "pass",
+    "checked": "Built a letter from a template, saved it as a draft, sent it (status=sent, sent_to set, 'sent' event). GET /track/engagement/<token>.gif returned an image/gif with no-store headers and logged a 'viewed' event, set first_viewed_at and moved status to viewed; a page view inside the 60-second dedupe window did not double-count. POSTed the sign form: status=signed with signer_name, signer_ip, signer_ua and signed_at recorded, document_hash = sha256(body_html) and signature_hash = sha256(doc_hash + name + ip + iso ts) verified by recomputation, a signed PDF written to PDF_DIR, and copies emailed to client and firm. A second sign POST on the signed letter changed nothing. /engagements/<id>/pdf served the signed PDF. Remind added a 'reminder' event; void moved an unsigned letter to void and was refused on a signed one.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Grow",
+    "tool": "Lead pipeline (kanban) and follow-up sequences",
+    "route": "/intake/pipeline",
+    "result": "pass",
+    "checked": "Moved a lead through stages via POST /intake/<id>/stage (JSON responses for the drag handler), and confirmed the status field tracked (contacted, lost->declined with lost_reason stored, won locked for converted leads). /intake/<id>/fields stored value_cents and next_follow_up_on and the pipeline shows per-column value totals. Started a sequence on a lead backdated 10 days and ran python -m app.cli sequences: three steps became draft Messages with merge fields rendered; a second run created nothing (provider_id key lead-seq:<ls>:<step>). Sending a draft from /intake/drafts applied the edited subject, body and recipient and marked it sent. With Firm.sequences_auto_send on, a fresh lead's three steps were emailed instead. Moving a lead to lost stopped its active sequence on the next run.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Scheduled monthly invoicing per matter (python -m app.cli monthly_invoicing)",
+    "route": "/invoices/bulk",
+    "result": "pass",
+    "checked": "Set Matter.auto_invoice_monthly and added an hour of unbilled time. Ran python -m app.cli monthly_invoicing --force: one draft invoice built (INV-1002, $362.45 = $350.00 time + $12.45 expense) with the correct lines, and the owner summary email listed it as a draft. A second --force run built nothing and reported 'already invoiced for 2026-09', with the invoice count unchanged. With monthly_billing_day at 0 and no --force the run declines with a plain reason.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Draft client update email from notes, work, tasks and dates",
+    "route": "/matters",
+    "result": "partial",
+    "checked": "With app.llm.complete_json monkeypatched, POST /ai/matter/<id>/update-email returned the model's subject and body on the page and sending it emailed the client and stored a Message (channel=email, direction=out, provider_id client-update:...). With complete_json raising LLMUnavailable, the page still rendered, showed a calm notice naming the reason, and fell back to the deterministic template, which correctly assembled recent work, completed tasks, upcoming deadlines and calendar events with real dates and left out fees and invoices. Save-as-draft routed to /intake/drafts.",
+    "notes": "The non-AI template fallback copies every matter Note verbatim into the client-facing draft, and the app's own AI matter summary feature writes those notes without the [internal] prefix that update_facts() uses to exclude them. So attorney work product saved by /ai/matter/<id>/summary/save, including any fee or hours language in its Open items, lands in the client draft. update_facts' docstring says fees are deliberately left out, and the AI prompt says the same; the template path does not honour that when the note itself carries them. It is a draft a human sends, so the exposure is bounded, but the two paths disagree.",
+    "severity": "low",
+    "repro": "1. POST /ai/matter/<id>/summary with app.llm.complete_json returning {'summary': 'Client is elderly and may lack capacity; get a doctor letter before signing.', 'open_items': ['Bill 2 unbilled hours', 'Chase the unpaid invoice']}. 2. POST /ai/matter/<id>/summary/save with that summary and those open items (it writes a plain Note, no [internal] prefix). 3. Make app.llm.complete_json raise LLMUnavailable. 4. POST /ai/matter/<id>/update-email. The rendered <textarea name=\"body\"> contains, under 'Since August 6, 2026, we have:', the lines 'AI summary (Sep 5, 2026): Client is elderly and may lack capacity; get a doctor letter before signing.' and 'Open items: - Bill 2 unbilled hours - Chase the unpaid invoice'."
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "A/R and hours questions answered from your data without the model",
+    "route": "/ai/search",
+    "result": "pass",
+    "checked": "With app.llm.complete_json raising LLMUnavailable throughout (so no model path could run), six questions were answered straight from the database and each figure was checked against the seeded rows: 'AR aged over 90 days' -> $700.00 across 1 invoice (one sent invoice, balance 70000 cents, due 100 days ago); 'AR total' -> $700.00 outstanding, $700.00 past due; 'how many overdue invoices' -> 1 totalling $700.00; 'unbilled WIP' -> $12.45 ($0.00 time, $12.45 expenses, matching the single uninvoiced expense); 'how much do we hold in trust' -> $5,000.00 across 1 client; 'which timekeeper has less than 150 billable hours this month' -> 1 timekeeper, Demo Owner at 2.00 h (90 + 30 minutes logged this month). Each answer carried the right drill-down link and row table.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Pull dates from a document into tasks and calendar",
+    "route": "/documents",
+    "result": "pass",
+    "checked": "Uploaded a scheduling-order .txt (extracted_text populated). With complete_json monkeypatched to return three real dates plus one unparseable one, POST /ai/document/<id>/dates listed the three in date order and silently dropped the junk row. POSTing the create form made three tasks on the matter with the right dates, kinds (deadline / court_date) and high priority, assigned to the responsible attorney and annotated with the source document. Re-posting the identical form created nothing (dedupe on matter + title + due date). With complete_json raising LLMUnavailable the page rendered with the reason shown and no tasks created; with an empty extracted_text it explains that scanned images will not work.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Matter summary",
+    "route": "/matters",
+    "result": "pass",
+    "checked": "With complete_json monkeypatched, POST /ai/matter/<id>/summary rendered the summary and the open-items list; POST /ai/matter/<id>/summary/save wrote a Note on the matter with the summary and a bulleted open-items block. With complete_json raising LLMUnavailable the page rendered with the reason shown and nothing saved. With the model returning a wrong-shaped object the page showed 'The AI answered in an unexpected format. Nothing was changed.' rather than erroring.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Invoice narrative cleanup",
+    "route": "/invoices",
+    "result": "pass",
+    "checked": "Built a draft invoice from two time entries. With complete_json monkeypatched to rewrite each line by id, POST /ai/invoice/<id>/polish showed the rewritten text with a per-line apply field. POST /ai/invoice/<id>/polish/apply changed both descriptions and left amounts (52500 and 17500 cents) and the total (70000) untouched, and cleared the cached pdf_path. With complete_json raising LLMUnavailable the page rendered with the reason and no lines changed. Apply is refused on a non-draft invoice and on a split-group share.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Natural-language search",
+    "route": "/ai/search",
+    "result": "pass",
+    "checked": "With complete_json monkeypatched to return a filter object, /ai/search?q=... ran the structured search, showed the parsed filters and returned the matching matter. With complete_json raising LLMUnavailable the page still rendered, showed the reason, and the plain keyword fallback still found the same matter. Aggregate questions short-circuit before any model call.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "HubSpot",
+    "tool": "Pipeline stages with drag and drop",
+    "route": "/intake/pipeline",
+    "result": "pass",
+    "checked": "/intake/pipeline renders the six stage columns with draggable cards and dragover/drop handlers posting to /intake/<id>/stage. Moving a lead by that endpoint (with X-Requested-With: fetch) returned {ok, stage, status} JSON and persisted stage plus the derived status; an unknown stage returned 400 JSON and changed nothing; a converted lead was refused any stage other than Won; moving to Lost stored lost_reason and set status=declined. Column value totals come from IntakeLead.value_cents, which /intake/<id>/fields sets correctly.",
+    "notes": "The drag handler itself is vanilla JS in the template and was verified by reading the markup and exercising the endpoint it posts to, not by driving a browser.",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "HubSpot",
+    "tool": "Follow-up sequences (drafts unless the firm turns on sending)",
+    "route": "/intake/sequences",
+    "result": "pass",
+    "checked": "The sample 3-touch sequence (days 0, 3, 7) seeds on first view. Started it on a lead backdated 10 days and ran python -m app.cli sequences with Firm.sequences_auto_send off: 0 sent, 3 drafted, each a Message status=draft with merge fields rendered ('Hi Priya', firm name, matter type). A second run created nothing. Editing and sending a draft from /intake/drafts applied the edited subject, body and recipient and emailed it. Turning Firm.sequences_auto_send on (via /settings) and starting the sequence on a second lead produced 3 sent instead of 3 drafted. The sequence stops itself when the lead reaches won or lost.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "PracticePanther",
+    "tool": "Two-way texting attached to the matter",
+    "route": "/messages",
+    "result": "pass",
+    "checked": "POST /messages/send with contact_id and matter_id stored an outbound Message (channel=sms, matter_id set, to_addr from the contact) and flashed that Twilio is not configured rather than losing the message. POST /webhooks/twilio (CSRF-exempt) with a differently formatted From number matched the contact on the last 10 digits and stored direction=in status=received, replying with empty TwiML. Re-posting the same MessageSid created no duplicate. An unknown number stored with contact_id NULL and appeared in the unmatched section of /messages. The thread page showed both directions in order with the matter number attached.",
+    "notes": "Actual carrier delivery needs live Twilio credentials; everything up to the send_sms call, and the whole inbound path, was exercised. Without Twilio the code degrades cleanly: the message is stored for the record and the UI says so.",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "PracticePanther",
+    "tool": "E-signature on any document",
+    "route": "/signatures",
+    "result": "pass",
+    "checked": "From /signatures/new?document_id=<id> the signer list was limited to the matter's client and its parties; picking a contact outside that list was refused and created no row. Created and sent in one submit: status=sent, sent_to set, document_hash equal to sha256 of the file bytes on disk (verified), a 'sent' event and an emailed link. /track/docsign/<token>.gif and the public /sign/doc/<token> page both logged a view; /sign/doc/<token>/file served the original inline. Signing set status=signed with signer name, ip, ua and timestamp, signature_hash = sha256(document_hash + name + ip + iso ts) verified by recomputation, and wrote a certificate PDF to PDF_DIR emailed to signer and firm. /sign/doc/<token>/certificate and the staff certificate route both served it. A second sign POST changed nothing, and void was refused on a signed request.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "PracticePanther",
+    "tool": "Custom dashboard",
+    "route": "/dashboard/customize",
+    "result": "pass",
+    "checked": "Default dashboard renders the DEFAULT_CARDS set. POSTed /dashboard/customize picking portal_messages, unsigned_documents and ar with orders 1, 2, 3: User.dashboard_json stored [\"portal_messages\",\"unsigned_documents\",\"ar\"], the dashboard rendered exactly those three in that order, the dropped cards were gone, and the unsigned-documents card listed the real pending signature request. Reset cleared dashboard_json and brought the defaults back. A corrupt dashboard_json value fell back to the defaults instead of erroring. Submitting with no cards ticked was refused with a message.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Ruby / Smith.ai",
+    "tool": "Phone intake API: POST /api/v1/leads creates and scores a lead, idempotent on an external reference",
+    "route": "/settings/api",
+    "result": "pass",
+    "checked": "Minted a read,write API token. POST /api/v1/leads with name, phone, email, matter_type, description, call_summary, a structured transcript array and external_id returned 201 with a score and a lead URL; the stored description contained the description, the flattened call summary, the flattened transcript and the [ref: ...] marker. Reposting the same external_id with a different name returned 200 with created=false and the same id, and only one lead exists for that ref. No Authorization header and a bogus token both 401; a read-only-scope token 403 with a clear message; a body with no name 400.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Ruby / Smith.ai",
+    "tool": "Voice intake agent hook: the after-hours DUI agent posts a finished intake to Coil when COIL_LEADS_URL is set",
+    "route": "/intake",
+    "result": "not testable",
+    "checked": "The Coil half is present and verified: /settings/voice prints COIL_LEADS_URL with the exact /api/v1/leads value for the agent's config, and /api/v1/voice/config returns that endpoint in its endpoints map. The receiving endpoint itself is covered by the Phone intake API row above and passes.",
+    "notes": "The posting side is the external voice-agent application, which is not in this repository, so the round trip cannot be exercised here. Testing it would need that agent running with COIL_LEADS_URL and an API token. Nothing in Coil breaks without it: the endpoint simply sees no traffic.",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Ruby / Smith.ai",
+    "tool": "Client case status by phone after caller id plus name verification (stage, next event, next task, balance, last update date)",
+    "route": "/settings/voice",
+    "result": "pass",
+    "checked": "With the voice line off, every endpoint refused with {ok:false, reason:'voice_disabled'} and 403. With it on but Firm.voice_client_status off, verify refused with reason client_status_off and recorded an unverified VoiceCall. With both on: /api/v1/voice/lookup reported found true/false without revealing anything about the contact; /api/v1/voice/verify with the right caller id and name returned the client's open matter with stage, next_event (title plus a spoken time in the firm timezone), next_task_due, balance_cents and a last_update line. A wrong name on a real number returned name_mismatch, an unknown number returned no_match, and both recorded outcome=unverified. The payload contained no note bodies and nothing belonging to another client.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Ruby / Smith.ai",
+    "tool": "Attorney voice line: caller id plus PIN, then dictate a note or log time on a matter by number or description",
+    "route": "/settings/voice",
+    "result": "pass",
+    "checked": "Calling /api/v1/voice/note before any PIN returned reason=pin_required. A wrong PIN returned bad_pin with an attempts_left counter. The correct PIN (typed with punctuation, digits stripped) opened a session and returned the attorney's matters. /api/v1/voice/note with matter_hint 'the Bluebonnet contract case' resolved to M-1002 and stored a Note prefixed '[by phone]' with whitespace collapsed, attributed to the PIN-verified user. /api/v1/voice/time with minutes=22 created a TimeEntry of 24 minutes (6-minute rounding), rate 35000 from the matter, amount 14000, dated today, and read back 0.4 hours. A user_id in the body that did not match the verified PIN returned user_mismatch. An unresolvable matter hint returned no_matter with a 404 rather than guessing. Five wrong PINs from one number locked it with 423.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Ruby / Smith.ai",
+    "tool": "Outbound reminder calls before calendar events and court dates (python -m app.cli voice_reminders)",
+    "route": "/settings/voice",
+    "result": "pass",
+    "checked": "With Firm.voice_reminders on and a 3-day window, upcoming_reminders picked up both a calendar event and a court_date task on matters whose client has a phone, each with a per-occurrence detail key and a spoken script. Without Twilio the run reported 'Twilio is not configured; nothing was called or recorded' and placed nothing. With smssvc.configured patched true and place_call stubbed, the run placed both calls with the right numbers and scripts, wrote a VoiceCall (kind=reminder, outcome=reminded) and a Message (channel=voice) for each. A second run placed nothing and reported 2 skipped, so the AuditLog voice_reminded key is doing its job.",
+    "notes": "The Twilio REST call in place_call is the only untested hop; it needs live credentials. The wrapper's error handling (returning error:<status> and marking the VoiceCall failed) was read but not exercised.",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Ruby / Smith.ai",
+    "tool": "Call log: every voice call with summary, transcript, outcome and links to the lead, contact and matter",
+    "route": "/voice",
+    "result": "pass",
+    "checked": "POST /api/v1/voice/calls with call_id, kind, outcome, duration, from/to, a summary and a structured transcript, plus lead_id, contact_id and matter_id, created one VoiceCall with the transcript flattened to 'role: text' lines and all three foreign keys resolved. Posting the same call_id again updated the row rather than creating a second one. /voice/<id> showed the transcript and working links to /intake/<lead>, /contacts/<id> and /matters/<id>. /voice lists calls with per-kind counts and the ?kind= filter narrows correctly; the status, memo and reminder calls created earlier in the audit all appear with their outcomes.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Vertical case types",
+    "tool": "Criminal defense: stage board, case facts, charges with attorney-entered ranges, court date chain, speedy-trial check, disposition PDF",
+    "route": "/criminal",
+    "result": "pass",
+    "checked": "Started a case on a matter (stage=arrest). Saved facts: court, cause number, arrest date, bond $2,500 posted, custody, prosecutor, judge, next setting 2026-10-20 as an arraignment, stage=charged. The matter's court and case_number were back-filled from the case. Added two charges with attorney-typed degrees, ranges and max fines and confirmed they stored verbatim. Ran the court date chain once: exactly four tasks at 2026-10-13 (prepare), 2026-10-18 (confirm appearance), 2026-10-20 (the arraignment, kind=court_date, priority high, cause and judge in the notes) and 2026-11-03 (request discovery, arraignment + 14 days). A second run added none. The speedy-trial check created one deadline at arrest + 180 days with the 'confirm the jurisdiction's rule' note, and a second run added none. The disposition PDF generated and filed a 2.2 KB Document in the Criminal folder on the matter. The board lists the case under its stage.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  }
+]

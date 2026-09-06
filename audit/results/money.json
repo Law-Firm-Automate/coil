@@ -1,0 +1,162 @@
+[
+{"group": "Clio Manage", "tool": "Time tracking with a timer (6-minute rounding)", "route": "/time",
+ "result": "pass",
+ "checked": "round_up_minutes unit values (1s/0s/360s -> 6m, 361s -> 12m, 900s -> 18m). Started a timer on M-1002, refused a second concurrent timer, paused (accumulated froze at 400s and did not advance while paused), resumed, stopped: created a TimeEntry of 12 minutes at the matter rate 35000c and deleted the Timer row. Also POSTed /time/new with duration 1.5, 1:30, 90m, 0.1 (90/90/90/6 minutes) and checked amount_cents = round(minutes*rate/60).",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage", "tool": "Expenses with receipt capture", "route": "/time/expenses",
+ "result": "pass",
+ "checked": "Created an expense with a PNG receipt through /time/expenses/new: amount 40200c, category and UTBMS code E112 stored, file written under UPLOAD_DIR/expenses and served back byte-identical from /time/expenses/<id>/receipt. Zero amount with a receipt is accepted (fill in later), zero without a receipt and a negative amount are both refused with a message and nothing written.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage", "tool": "Invoicing: flat fee, hourly, contingency, hybrid", "route": "/invoices",
+ "result": "partial",
+ "checked": "Hourly: built from three known time entries (90m@35000=52500, 30m@35000=17500, 7m@33333=3889) plus a 1245c expense; subtotal/total/balance all 75134c to the cent and every source row got invoice_id set. Flat: milestone build gave exactly 125000c, the unpicked milestone stayed open. Contingency: 333333c, kind=contingency. Hybrid: milestone 100000 + time 18750 + expense 3333 + a -10000 discount line = 112083c, kind=hybrid. Edit removed a time line, recalculated to 93333c and released the TimeEntry back to unbilled. Void with a payment recorded is refused.",
+ "notes": "Time-line Qty is stored rounded to 2 decimals, so on short entries Qty x Rate does not equal Amount on the invoice, the PDF and the public page. The 7-minute entry prints as 0.12 x $333.33 = $38.89 (0.12 x 333.33 = $40.00). The total is right; only the printed line does not multiply out, which clients query.",
+ "severity": "low",
+ "repro": "TimeEntry(minutes=7, rate_cents=33333) -> amount 3889c. Build an invoice from it: InvoiceLine.quantity = round(7/60, 2) = 0.12, unit_cents 33333, amount_cents 3889. GET /invoices/<id>/pdf shows '0.12  $333.33  $38.89'."},
+
+{"group": "Clio Manage", "tool": "Bulk invoicing and approval workflow", "route": "/invoices/bulk",
+ "result": "pass",
+ "checked": "Bulk: two matters each with a 120m@30000 entry; POST /invoices/bulk built exactly two drafts of 60000c each and consumed the entries. Approval (Firm.require_invoice_approval on): an attorney's build came out approval_status=pending, /send was refused with the waiting-for-approval message and the invoice stayed draft, /approve returned 403 for the attorney, owner /reject set rejected with the note, attorney /submit set pending again, owner /approve set approved + approved_by_id + approved_at, and the attorney could then send. /invoices?status=pending renders.",
+ "notes": "A paralegal cannot reach /invoices/new at all (403 from app/permissions.py, which is what ROLE_PERMS specifies), so the pending path is only reachable for attorneys.",
+ "severity": "", "repro": ""},
+
+{"group": "Clio Manage", "tool": "Split billing across payers", "route": "/matters",
+ "result": "pass",
+ "checked": "Matter with payers 60/40 and one 100001c time entry: two invoices of 60001c and 40000c, summing to exactly 100001c with the rounding remainder on the last payer; the first invoice carries time_entry_id, the second's copied line has it NULL. Voiding the second invoice voided the whole split group and unlinked the source TimeEntry (invoice_id back to None). Three-way 33.33/33.33/33.34 on 100000c gave 33330/33330/33340, exact. Deleting a payer so the percentages no longer total 100 makes the builder refuse with a 400 and write nothing. A split share cannot be edited (redirects with the void-and-rebuild message).",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage", "tool": "Interest on overdue balances", "route": "/invoices",
+ "result": "pass",
+ "checked": "Firm APR 1200bps, grace 5 days, invoice due 40 days ago with a 50134c balance. POST /invoices/<id>/interest added exactly one line of 501c (50134 * 0.12 / 12, half-up), set interest_cents=501, last_interest_on=today and total 75635c. A second POST in the same month added nothing and left the total unchanged; `python -m app.cli interest` in the same month also added nothing (0 invoices charged).",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage", "tool": "Trust (IOLTA) accounting with three-way reconciliation", "route": "/trust/",
+ "result": "fail",
+ "checked": "Apply: /trust/apply moved 25000c together across all three places (invoice paid_cents 25000 / balance 50134, TrustTransaction type=to_operating -25000, Payment method=trust account=operating, client and matter balances both 500000 -> 475000). Overdraw: a 99999.00 disbursement was refused with a message and TrustTransaction.count() was unchanged; a disbursement taking the balance to exactly zero was allowed. Reconciliation: with one uncleared 100000c deposit in transit and 500000c of uncleared disbursements, a 500000c bank statement gave balanced=true with book=ledgers=100000; a 4900.00 statement gave balanced=false and reported the difference as -10000c on the report page. Then tested funds earmarked to one matter.",
+ "notes": "Trust funds held for one matter are silently spent on another matter's invoice. /trust/apply picks its source with `if matter_bal > 0`; when the invoice's matter holds nothing it falls through to the pooled client balance and writes the withdrawal with matter_id=None, even when the whole client balance is earmarked to a different matter. The other matter's sub-ledger keeps showing the full amount while the client no longer has it. Nothing refuses it and nothing warns: /trust/ only flags balances below zero, /trust/ledger/<id> shows the negative unallocated figure without comment, and because book and client ledgers move together the three-way reconciliation still reports balanced. This is the shortfall a bar audit looks for.",
+ "severity": "high",
+ "repro": "One client, two matters. TrustTransaction(client_id=C, matter_id=A, type=deposit, amount_cents=100000). Sent invoice for 80000c on matter B. POST /trust/apply {invoice_id: B-invoice, amount: 800.00} succeeds. After: invoice paid 80000, matter A trust balance still 100000, client trust balance 20000, so the matter ledgers exceed the client balance by 80000c. GET /trust/ and /trust/ledger/<C> show no warning; a reconciliation for the period still returns balanced=true."},
+
+{"group": "Clio Manage", "tool": "Evergreen retainer top-up requests", "route": "/trust/",
+ "result": "pass",
+ "checked": "Matter with trust_minimum 500000 and replenish_to 750000 holding 250000: evergreen_shortfalls() returned exactly that matter with shortfall 500000 (replenish_to minus balance). `run_evergreen()` sent one request, wrote one AuditLog action=evergreen_sent for the matter, and a second immediate run sent nothing (14-day window). The email in the dev outbox asks for $5,000.00 with the firm's check and mailing instructions, which is the correct degraded path with STRIPE_SECRET_KEY blank.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage", "tool": "UTBMS codes and LEDES 1998B export", "route": "/exports",
+ "result": "partial",
+ "checked": "UTBMS: /time/new and /time/expenses/new save task_code L120, activity_code A102 and expense_code E112, and reject codes outside the set (ZZZZ, QQ stored as ''). LEDES refusal: with no ids set, /exports/ledes returns 400 and names the missing LAW_FIRM_ID, the client and the matter. After setting them the export returns 200, line 1 is exactly `LEDES1998B[]`, line 2 is the 24-field header ending `[]`, and every data line ends `[]` and splits into exactly 24 pipe-separated fields with LAW_FIRM_ID and the client id populated. ledes_exported_at was stamped on every exported invoice. Then summed the line items against the header total.",
+ "notes": "Interest lines are dropped from the file but are still inside INVOICE_TOTAL, so the record lines do not sum to the invoice total and an e-billing validator will bounce the file. invoice_lines() only yields kind in ('time','expense'); adjustment/discount/flat lines are dropped the same way, but only interest also inflates the header total. Separate caveat, not a failure: field 4 LAW_FIRM_MATTER_ID is filled with Matter.number and field 24 CLIENT_MATTER_ID with Matter.ledes_matter_id, which is a defensible but not the only reading of the spec.",
+ "severity": "medium",
+ "repro": "Invoice INV-1001 (three time lines 52500+17500+3889, one expense 1245, one interest line 501) -> total 75635c. GET /exports/ledes?from=2026-01-01&to=2026-12-31: every record carries INVOICE_TOTAL 756.35 but the LINE_ITEM_TOTAL column (field 13) over that invoice's records sums to 751.34."},
+
+{"group": "Clio Manage", "tool": "Multi-currency matters and invoices", "route": "/matters",
+ "result": "partial",
+ "checked": "Matter with currency GBP: the built invoice copied currency='GBP'. Staff invoice detail, the invoice list and the invoice PDF all render GBP correctly (£400.00, plus a 'Currency: GBP' line on the PDF), and the outbound invoice email uses fmt_money. Then checked the two client-facing pages and the Stripe call.",
+ "notes": "The client-facing pages ignore the invoice currency. app/templates/invoices/public.html formats every amount with the `|money` filter (USD only), never `|cur(inv.currency)`, and there is no currency note on the page, so a GBP invoice is shown to the client as $400.00. The pay confirm page (payments/pay_confirm.html) does the same, including the surcharge line. Separately, /pay/<token> always builds the Checkout Session with currency 'usd', so a GBP invoice paid online charges USD; the phase-2 contract calls Stripe out of scope, but combined with the '$' on the page the client is given no way to tell.",
+ "severity": "medium",
+ "repro": "Create a matter with currency='GBP', build and send an invoice of 40000c. GET /p/<public_token>: the page shows $400.00 with no mention of GBP. GET /pay/<public_token>?method=card: shows $400.00 + $12.00 surcharge = $412.00. GET /invoices/<id>/pdf correctly shows £400.00 for the same invoice."},
+
+{"group": "Clio Manage", "tool": "Client statement: every invoice, payment and trust application with a running balance", "route": "/statements",
+ "result": "pass",
+ "checked": "build_statement for a client with one 75635c invoice and one 25000c trust application: entries in date order with a running balance 75635 -> 50635, totals invoiced 75635 / payments 25000 / balance 50635, closing equal to charges minus payments and to the sum of the invoice balances, trust application labelled 'Applied from trust'. /statements, /statements/<id> (shows $506.35), /statements/<id>/pdf (application/pdf) and an out-of-range date filter all render.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage", "tool": "Invoice template editor: logo, colour, columns, labels, payment wording, preview", "route": "/settings/invoice-template",
+ "result": "fail",
+ "checked": "Saved a template that hides the Rate column and relabels bill_to/matter/invoice_number/due/balance_due, with a custom accent and title. The PDF dropped the Rate column and used 'STATEMENT OF ACCOUNT', 'Bill no', 'Payable by', 'Invoice to' and 'Amount now owing'; the public page at /p/<token> showed the same column set (Date, Description, Qty, Amount) and the same labels. Preview returns a SAMPLE PDF. Then turned on the timekeeper and UTBMS-code options the same editor offers.",
+ "notes": "Ticking 'show timekeeper initials' or 'show UTBMS codes' (or adding the Timekeeper or Code column) makes the invoice PDF and the public invoice page return 500 for any invoice containing an expense line whose Expense has a user_id. app/blueprints/invoices.py:187 in line_meta does `_initials(e.user)` but the Expense model has user_id and no `user` relationship, so it raises AttributeError. The staff invoice detail page still renders and /invoices/<id>/remind still returns 200 (the send path swallows the PDF error and logs a warning), so the firm sees the invoice go out while the client gets an email with no PDF attached and a 'View and pay' link to a 500 page.",
+ "severity": "medium",
+ "repro": "Seeded data already has Expense id 1 with user_id 1. POST /settings/invoice-template with invoice_show_timekeeper=1 and the default columns. Then GET /invoices/1/pdf -> 500 and GET /p/<INV-1001 public_token> -> 500, both AttributeError: 'Expense' object has no attribute 'user' (app/blueprints/invoices.py:187, reached from line_description at :195). Untick the option and both return 200 again."},
+
+{"group": "Clio Manage", "tool": "Reports: AR aging, WIP, revenue, productivity, origination, realization, profitability", "route": "/reports",
+ "result": "pass",
+ "checked": "All nine report pages and eight CSV variants return 200 with the right mimetype. Checked figures against the DB: AR aging total 1706.35 equals the sum of open invoice balances and buckets by due date; WIP total 1000.01 equals unbilled billable time plus expenses; revenue total equals operating Payment.amount_cents in range (surcharge excluded); origination collected 495003c equals all operating payments in range and flags the two matters with no originator; realization worked 584640c equals all time at rate with billed <= worked and collected <= billed; profitability margin = revenue - cost on every row, cost_rate_missing is True with missing_rate_users listed rather than a silent zero, and after setting cost_rate_cents=10000 the time cost came out 23167c for 139 minutes with the flag cleared.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage AI", "tool": "Scheduled monthly invoicing per matter (python -m app.cli monthly_invoicing)", "route": "/invoices/bulk",
+ "result": "pass",
+ "checked": "With monthly_billing_day 0 the run reports ran=False and the reason. With force=True it built exactly one draft of 45000c for the single matter with auto_invoice_monthly on (90m @ 30000), consumed the time entry, wrote AuditLog monthly_invoiced detail=2026-09 and emailed the owner a summary. A second forced run in the same month built nothing and reported 'already invoiced for 2026-09'. /invoices/bulk/monthly toggles Matter.auto_invoice_monthly.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage AI", "tool": "Invoice narrative cleanup", "route": "/invoices",
+ "result": "pass",
+ "checked": "Monkeypatched app.llm.complete_json. POST /ai/invoice/<id>/polish returned the proposed rewrites on a review page without touching the stored descriptions; POST .../polish/apply wrote the edited text and left subtotal_cents unchanged at 60000c. Rewriting a sent invoice is refused ('Only draft invoices...') and so is a split-group share. With complete_json raising LLMUnavailable (both API keys blank) the page still returns 200 and shows the 'No API key configured' message instead of erroring.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Manage AI", "tool": "A/R and hours questions answered from your data without the model", "route": "/ai/search",
+ "result": "pass",
+ "checked": "With ANTHROPIC_API_KEY and OPENROUTER_API_KEY blank, answer_aggregate() answered from the database and every figure matched a direct query: total A/R 230635c across 4 open invoices with 50635c past due, 1 overdue invoice totalling 50635c, A/R over 30 days 50635c, unbilled WIP 120001c (time plus expenses), trust held 350000c, and hours per timekeeper for the month with a threshold. GET /ai/search?q=... returns 200 and renders the answer with a link to the matching report.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Payments / LawPay", "tool": "Public invoice page with ACH (no fee) and card (surcharge you set)", "route": "/invoices",
+ "result": "partial",
+ "checked": "Invoice balance 100001c, firm surcharge 300bps. /p/<token> renders the invoice for an unauthenticated client. /pay/<token>?method=card shows a 30.00 surcharge and a 1,030.01 total; ?method=ach shows 1,000.01 with no surcharge anywhere. POSTing card produced Checkout line items [100001, 3000] with payment_method_types ['card'] and metadata surcharge_cents=3000; POSTing ach produced a single 100001 line item with ['us_bank_account'] and no surcharge. With STRIPE_SECRET_KEY blank the POST returns 200 with the check-and-mailing page instead of erroring.",
+ "notes": "Same root cause as the invoice template editor failure: when the firm turns on timekeeper initials or UTBMS codes in the template, /p/<token> returns 500 for any invoice with an expense line whose Expense has a user_id, so the client cannot see or pay the invoice. The ACH/card/surcharge arithmetic itself is correct. Amounts are also always rendered in USD regardless of the invoice currency (see the multi-currency entry).",
+ "severity": "medium",
+ "repro": "POST /settings/invoice-template with invoice_show_timekeeper=1, then GET /p/<public_token> of an invoice with an expense line -> 500, AttributeError: 'Expense' object has no attribute 'user' at app/blueprints/invoices.py:187."},
+
+{"group": "Clio Payments / LawPay", "tool": "Stripe Checkout with idempotent webhooks", "route": "/settings/integrations",
+ "result": "pass",
+ "checked": "app.blueprints._stripe monkeypatched. checkout.session.completed with amount_total 103001 and surcharge_cents 3000 created one Payment of 100001c with surcharge_cents 3000 and stripe_fee_cents 275 from the balance-transaction lookup, and moved the invoice to paid with balance 0. Replaying the identical event created no second Payment and did not double paid_cents (keyed on stripe_checkout_session). payment_status other than 'paid' returns 'pending' and records nothing. With STRIPE_WEBHOOK_SECRET set and construct_event raising, the endpoint returns 400. /settings/integrations shows the Stripe state and the webhook URL to paste.",
+ "notes": "Exercised through monkeypatched _stripe functions, not a live Stripe account; signature verification itself is Stripe SDK code and was only checked for the rejection path.",
+ "severity": "", "repro": ""},
+
+{"group": "Clio Payments / LawPay", "tool": "Online trust deposits", "route": "/trust/",
+ "result": "pass",
+ "checked": "POST /trust/request-deposit created a Checkout Session with metadata kind=trust_deposit, client_id, matter_id and amount_cents=250000 and payment_method_types ['us_bank_account','card'], and emailed the client the link. Replaying checkout.session.completed for it added a TrustTransaction type=deposit of 250000c on the right matter, a Payment with account='trust' and invoice_id None, and moved the client trust balance from 100000c to 350000c. A second identical webhook created no duplicate transaction. With Stripe unset the same route emails check and mailing instructions instead.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Clio Payments / LawPay", "tool": "Invoice open tracking", "route": "/invoices",
+ "result": "pass",
+ "checked": "First GET /p/<token> set view_count 1, first_viewed_at and moved status sent -> viewed and wrote a 'viewed' InvoiceEvent; an immediate second GET did not increment (60-second dedupe). /track/invoice/<token>.gif returns a 43-byte image/gif with no-store headers. The pay page writes a 'link_clicked' event with ip and user agent.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "CosmoLex", "tool": "Fee splits per matter: originating, working and referral percentages", "route": "/matters",
+ "result": "pass",
+ "checked": "/money/splits/<matter_id> renders and saves. Working percentages that do not total 100 are refused with a 400 and the existing splits are left untouched. A valid save (working 50/50 plus originating 100) replaced the rows exactly. With no stored splits, effective_splits falls back to 100% originating credit for Matter.originating_user_id without writing anything. The matter detail page links to the splits editor.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "CosmoLex", "tool": "Compensation report: collected fees allocated by working split, originating credit alongside, CSV", "route": "/reports/compensation",
+ "result": "pass",
+ "checked": "Matter with a 120000c invoice (100000 fee line + 20000 expense line) paid in full, splits working 70/30, originating 100%, referral 10%. The report allocated on the fee share only: fee 100000c (expense excluded), gross 120000c, working 70000/30000 summing exactly to the fee, originating credit 100000c, referral 10000c, flagged False. allocate_cents(100001, 33.333/66.667) returns 33333 + 66668 = 100001 exactly. Matters with no working split fall back to the responsible attorney and are flagged 'no working split, responsible attorney used' in the CSV. CSV header and rows render.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Gravity Legal", "tool": "Card on file with client consent (emailed link or from the portal), stored at Stripe", "route": "/contacts",
+ "result": "pass",
+ "checked": "POST /money/cards/<id>/request minted a 7-day PortalToken and emailed the consent link. GET /pay/card/<token> renders the consent page; POSTing without the tick box returns 400 and starts nothing; with the tick box it creates the Stripe customer and a setup-mode session and redirects 303. The success callback stored stripe_payment_method_id, card_brand=visa, card_last4=4242, card_authorised_on and marked the token used. Removing the card clears the four fields and turns auto_charge off on active plans. With STRIPE_SECRET_KEY blank the request route refuses with the not-configured message.",
+ "notes": "Card capture itself happens on Stripe's hosted page; verified through monkeypatched _stripe.create_setup_session / retrieve_setup_session rather than a live account.",
+ "severity": "", "repro": ""},
+
+{"group": "Gravity Legal", "tool": "Charge an invoice to the card on file, surcharge per firm settings", "route": "/invoices",
+ "result": "pass",
+ "checked": "Surcharge on (300bps): charging 100001c called Stripe for 103001c while the recorded Payment was amount_cents 100001 with surcharge_cents 3000 and stripe_fee_cents 320, and the invoice paid_cents moved by 100001 only (status paid, balance 0). Surcharge off: charging a 50000c invoice called Stripe for 50000c and recorded amount 50000 / surcharge 0. Charging more than the balance, a non-open invoice, a client with no card, and Stripe unset are all refused with nothing written.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "Gravity Legal", "tool": "Payment plans: weekly, biweekly or monthly installments, auto-charged or emailed (python -m app.cli payment_plans)", "route": "/money/plans",
+ "result": "pass",
+ "checked": "Three monthly installments on a 100001c balance: installment_cents ceil(100001/3) = 33334 and plan_schedule returned 33334/33334/33333 summing to 100001. Ran run_payment_plans() on three successive due dates: Stripe was called for 33334, 33334 then 33333, the last installment absorbing the rounding; invoice paid_cents reached exactly 100001 with balance 0, plan.status became completed and paid_installments 3. A fourth run did nothing. Reminder-only plans, pause/resume/cancel, per-day idempotency through AuditLog, and the failure path (status failed, last_error set, firm notified) all behave as described.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "LeanLaw / QuickBooks", "tool": "QuickBooks CSV exports (invoices, payments, customers)", "route": "/exports",
+ "result": "pass",
+ "checked": "Headers are exactly InvoiceNo,Customer,InvoiceDate,DueDate,Item(Product/Service),ItemDescription,ItemQuantity,ItemRate,ItemAmount / PaymentDate,Customer,InvoiceNo,Amount,Method,Reference / Name,Company,Email,Phone,Billing Address. For every non-draft non-void invoice the ItemAmount column summed to that invoice's total to the cent. The payments CSV total (6250.03) matched the sum of Payment.amount_cents, and the customers CSV row count matched the client count. /exports/time.csv, /exports/trust.csv and /exports/contacts.csv also return 200.",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "LeanLaw / QuickBooks", "tool": "Operating ledger, bank import, reconciliation, P&L", "route": "/accounting/",
+ "result": "pass",
+ "checked": "Ledger: payments post automatically and split across Legal Fees / Reimbursed Expenses / Interest by invoice line mix plus separate surcharge and merchant-fee lines; the postings summed to 500088c, exactly cash received (payments + surcharge - processor fees), and book_balance 498843c equalled that minus posted expenses. Bank import: a 3-row CSV was parsed, the -3.20 row auto-matched an existing uncleared merchant-fee entry and marked it cleared, the other two were created as uncategorised cleared entries with the right signs, and a BankImport row was logged. Categorising an uncategorised row sets account_id. Reconcile: with the statement equal to the cleared total, balanced=true; with 1.00 it was false and the difference was recorded. P&L and balance sheet render and their CSVs balance (net = income + expense).",
+ "notes": "", "severity": "", "repro": ""},
+
+{"group": "LeanLaw / QuickBooks", "tool": "Live two-way QuickBooks sync", "route": "",
+ "result": "not testable",
+ "checked": "Searched the codebase for a QuickBooks sync route or client. There is none: feature_map lists this entry with status 'planned' and an empty route, and /exports offers only the one-way CSV layouts.",
+ "notes": "Nothing to exercise. Testing it would need a QuickBooks Online developer app, an OAuth 2.0 connection to a company file and the intuit-oauth/python-quickbooks client, none of which exist here. Nothing degrades, because nothing links to it.",
+ "severity": "", "repro": ""},
+
+{"group": "TimeSolv / Bill4Time / OnPoint", "tool": "Time, expenses, invoices, trust in one place", "route": "/time",
+ "result": "pass",
+ "checked": "Walked one matter end to end in a single app: logged time (timer and manual), added an expense with a receipt, built an invoice from both and confirmed the totals to the cent, sent it, applied trust and recorded a card payment, and saw the same numbers agree across /time, /time/expenses, /invoices, /trust/, /statements and /reports/wip. All four sections are in the same nav, all return 200, and the unbilled figures on /time and /time/expenses match the WIP report.",
+ "notes": "", "severity": "", "repro": ""}
+]
