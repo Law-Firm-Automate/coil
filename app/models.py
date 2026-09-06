@@ -1571,6 +1571,47 @@ class Charge(db.Model):
     matter = db.relationship("Matter")
 
 
+class ImportJob(db.Model):
+    """One import run from another system (Clio, MyCase, PracticePanther, generic CSV). Keeps the
+    per-entity counts and row-level problems so a firm can see exactly what came across."""
+    __tablename__ = "import_jobs"
+    id = db.Column(db.Integer, primary_key=True)
+    source = db.Column(db.String(40), default="generic")  # clio | mycase | practicepanther | generic
+    entity = db.Column(db.String(40), default="")  # contacts | matters | time | expenses | bills | trust | tasks | calendar | documents | notes
+    filename = db.Column(db.String(300), default="")
+    mapping_json = db.Column(db.Text, default="{}")  # header -> field mapping used
+    rows = db.Column(db.Integer, default=0)
+    created = db.Column(db.Integer, default=0)
+    updated = db.Column(db.Integer, default=0)
+    skipped = db.Column(db.Integer, default=0)
+    errors_json = db.Column(db.Text, default="[]")  # [{"row": n, "message": "..."}]
+    status = db.Column(db.String(20), default="preview")  # preview | committed | failed
+    # External ids keep cross-file links working: Clio's matter id on a time row must find the matter we created.
+    id_map_json = db.Column(db.Text, default="{}")  # {"external_id": coil_id}
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=now)
+    created_by = db.relationship("User")
+
+    @property
+    def errors(self):
+        try:
+            return json.loads(self.errors_json or "[]")
+        except Exception:
+            return []
+
+
+class ExternalRef(db.Model):
+    """Maps a record in another system to a Coil record, so multi-file imports link up and re-imports update instead of duplicate."""
+    __tablename__ = "external_refs"
+    id = db.Column(db.Integer, primary_key=True)
+    source = db.Column(db.String(40), nullable=False)
+    entity = db.Column(db.String(40), nullable=False)  # contact | matter | time | expense | invoice | trust | task | event | document
+    external_id = db.Column(db.String(120), nullable=False)
+    coil_id = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=now)
+    __table_args__ = (db.UniqueConstraint("source", "entity", "external_id", name="uq_external_ref"),)
+
+
 class AuditLog(db.Model):
     __tablename__ = "audit_log"
     id = db.Column(db.Integer, primary_key=True)

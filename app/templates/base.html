@@ -49,6 +49,7 @@
     <a class="nav {{ 'active' if _path.startswith('/settings/templates') }}" href="/settings/templates">Matter templates</a>
     <a class="nav {{ 'active' if _path.startswith('/settings/audit') }}" href="/settings/audit">Audit log</a>
     <a class="nav {{ 'active' if _path.startswith('/settings/rules') or _path.startswith('/settings/holidays') }}" href="/settings/rules">Court rules</a>
+    <a class="nav {{ 'active' if _path.startswith('/import') }}" href="/import">Import from another system</a>
     <a class="nav {{ 'active' if _path.startswith('/exports') }}" href="/exports">Exports</a>
     <a class="nav {{ 'active' if _path.startswith('/features') }}" href="/features">Feature map</a>
     {% if u %}
