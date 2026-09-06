@@ -16,6 +16,15 @@
     {% if meta.folders %}<dt>Folders</dt><dd class="small">{% for k, v in meta.folders.items() %}<span class="badge {{ 'open' if v else 'overdue' }}">{{ k }}</span> {% endfor %}</dd>{% endif %}
   </dl>
 </div>
+{% if meta.warnings %}
+<div class="card">
+  <h3 style="margin-top:0">Rows to check ({{ meta.warnings|length }})</h3>
+  <p class="small muted">These rows went in, but not exactly as the file asked. Coil never overwrites a record it did not import, so a number that was already taken by an unrelated Coil record was replaced with the next Coil number and both records were left intact.</p>
+  <table><tr><th>Line</th><th>What happened</th></tr>
+  {% for w in meta.warnings %}<tr><td>{{ w.row }}</td><td class="small">{{ w.message }}</td></tr>{% endfor %}
+  </table>
+</div>
+{% endif %}
 <div class="card">
   <h3 style="margin-top:0">Rows with problems</h3>
   {% if job.errors %}

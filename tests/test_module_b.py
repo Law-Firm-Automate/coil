@@ -273,7 +273,9 @@ def test_detail_shows_payment_and_trust_forms(app, client):
     assert r.status_code == 200
     assert b'action="/payments/record"' in r.data and b'name="method"' in r.data
     assert b'action="/trust/apply"' in r.data
-    assert b"has $5,000.00 in trust" in r.data
+    # Wording changed when the trust figure became "what this invoice may draw" rather than the
+    # pooled client balance (audit fix). Same $5,000 here, since it is all earmarked to this matter.
+    assert b"$5,000.00 of Bluebonnet Logistics LLC's trust money can be applied" in r.data
     assert f"/p/{S['hourly_token']}".encode() in r.data and b"data-copy=" in r.data
     assert b"Send reminder" in r.data and b"Download PDF" in r.data
     # locked expense view links back to the invoice

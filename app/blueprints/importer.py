@@ -114,6 +114,12 @@ class Ctx:
         self.seen = set()          # in-file dedupe keys in dry mode
         self.balances = {}         # ("c", client_id) / ("m", matter_id) -> running trust balance
         self.warnings_users = set()
+        self.warnings = []         # [{"row": n, "message": "..."}] things the firm must see but that are not errors
+
+    def warn(self, row, message):
+        """A row-level warning: the row still imports, but something about it was not what the file asked for.
+        Surfaced on the preview page and kept on the import job so the firm can see it after the fact."""
+        self.warnings.append({"row": row, "message": message})
 
     def ref_get(self, entity, ext):
         if not ext:
@@ -219,6 +225,17 @@ def find_matter_by_name(name):
         if m:
             return m
     return None
+
+
+def linked_from_source(source, entity, coil_id):
+    """True when this Coil record came from (or has already been matched to) a record in `source`.
+
+    A number on its own never proves two records are the same thing. A firm's own Coil matter M-1001 and a Clio
+    matter whose Display Number happens to be M-1001 are different matters, and overwriting one with the other
+    carries its time, notes and events to the wrong client. Only an ExternalRef link makes an incoming row an
+    update. prep_bills has always worked this way; prep_matters now does too.
+    """
+    return ExternalRef.query.filter_by(source=source, entity=entity, coil_id=coil_id).first() is not None
 
 
 def resolve_matter(ctx, ext_id="", number="", name=""):
@@ -401,19 +418,32 @@ def prep_matters(ctx, v, raw):
                 number = val.strip()[:30]
                 break
     existing = ctx.get(Matter, ctx.ref_get("matter", v["external_id"])) if v["external_id"] else None
+    collision = None
     if not existing and number:
-        existing = Matter.query.filter(func.lower(Matter.number) == number.lower()).first()
+        taken = Matter.query.filter(func.lower(Matter.number) == number.lower()).first()
+        if taken and linked_from_source(ctx.source, "matter", taken.id):
+            # Coil already links this matter to a record in the old system, so the row is an update of it.
+            existing = taken
+        elif taken:
+            # Same number, unrelated matter. Never overwrite it, and never take its number either.
+            collision, number = taken, ""
     if not existing:
-        cand = Matter.query.filter(func.lower(Matter.name) == name.lower(), Matter.client_id == client.id).first()
-        existing = cand
+        existing = Matter.query.filter(func.lower(Matter.name) == name.lower(),
+                                       Matter.client_id == client.id).first()
+    if collision:
+        landing = (f"the existing Coil matter {existing.label}" if existing
+                   else "a separate new matter with the next Coil number")
+        note = (f"Matter number {collision.number} already belongs to {collision.label} for client "
+                f"{collision.client.display_name}, which was not imported from "
+                f"{M.SOURCE_LABELS.get(ctx.source, ctx.source)}. The incoming matter '{name}' for client "
+                f"{client.display_name} goes to {landing} instead. Nothing on {collision.label} was changed.")
+        msgs.append(note)
+        ctx.warn(raw.get("_row"), note)
     if ctx.dry and v["external_id"]:
         ctx.ref_set("matter", v["external_id"], -1)
     key = number.lower() if number else f"{client.id}:{name.lower()}"
     in_file = key in ctx.seen
     ctx.seen.add(key)
-    if number and not existing and Matter.query.filter(func.lower(Matter.number) == number.lower()).first():
-        msgs.append(f"Matter number {number} is already taken; the next Coil number will be assigned.")
-        number = ""
     rec = {"external_id": v["external_id"], "number": number, "name": name[:300], "description": v["description"]
            if v["description"] != name else "", "client_id": client.id, "status": status, "practice_area": v["practice_area"][:100],
            "responsible_user_id": resp.id if resp else ctx.user.id, "opened_on": (opened or date.today()).isoformat(),
@@ -435,8 +465,8 @@ def apply_matters(ctx, rec):
     m = db.session.get(Matter, rec["existing_id"]) if rec.get("existing_id") else None
     if m is None and rec["external_id"]:
         m = ctx.get(Matter, ctx.ref_get("matter", rec["external_id"]))
-    if m is None and rec["number"]:
-        m = Matter.query.filter(func.lower(Matter.number) == rec["number"].lower()).first()
+    # Deliberately no lookup by number here. prep_matters has already decided whether this row updates an
+    # existing matter, and a bare number match would reintroduce the overwrite it just prevented.
     if m is None:
         m = Matter.query.filter(func.lower(Matter.name) == rec["name"].lower(), Matter.client_id == rec["client_id"]).first()
     created = m is None
@@ -630,10 +660,15 @@ def prep_bills(ctx, v, raw):
     existing = ctx.ref_get("invoice", ext)
     if not existing and number:
         inv = Invoice.query.filter(func.lower(Invoice.number) == number.lower()).first()
-        if inv and ExternalRef.query.filter_by(source=ctx.source, entity="invoice", coil_id=inv.id).first():
+        if inv and linked_from_source(ctx.source, "invoice", inv.id):
             existing = inv.id
         elif inv:
-            msgs.append(f"Invoice number {number} already exists in Coil; the next Coil number will be used.")
+            note = (f"Invoice number {number} already belongs to invoice {inv.number} for "
+                    f"{inv.client.display_name if inv.client else 'another client'}, which was not imported from "
+                    f"{M.SOURCE_LABELS.get(ctx.source, ctx.source)}. The incoming bill was kept separate and will "
+                    f"be given the next Coil number.")
+            msgs.append(note)
+            ctx.warn(raw.get("_row"), note)
             number = ""
     if ctx.dry:
         ctx.ref_set("invoice", ext, -1)
@@ -949,7 +984,10 @@ def _ordered_rows(entity, rows, mapping):
 
 
 def run_import(data, mapping, options, user, dry):
-    """Returns {"counts": {...}, "rows": [sample], "errors": [{"row", "message", "data"}], "id_map": {...}}."""
+    """Returns {"counts", "rows" (sample), "errors", "warnings", "id_map"}.
+
+    Warnings are rows that imported but not exactly as the file asked, most often a matter or invoice number
+    that was already taken by an unrelated Coil record. They are not errors and do not stop anything."""
     entity, source = data["entity"], data["source"]
     ctx = Ctx(source, entity, user, mapping, options, dry)
     counts = {"rows": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
@@ -986,7 +1024,7 @@ def run_import(data, mapping, options, user, dry):
             since_commit = 0
     if not dry:
         db.session.commit()
-    return {"counts": counts, "rows": sample, "errors": errors, "id_map": id_map}
+    return {"counts": counts, "rows": sample, "errors": errors, "warnings": ctx.warnings, "id_map": id_map}
 
 
 # ---------------------------------------------------------------- documents ZIP
@@ -1076,7 +1114,7 @@ def _apply_zip(data, user):
             counts["rows"] += 1
             counts["skipped"] += 1
     db.session.commit()
-    return {"counts": counts, "errors": errors, "id_map": id_map}
+    return {"counts": counts, "errors": errors, "warnings": [], "id_map": id_map}
 
 
 # ---------------------------------------------------------------- routes
@@ -1218,6 +1256,7 @@ def _commit(data):
     if entity == "documents":
         result = _apply_zip(data, user)
         mapping_json = {"headers": ["file"], "folders": {f["folder"]: (data.get("folder_matters", {}).get(f["folder"]) or f["matter_id"]) for f in data["folders"]}}
+        mapping_json["warnings"] = result.get("warnings") or []
     else:
         fields = M.field_defs(entity)
         missing = [label for f, label, req, _ in fields if req and not data["mapping"].get(f)]
@@ -1225,7 +1264,8 @@ def _commit(data):
             flash("Map these required fields first: " + ", ".join(missing), "error")
             return redirect(url_for("importer.preview", token=data["token"]))
         result = run_import(data, data["mapping"], data["options"], user, dry=False)
-        mapping_json = {"headers": data["headers"], "mapping": data["mapping"], "options": data["options"]}
+        mapping_json = {"headers": data["headers"], "mapping": data["mapping"], "options": data["options"],
+                        "warnings": result.get("warnings") or []}
     job = ImportJob(source=data["source"], entity=entity, filename=data["filename"][:300],
                     mapping_json=json.dumps(mapping_json), rows=result["counts"]["rows"], created=result["counts"]["created"],
                     updated=result["counts"]["updated"], skipped=result["counts"]["skipped"],
@@ -1241,8 +1281,11 @@ def _commit(data):
         p = _token_path(data["token"], ext)
         if os.path.isfile(p):
             os.remove(p)
+    warn_n = len(result.get("warnings") or [])
     flash(f"{M.ENTITY_LABELS[entity]}: {job.created} created, {job.updated} updated, {job.skipped} skipped, "
-          f"{len(result['errors'])} rows with problems.", "ok" if not result["errors"] else "error")
+          f"{len(result['errors'])} rows with problems"
+          + (f", {warn_n} row{'s' if warn_n != 1 else ''} to check." if warn_n else "."),
+          "ok" if not (result["errors"] or warn_n) else "error")
     return redirect(url_for("importer.job", job_id=job.id))
 
 

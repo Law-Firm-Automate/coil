@@ -9,7 +9,7 @@
 {% else %}
 <form method="post" class="card" style="max-width:860px">{{ csrf() }}<input type="hidden" name="matter_id" value="{{ m.id }}">
   {% if fields %}
-  <p class="small muted">Values come from the firm, the matter and the client. Change anything before generating. Blank rows are fields the template uses that the app does not know.</p>
+  <p class="small muted">Values come from the firm, the matter and the client. Change anything before generating. Blank rows are fields the template uses that the app does not know. Both merge styles are filled, <code>{{ '{{ field }}' }}</code> and the plain Word style <code>{{ '{FIELD}' }}</code>.</p>
   <table>{% for name, value, known in fields %}<tr><td class="nowrap" style="width:30%"><code>{{ name }}</code>{% if not known %}<br><span class="small muted">not prefilled</span>{% endif %}</td><td><input type="text" name="f_{{ name }}" value="{{ value }}"></td></tr>{% endfor %}</table>
   {% else %}<div class="empty">This template has no merge fields. It will be generated as is.</div>{% endif %}
   <div class="actions"><button class="btn">Generate and save to {{ m.number }}</button></div>

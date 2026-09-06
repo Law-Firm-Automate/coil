@@ -43,6 +43,35 @@ def book_total(as_of=None):
     return int(q.scalar() or 0)
 
 
+def allocation(client, as_of=None):
+    """How a client's trust money is earmarked.
+
+    Returns (total, per_matter, allocated, unallocated) where per_matter maps matter id to that
+    matter's own sub-ledger balance, allocated is the sum of the POSITIVE per-matter balances, and
+    unallocated = total - allocated. Unallocated is what may be spent without a matter tag.
+
+    Unallocated goes negative only when the matter sub-ledgers claim more than the client actually
+    holds, which imported data can do. Callers must treat that as a shortfall, not as spendable.
+    """
+    mb = matter_balances(as_of)
+    per = {m.id: mb.get(m.id, 0) for m in client.matters}
+    total = int(client_balances(as_of).get(client.id, 0))
+    allocated = sum(v for v in per.values() if v > 0)
+    return total, per, allocated, total - allocated
+
+
+def available_for_matter(client, matter, as_of=None):
+    """(own, unallocated, available) in cents that may be spent on this matter.
+
+    A matter may spend its own earmarked balance plus the client's unallocated balance, and nothing
+    else. Another matter's earmarked funds are never available, so `available` is capped at what the
+    client actually holds when the sub-ledgers are over-allocated.
+    """
+    total, per, allocated, unallocated = allocation(client, as_of)
+    own = max(0, per.get(matter.id, 0)) if matter else 0
+    return own, unallocated, max(0, own + unallocated)
+
+
 def outstanding_filter(period_end):
     """Items not cleared as of period_end: never cleared, or cleared after the period."""
     return or_(TrustTransaction.cleared == False,  # noqa: E712
@@ -60,16 +89,21 @@ def index():
     clients.sort(key=lambda c: c.sort_name.lower())
     rows = []
     negatives = []
+    over_allocated = []
     for c in clients:
         matters = [(m, mbal.get(m.id, 0)) for m in c.matters if mbal.get(m.id, 0) != 0]
-        allocated = sum(v for _, v in matters)
+        allocated = sum(v for _, v in matters if v > 0)
         unallocated = cbal[c.id] - allocated
-        rows.append({"client": c, "balance": cbal[c.id], "matters": matters, "unallocated": unallocated})
+        rows.append({"client": c, "balance": cbal[c.id], "matters": matters, "allocated": allocated,
+                     "unallocated": unallocated})
         if cbal[c.id] < 0:
             negatives.append(f"{c.display_name} ({cents_to_str(cbal[c.id])})")
         for m, v in matters:
             if v < 0:
                 negatives.append(f"{m.label} ({cents_to_str(v)})")
+        if unallocated < 0:
+            over_allocated.append(f"{c.display_name}: matters claim {cents_to_str(allocated)} but the client "
+                                  f"holds {cents_to_str(cbal[c.id])}, short {cents_to_str(-unallocated)}")
     uncleared = TrustTransaction.query.filter_by(cleared=False).count()
     last_recon = TrustReconciliation.query.order_by(TrustReconciliation.period_end.desc(),
                                                     TrustReconciliation.id.desc()).first()
@@ -81,7 +115,8 @@ def index():
     all_clients.sort(key=lambda c: c.sort_name.lower())
     open_matters = Matter.query.filter(Matter.status != "closed").order_by(Matter.number).all()
     return render_template("trust/index.html", rows=rows, bank_total=book_total(), uncleared=uncleared,
-                           last_recon=last_recon, negatives=negatives, card_fees=int(card_fees),
+                           last_recon=last_recon, negatives=negatives, over_allocated=over_allocated,
+                           card_fees=int(card_fees),
                            all_clients=all_clients, open_matters=open_matters, stripe_on=_stripe.configured())
 
 
@@ -99,9 +134,10 @@ def ledger(client_id):
         rows.append((t, running))
     mbal = matter_balances()
     matters = [(m, mbal.get(m.id, 0)) for m in client.matters if m.id in mbal]
-    unallocated = running - sum(v for _, v in matters)
+    allocated = sum(v for _, v in matters if v > 0)
+    unallocated = running - allocated
     return render_template("trust/ledger.html", client=client, rows=rows, balance=running, matters=matters,
-                           unallocated=unallocated, labels=TYPE_LABELS)
+                           allocated=allocated, unallocated=unallocated, labels=TYPE_LABELS)
 
 
 @bp.route("/<int:txn_id>/clear", methods=["POST"])
@@ -148,15 +184,29 @@ def new():
         if not errors:
             delta = amount if ttype in POSITIVE_TYPES else -amount
             if delta < 0:
-                cbal = client.trust_balance_cents()
-                if cbal + delta < 0:
-                    errors.append(f"Rejected: {client.display_name} holds {cents_to_str(cbal)} in trust. "
-                                  f"A {TYPE_LABELS[ttype].lower()} of {cents_to_str(amount)} would overdraw the client.")
+                total, per, allocated, unallocated = allocation(client)
+                label = TYPE_LABELS[ttype].lower()
+                if total + delta < 0:
+                    errors.append(f"Rejected: {client.display_name} holds {cents_to_str(total)} in trust. "
+                                  f"A {label} of {cents_to_str(amount)} would overdraw the client.")
                 elif matter:
-                    mb = matter.trust_balance_cents()
-                    if mb + delta < 0:
-                        errors.append(f"Rejected: {matter.label} holds {cents_to_str(mb)} in trust. "
-                                      f"A {TYPE_LABELS[ttype].lower()} of {cents_to_str(amount)} would overdraw the matter.")
+                    # A matter-tagged withdrawal may only spend that matter's own earmarked funds.
+                    # Unallocated money and other matters' funds are off limits: tag it to the right
+                    # matter, or move the money first.
+                    own = max(0, per.get(matter.id, 0))
+                    if amount > own:
+                        errors.append(f"Rejected: {matter.label} holds {cents_to_str(own)} in trust. "
+                                      f"A {label} of {cents_to_str(amount)} would overdraw the matter. "
+                                      f"{cents_to_str(max(0, unallocated))} of {client.display_name}'s money is "
+                                      f"unallocated; deposit it to this matter first if it belongs here.")
+                elif amount > unallocated:
+                    # Untagged withdrawal: only the client's unallocated money can go out this way,
+                    # otherwise it silently spends another matter's retainer.
+                    errors.append(f"Rejected: only {cents_to_str(max(0, unallocated))} of "
+                                  f"{client.display_name}'s {cents_to_str(total)} trust balance is unallocated. "
+                                  f"The rest is earmarked to specific matters, so a {label} of "
+                                  f"{cents_to_str(amount)} with no matter selected is refused. Pick the matter "
+                                  f"the money is coming from.")
         if errors:
             for e in errors:
                 flash(e, "error")
@@ -195,15 +245,25 @@ def apply():
     if amount > inv.balance_cents:
         flash(f"That is more than the invoice balance of {cents_to_str(inv.balance_cents)}.", "error")
         return back
-    client_bal = inv.client.trust_balance_cents()
-    matter_bal = inv.matter.trust_balance_cents() if inv.matter else 0
-    if matter_bal > 0:
-        available, source, matter_id = matter_bal, inv.matter.label, inv.matter_id
-    else:
-        available, source, matter_id = client_bal, inv.client.display_name, None
+    # An invoice may only be paid from its own matter's earmarked funds plus the client's
+    # unallocated balance. Another matter's money is never available, whatever the pooled client
+    # balance says.
+    own, unallocated, available = available_for_matter(inv.client, inv.matter)
     if amount > available:
-        flash(f"Only {cents_to_str(available)} is held in trust for {source}.", "error")
+        mlabel = inv.matter.label if inv.matter else inv.client.display_name
+        flash(f"Only {cents_to_str(available)} can be applied to this invoice: {cents_to_str(own)} held in "
+              f"trust for {mlabel} and {cents_to_str(unallocated)} unallocated for "
+              f"{inv.client.display_name}. Any other trust money this client holds is earmarked to a "
+              f"different matter and cannot pay this one.", "error")
         return back
+    from_matter = min(amount, own) if inv.matter_id else 0
+    from_unallocated = amount - from_matter
+    parts = [(inv.matter_id, from_matter), (None, from_unallocated)]
+    source = inv.matter.label if inv.matter else inv.client.display_name
+    if from_matter and from_unallocated:
+        source = f"{inv.matter.label} {cents_to_str(from_matter)} + unallocated {cents_to_str(from_unallocated)}"
+    elif not from_matter:
+        source = f"{inv.client.display_name} (unallocated)"
     today = date.today()
     uid = current_user().id
     pay = Payment(invoice_id=inv.id, matter_id=inv.matter_id, client_id=inv.client_id, amount_cents=amount,
@@ -211,11 +271,15 @@ def apply():
                   note=f"Applied from trust ({source})")
     inv.payments.append(pay)
     db.session.flush()
-    txn = TrustTransaction(client_id=inv.client_id, matter_id=matter_id, date=today, type="to_operating",
-                           amount_cents=-amount, description=f"Applied to invoice {inv.number}",
-                           payee=Firm.get().name, invoice_id=inv.id, payment_id=pay.id, cleared=False,
-                           created_by_id=uid)
-    db.session.add(txn)
+    # One Payment, but one ledger row per source so each sub-ledger stays truthful.
+    for matter_id, part in parts:
+        if part <= 0:
+            continue
+        db.session.add(TrustTransaction(
+            client_id=inv.client_id, matter_id=matter_id, date=today, type="to_operating",
+            amount_cents=-part, description=f"Applied to invoice {inv.number}"
+                                            f"{'' if matter_id else ' (unallocated funds)'}",
+            payee=Firm.get().name, invoice_id=inv.id, payment_id=pay.id, cleared=False, created_by_id=uid))
     inv.recalc()
     db.session.add(InvoiceEvent(invoice_id=inv.id, event="paid",
                                 detail=f"{cents_to_str(amount)} applied from trust"))
@@ -368,12 +432,22 @@ def evergreen_shortfalls():
 
     Returns [(matter, balance_cents, shortfall_cents)] where shortfall = replenish_to - balance (or
     minimum - balance when no replenish target is set). Used by the reminders CLI and the dashboard card.
+
+    balance_cents is what the matter can actually spend: its own earmarked funds plus the client's
+    unallocated balance. Another matter's earmarked funds are not counted, because they cannot pay
+    this matter's invoices.
     """
     out = []
-    mbal = matter_balances()
+    cbal, mbal = client_balances(), matter_balances()   # two queries, not two per matter
+    allocated_by_client = {}
+    for m in Matter.query.all():
+        v = mbal.get(m.id, 0)
+        if v > 0:
+            allocated_by_client[m.client_id] = allocated_by_client.get(m.client_id, 0) + v
     q = Matter.query.filter(Matter.status != "closed", Matter.trust_minimum_cents > 0).order_by(Matter.number)
     for m in q.all():
-        bal = mbal.get(m.id, 0)
+        unallocated = cbal.get(m.client_id, 0) - allocated_by_client.get(m.client_id, 0)
+        bal = max(0, max(0, mbal.get(m.id, 0)) + unallocated)
         if bal < (m.trust_minimum_cents or 0):
             target = m.trust_replenish_to_cents or m.trust_minimum_cents or 0
             shortfall = max(0, target - bal)

@@ -1,7 +1,8 @@
 {% extends "public.html" %}{% block title %}Pay invoice {{ inv.number }}{% endblock %}{% block content %}
 <div class="card">
-  <h1>Online payments are not set up yet</h1>
-  <p>We are not able to take card or bank payments online at the moment. To pay invoice <strong>{{ inv.number }}</strong> ({{ inv.balance_cents|money }} due), please mail a check payable to <strong>{{ f.name }}</strong> to:</p>
+  {% set cc = (inv.currency or 'USD')|upper %}
+  <h1>{% if reason == 'currency' %}This invoice cannot be paid online{% else %}Online payments are not set up yet{% endif %}</h1>
+  <p>{% if reason == 'currency' %}This invoice is in {{ cc }}, and our online payment page can only take US dollars. To pay invoice <strong>{{ inv.number }}</strong> ({{ inv.balance_cents|cur(cc) }} due), please arrange a bank transfer or contact us, or mail a check payable to <strong>{{ f.name }}</strong> to:{% else %}We are not able to take card or bank payments online at the moment. To pay invoice <strong>{{ inv.number }}</strong> ({{ inv.balance_cents|cur(cc) }} due), please mail a check payable to <strong>{{ f.name }}</strong> to:{% endif %}</p>
   <p style="white-space:pre-line">{{ f.address }}</p>
   <p>Write <strong>{{ inv.number }}</strong> on the memo line.{% if f.phone %} Questions or want to pay another way? Call {{ f.phone }}.{% endif %}</p>
   <p><a href="/p/{{ inv.public_token }}">Back to the invoice</a></p>

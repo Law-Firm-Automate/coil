@@ -13,15 +13,20 @@
       <label><input type="radio" name="scopes" value="read,write"> Read and write: also log time, run the timer, post time capture segments and phone intake leads</label>
       <div class="actions"><button class="btn">Create token</button></div>
     </form>
-    <p class="small muted">Tokens act as the user who created them. Only the SHA-256 of the token is stored.</p>
+    <p class="small muted">Tokens act as the user who created them, so create your own rather than borrowing someone else's: time you log and capture suggestions you file land under your name. Only the SHA-256 of the token is stored.</p>
   </div>
-  <div class="card"><h2>Your tokens</h2>
-    {% if rows %}<table><tr><th>Name</th><th>Prefix</th><th>Scope</th><th>User</th><th>Last used</th><th></th></tr>
-    {% for t in rows %}<tr>
-      <td>{{ t.name }}</td><td><code>{{ t.prefix }}...</code></td><td>{{ t.scopes }}</td><td class="small">{{ t.user.name if t.user else '' }}</td>
+  {% set me = current_user() %}
+  {% set is_owner = me and me.role == 'owner' %}
+  {% set mine = rows | selectattr('user_id', 'equalto', me.id) | list %}
+  {% set visible = rows if is_owner else mine %}
+  <div class="card"><h2>{{ 'All tokens in the firm' if is_owner else 'Your tokens' }}</h2>
+    {% if visible %}<table><tr><th>Name</th><th>Prefix</th><th>Scope</th>{% if is_owner %}<th>User</th>{% endif %}<th>Last used</th><th></th></tr>
+    {% for t in visible %}<tr>
+      <td>{{ t.name }}</td><td><code>{{ t.prefix }}...</code></td><td>{{ t.scopes }}</td>{% if is_owner %}<td class="small">{{ t.user.name if t.user else '' }}</td>{% endif %}
       <td class="small muted">{{ t.last_used_at|dt if t.last_used_at else 'never' }}</td>
       <td>{% if t.revoked_at %}<span class="badge void">revoked {{ t.revoked_at|d }}</span>{% else %}<form method="post" action="/settings/api/{{ t.id }}/revoke" class="inline" onsubmit="return confirm('Revoke this token? Anything using it stops working.')">{{ csrf() }}<button class="btn small secondary">Revoke</button></form>{% endif %}</td>
     </tr>{% endfor %}</table>{% else %}<div class="empty">No tokens yet.</div>{% endif %}
+    <p class="small muted">{% if is_owner %}As the firm owner you see every token here and can revoke any of them. Everyone else sees only their own.{% else %}These are your tokens. Other people's tokens are not shown here and you cannot revoke them.{% endif %}</p>
   </div>
 </div>
 <div class="card"><h2>API reference</h2>

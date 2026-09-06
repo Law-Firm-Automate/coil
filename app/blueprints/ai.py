@@ -27,6 +27,30 @@ DATE_KINDS = ("deadline", "court_date", "task", "event")
 SEARCH_ENTITIES = ("matters", "contacts", "invoices", "time", "tasks")
 
 
+# A note whose body starts with this is attorney work product and never reaches a client-facing draft.
+# Anything Coil writes to a matter for the firm's own use carries it (see matter_summary_save).
+INTERNAL_PREFIX = "[internal]"
+
+# Notes that talk about money are excluded from the client update as well, whoever wrote them. The
+# update email promises no fees, hours or invoices, and a note is free text nobody vetted for that.
+_MONEY_NOTE = re.compile(
+    r"[$\u20ac\u00a3]\s?\d"
+    r"|\b\d+(?:[.,]\d+)?\s*(?:hours?|hrs?)\b"
+    r"|\b(?:fee|fees|invoice|invoiced|invoices|billing|billed|billable|unbilled|bill|retainer|trust"
+    r"|hourly|rate|rates|payment|payments|paid|unpaid|owes|owing|balance|write[- ]?off|write[- ]?down"
+    r"|collect|collection|cost|costs|deposit|refund)\b", re.I)
+
+
+def _is_internal(note):
+    return (note.body or "").lstrip().lower().startswith(INTERNAL_PREFIX)
+
+
+def _client_safe_note(note):
+    """True when a matter note may be shown to the client in a status update."""
+    body = (note.body or "").strip()
+    return bool(body) and not _is_internal(note) and not _MONEY_NOTE.search(body)
+
+
 def _uid():
     u = current_user()
     return u.id if u else None
@@ -213,7 +237,9 @@ def matter_summary_save(id):
     if not summary:
         flash("Nothing to save.", "error")
         return redirect(url_for("matters.detail", id=m.id))
-    body = f"AI summary ({date.today():%b %-d, %Y}):\n{summary}"
+    # This note is attorney work product: it routinely names fees, unbilled hours and candid opinions.
+    # The [internal] prefix is what keeps it out of client-facing drafts (see update_facts below).
+    body = f"{INTERNAL_PREFIX} AI summary ({date.today():%b %-d, %Y}):\n{summary}"
     if items:
         body += "\n\nOpen items:\n" + "\n".join(f"- {x}" for x in items)
     n = Note(matter_id=m.id, user_id=_uid(), body=body)
@@ -344,22 +370,19 @@ UPDATE_SCHEMA = {
     "required": ["subject", "body"], "additionalProperties": False,
 }
 UPDATE_DAYS = 30
-INTERNAL_PREFIX = "[internal]"
-
-
-def _is_internal(note):
-    return (note.body or "").lstrip().lower().startswith(INTERNAL_PREFIX)
 
 
 def update_facts(m, today=None):
-    """Client-safe facts for a status update: recent notes (never ones starting with [internal]), recent work
-    descriptions (no hours, rates or amounts), tasks finished recently, upcoming deadlines and events.
-    Fees and invoices are deliberately left out."""
+    """Client-safe facts for a status update: recent notes, recent work descriptions, tasks finished
+    recently, upcoming deadlines and events. Fees and invoices are deliberately left out, so a note is
+    dropped when it starts with [internal] (everything Coil writes to a matter for the firm's own use
+    does) or when it mentions money, hours, invoices or billing. The same list feeds the AI prompt and
+    the no-model template, so both honour the same promise."""
     today = today or date.today()
     since = today - timedelta(days=UPDATE_DAYS)
     since_dt = datetime.combine(since, datetime.min.time())
     notes = [n for n in sorted(m.notes, key=lambda n: n.created_at or datetime.min, reverse=True)
-             if not _is_internal(n) and n.created_at and n.created_at >= since_dt][:8]
+             if _client_safe_note(n) and n.created_at and n.created_at >= since_dt][:8]
     work = [t for t in sorted(m.time_entries, key=lambda t: (t.date or date.min, t.id), reverse=True)
             if t.date and t.date >= since and (t.description or "").strip()][:10]
     done = Task.query.filter(Task.matter_id == m.id, Task.done == True, Task.done_at != None,  # noqa: E712,E711
@@ -422,6 +445,19 @@ _UPDATE_T = {
 }
 
 
+NOTE_LINE_CHARS = 200
+
+
+def _note_line(note):
+    """One line from a note for a client-facing draft. A note is the attorney's own scratch space, so the
+    template takes its first line and truncates it rather than pasting the whole body into the email."""
+    for raw in (note.body or "").splitlines():
+        line = " ".join(raw.split())
+        if line:
+            return line if len(line) <= NOTE_LINE_CHARS else line[:NOTE_LINE_CHARS].rstrip() + "..."
+    return ""
+
+
 def _first_name(contact):
     if not contact:
         return ""
@@ -435,7 +471,8 @@ def template_update(m, facts, lang="en"):
     attorney = m.responsible.name if m.responsible else firm.name
     since = facts["since"].strftime(T["ymd"])
     lines = [T["greeting"].format(name=_first_name(m.client)), "", T["intro"].format(matter=m.name), ""]
-    items = [t.description.strip() for t in facts["work"]] + [n.body.strip() for n in facts["notes"]]
+    items = [t.description.strip() for t in facts["work"]] + [_note_line(n) for n in facts["notes"]]
+    items = [x for x in items if x]
     if items:
         lines.append(T["work"].format(since=since))
         lines += [f"- {x}" for x in items]

@@ -323,9 +323,23 @@ def cluster(cluster_id):
     return c
 
 
+def _candidate(c):
+    return {"cluster_id": c.get("id"),
+            "case_name": c.get("case_name") or c.get("case_name_full") or c.get("case_name_short") or "",
+            "date_filed": c.get("date_filed") or "",
+            "citations": [format_citation(x) for x in (c.get("citations") or []) if format_citation(x)],
+            "url": _abs(c.get("absolute_url")) if c.get("absolute_url") else ""}
+
+
 def citation_lookup(text):
     """POST the text to /citation-lookup/. Returns {ok, citations: [...]} where each item has
-    citation, normalized, status, found, ambiguous, case_name, cluster_id, url, date_filed, citations, error_message."""
+    citation, normalized, status, resolution, found, ambiguous, match_count, candidates, case_name,
+    cluster_id, url, date_filed, citations, error_message.
+
+    `resolution` is the one to read: "resolved" for a confident single match, "ambiguous" when the
+    citation matched more than one case (CourtListener answers 300 for those, and occasionally 200 with
+    several clusters), "not_found" for anything else including a 404. Only "resolved" means the reader
+    can stop checking; ambiguous and not_found both still need verifying before filing."""
     text = (text or "")[:CITE_TEXT_CAP]
     if not text.strip():
         return {"ok": True, "citations": []}
@@ -339,13 +353,20 @@ def citation_lookup(text):
         clusters = it.get("clusters") or []
         first = clusters[0] if clusters else {}
         norm = it.get("normalized_citations") or []
+        # A 300 means CourtListener matched several cases and cannot say which one. That is not the same
+        # as a 404, and the row prints a candidate case name and link either way, so it must not be
+        # labelled "not found".
+        ambiguous = bool(clusters) and (status == 300 or (status == 200 and len(clusters) > 1))
+        resolved = status == 200 and len(clusters) == 1
         found.append({
             "citation": it.get("citation") or (norm[0] if norm else ""),
             "normalized": norm[0] if norm else (it.get("citation") or ""),
             "status": status,
-            "found": status == 200 and bool(clusters),
-            "ambiguous": status == 300 or (status == 200 and len(clusters) > 1),
+            "resolution": "resolved" if resolved else ("ambiguous" if ambiguous else "not_found"),
+            "found": resolved or ambiguous,
+            "ambiguous": ambiguous,
             "match_count": len(clusters),
+            "candidates": [_candidate(c) for c in clusters[:10]],
             "case_name": first.get("case_name") or first.get("case_name_full") or "",
             "cluster_id": first.get("id"),
             "url": _abs(first.get("absolute_url")) if first.get("absolute_url") else "",

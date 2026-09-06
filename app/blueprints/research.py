@@ -315,20 +315,37 @@ def _cite_documents():
             .order_by(Document.matter_id, Document.created_at.desc()).all())
 
 
+def _cite_counts(items):
+    """(resolved, ambiguous, not found). Ambiguous is its own bucket: the citation matched more than one
+    case, which is a different problem from a citation that matched nothing."""
+    res = [c["resolution"] for c in items]
+    return res.count("resolved"), res.count("ambiguous"), res.count("not_found")
+
+
+def _candidate_label(c):
+    return c["case_name"] + (f" ({c['date_filed'][:4]})" if c.get("date_filed") else "")
+
+
 def _cite_note_body(items, source_label):
-    found = [c for c in items if c["found"]]
-    missing = [c for c in items if not c["found"]]
-    lines = [f"Citation check (CourtListener) on {date.today().strftime('%b %-d, %Y')}, source: {source_label}.",
-             f"{len(items)} citation{'s' if len(items) != 1 else ''} found, {len(found)} resolved, "
-             f"{len(missing)} not found."]
+    resolved, ambiguous, missing = _cite_counts(items)
+    # [internal] marks this as attorney work product so it is never quoted into a client-facing draft
+    # (app/blueprints/ai.py:update_facts reads that prefix).
+    lines = [f"[internal] Citation check (CourtListener) on {date.today().strftime('%b %-d, %Y')}, "
+             f"source: {source_label}.",
+             f"{len(items)} citation{'s' if len(items) != 1 else ''} found, {resolved} resolved, "
+             f"{ambiguous} ambiguous, {missing} not found."]
     for c in items:
-        if c["found"]:
-            tail = f"{c['case_name']}" + (f" ({c['date_filed'][:4]})" if c.get("date_filed") else "")
-            if c["ambiguous"]:
-                tail += f", {c['match_count']} possible matches, verify which one"
-            lines.append(f"- {c['citation']}: {tail}")
+        if c["resolution"] == "resolved":
+            tail = _candidate_label(c) or c["case_name"]
+        elif c["resolution"] == "ambiguous":
+            names = "; ".join(_candidate_label(x) for x in (c.get("candidates") or []) if x.get("case_name"))
+            tail = f"{c['match_count']} possible matches"
+            if names:
+                tail += f" ({names})"
+            tail += ", verify which one before filing"
         else:
-            lines.append(f"- {c['citation']}: not found, verify before filing")
+            tail = "not found, verify before filing"
+        lines.append(f"- {c['citation']}: {tail}")
     lines.append("CourtListener is a free public database; verify against the official reporter.")
     return "\n".join(lines)
 
@@ -371,8 +388,9 @@ def cite_check():
         n = Note(matter_id=m.id, user_id=_uid(), body=_cite_note_body(items, source_label))
         db.session.add(n)
         db.session.flush()
+        resolved, ambiguous, missing = _cite_counts(items)
         audit("create", "note", n.id, f"citation check saved on {m.label}: {len(items)} citations, "
-              f"{sum(1 for c in items if not c['found'])} not found", _uid())
+              f"{ambiguous} ambiguous, {missing} not found", _uid())
         db.session.commit()
         ctx["note"] = n
     return render_template("research/cite_check.html", **ctx)

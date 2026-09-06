@@ -336,16 +336,53 @@ def build_demand_package(matter, case, providers, demand_cents):
 # ---------------------------------------------------------------------------
 # settlement worksheet math (mirrors the free Settlement Disbursement Sheet)
 # ---------------------------------------------------------------------------
-def compute_worksheet(matter, gross_cents, fee_pct, extra_costs=None, other_cents=0):
+def matter_expense_rows(matter):
+    """Every expense on the matter with the billing facts the worksheet needs.
+
+    An expense whose invoice_id points at a non-void invoice has already been billed to the client,
+    so deducting it from the settlement again would take the same cost out of the client twice.
+    Those rows carry billed=True and the invoice number, and are excluded from the default cost set.
+    """
+    rows = []
+    for e in Expense.query.filter_by(matter_id=matter.id).order_by(Expense.date, Expense.id).all():
+        inv = e.invoice
+        billed = bool(inv and inv.status != "void")
+        rows.append({"id": e.id, "date": e.date.isoformat() if e.date else "",
+                     "description": e.description or "", "cents": int(e.amount_cents or 0),
+                     "billable": bool(e.billable), "billed": billed,
+                     "invoice_id": inv.id if billed else None,
+                     "invoice_number": inv.number if billed else ""})
+    return rows
+
+
+def default_expense_ids(matter):
+    """Ids of the expenses counted unless the user says otherwise: the ones not already billed."""
+    return [r["id"] for r in matter_expense_rows(matter) if not r["billed"]]
+
+
+def compute_worksheet(matter, gross_cents, fee_pct, extra_costs=None, other_cents=0, include_expense_ids=None):
     """Return a dict of every line. extra_costs = [(description, cents)] typed in by hand.
-    fee = gross x pct; costs = every expense on the matter (billable or not) plus extras; liens = payable of
-    every lien not yet paid; net = gross minus all of it. Parts always sum to the gross by construction."""
+
+    fee = gross x pct; costs = the counted matter expenses plus extras; liens = payable of every lien
+    not yet paid; net = gross minus all of it. Parts always sum to the gross by construction.
+
+    Costs default to the expenses that have NOT been billed to the client. A cost that was invoiced
+    and collected on an hourly or hybrid matter has already been recovered, so taking it out of the
+    settlement as well would short the client by that amount. Pass include_expense_ids (a list, which
+    may be empty) to override the default set from the form.
+    """
     gross = int(gross_cents or 0)
     pct = float(fee_pct or 0)
     fee = int(round(gross * pct / 100.0))
-    expenses = [{"id": e.id, "date": e.date.isoformat() if e.date else "", "description": e.description or "",
-                 "cents": int(e.amount_cents or 0), "billable": bool(e.billable)}
-                for e in Expense.query.filter_by(matter_id=matter.id).order_by(Expense.date, Expense.id).all()]
+    all_expenses = matter_expense_rows(matter)
+    if include_expense_ids is None:
+        chosen = {r["id"] for r in all_expenses if not r["billed"]}
+    else:
+        chosen = {int(i) for i in include_expense_ids}
+    for r in all_expenses:
+        r["counted"] = r["id"] in chosen
+    expenses = [r for r in all_expenses if r["counted"]]
+    excluded = [r for r in all_expenses if not r["counted"]]
     extras = [{"description": d, "cents": int(c)} for d, c in (extra_costs or []) if int(c or 0) > 0]
     costs = sum(x["cents"] for x in expenses) + sum(x["cents"] for x in extras)
     liens = [{"id": l.id, "holder": l.holder, "type": l.type, "original": int(l.original_cents or 0),
@@ -355,6 +392,8 @@ def compute_worksheet(matter, gross_cents, fee_pct, extra_costs=None, other_cent
     other = int(other_cents or 0)
     net = gross - fee - costs - lien_total - other
     return {"gross": gross, "fee_pct": pct, "fee": fee, "expenses": expenses, "extras": extras, "costs": costs,
+            "all_expenses": all_expenses, "excluded_expenses": excluded,
+            "expense_ids": [r["id"] for r in expenses],
             "liens": liens, "liens_total": lien_total, "other": other, "net": net,
             "balanced": fee + costs + lien_total + other + net == gross}
 
@@ -385,10 +424,16 @@ def build_worksheet_pdf(matter, ws):
     rows = [("Gross settlement", "", pdf_money(ws.gross_cents)),
             (f"Attorney fee ({ws.fee_pct:g}% of gross)", "", pdf_money(-ws.fee_cents))]
     for e in d.get("expenses", []):
-        rows.append((f"Cost: {e.get('description') or 'expense'}", e.get("date", ""), pdf_money(-e["cents"])))
+        note = f" (already billed on invoice {e.get('invoice_number')}, counted anyway)" if e.get("billed") else ""
+        rows.append((f"Cost: {e.get('description') or 'expense'}{note}", e.get("date", ""), pdf_money(-e["cents"])))
     for e in d.get("extras", []):
         rows.append((f"Cost: {e.get('description') or 'other cost'}", "", pdf_money(-e["cents"])))
     rows.append(("Costs subtotal", "", pdf_money(-ws.costs_cents)))
+    for e in d.get("excluded_expenses", []):
+        why = (f"already billed on invoice {e.get('invoice_number')}" if e.get("billed")
+               else "excluded by the firm")
+        rows.append((f"Not deducted: {e.get('description') or 'expense'} ({why})", e.get("date", ""),
+                     pdf_money(0)))
     for l in d.get("liens", []):
         rows.append((f"Lien: {l['holder']} ({l['type'].replace('_', ' ')})", "", pdf_money(-l["cents"])))
     rows.append(("Liens subtotal", "", pdf_money(-ws.liens_cents)))
@@ -400,6 +445,11 @@ def build_worksheet_pdf(matter, ws):
     _para(pdf, f"Balance check: fee + costs + liens + other + net = {pdf_money(parts)}; gross = "
                f"{pdf_money(ws.gross_cents)}. {'Balanced.' if parts == ws.gross_cents else 'OUT OF BALANCE.'}",
           size=9.5, style="B")
+    counted = d.get("expense_ids")
+    if counted is not None:
+        _para(pdf, f"Case costs counted: expense ids {', '.join(str(i) for i in counted) if counted else 'none'}. "
+                   f"Costs already billed to the client on an invoice are not deducted again unless listed here.",
+              size=9)
     _para(pdf, "Client acknowledgement: I have reviewed this disbursement and approve the payments listed.",
           size=9.5)
     pdf.ln(6)
@@ -474,8 +524,12 @@ def case(matter_id):
         SettlementWorksheet.is_current.desc(), SettlementWorksheet.id.desc()).all()
     current = next((w for w in worksheets if w.is_current), None)
     prior = [w for w in worksheets if not w.is_current]
+    # The build form starts from the current worksheet's cost choices when there is one, so
+    # re-saving does not silently revert a cost the user ticked back on.
+    prior_ids = _detail(current).get("expense_ids") if current else None
     preview = compute_worksheet(m, current.gross_cents if current else (c.offer_cents or 0),
-                                current.fee_pct if current else default_fee_pct(m))
+                                current.fee_pct if current else default_fee_pct(m),
+                                include_expense_ids=prior_ids)
     docs = Document.query.filter(Document.matter_id == m.id, Document.is_current == True,  # noqa: E712
                                  Document.folder.in_(["Medical records", "Liens", "Demand", "Settlement"])).order_by(
         Document.created_at.desc()).all()
@@ -766,7 +820,14 @@ def worksheet_new(matter_id):
         if cents > 0:
             extras.append((desc.strip() or "Other cost", cents))
     other = parse_money(request.form.get("other_deductions"))
-    d = compute_worksheet(m, gross, pct, extras, other)
+    # The form lists every matter expense as a tickbox, so an empty list means "count none".
+    # Without the marker (an older form, or an API caller) fall back to the default set.
+    if request.form.get("expenses_listed"):
+        valid = {r["id"] for r in matter_expense_rows(m)}
+        include = [int(i) for i in request.form.getlist("expense_id") if i.isdigit() and int(i) in valid]
+    else:
+        include = None
+    d = compute_worksheet(m, gross, pct, extras, other, include_expense_ids=include)
     d["other_payee"] = request.form.get("other_payee", "").strip()
     for prev in SettlementWorksheet.query.filter_by(matter_id=m.id, is_current=True).all():
         prev.is_current = False

@@ -122,6 +122,12 @@ def pay(token):
         db.session.commit()
         return render_template("payments/pay_confirm.html", inv=inv, method=method, surcharge=surcharge,
                                total=total, pct=_pct(firm.surcharge_bps or 0))
+    # POST is where the charge is created. Stripe settles in the account's currency and every amount
+    # here is invoice cents with no conversion, so a non-USD invoice would be charged the right
+    # number in the wrong currency. The confirm page already withholds the button and explains this
+    # in the client's language; this closes a direct POST past it.
+    if (inv.currency or "USD").upper() != "USD":
+        return render_template("payments/pay_unconfigured.html", inv=inv, f=firm, reason="currency")
     if not _stripe.configured():
         return render_template("payments/pay_unconfigured.html", inv=inv, f=firm)
     base_url = current_app.config["BASE_URL"]

@@ -6,11 +6,13 @@
   <a class="btn small secondary" href="{{ url_for('trust.index') }}">All clients</a>
 </div></div>
 {% if balance < 0 %}<div class="flash error">This client's trust balance is negative ({{ balance|money }}). That should not be possible. Review the entries below.</div>{% endif %}
+{% if unallocated < 0 %}<div class="flash error"><strong>This client's matter balances add up to more than the client's balance.</strong> The matters claim {{ allocated|money }} but {{ client.display_name }} holds {{ balance|money }}, a shortfall of {{ (-unallocated)|money }}. One matter's sub-ledger is overstating what is really there, which usually comes from data imported from another system. Correct the entries below before the next reconciliation.</div>{% endif %}
 <div class="grid c3">
   <div class="card stat"><div class="label">Client balance</div><div class="value">{{ balance|money }}</div></div>
   <div class="card stat"><div class="label">Per matter</div>
     {% if matters %}<table>{% for m, v in matters %}<tr><td><a href="/matters/{{ m.id }}">{{ m.label }}</a></td><td class="num">{{ v|money }}</td></tr>{% endfor %}
-    {% if unallocated %}<tr><td class="muted">Not tied to a matter</td><td class="num">{{ unallocated|money }}</td></tr>{% endif %}</table>{% else %}<div class="muted small">No matter-level entries.</div>{% endif %}
+    <tr><td class="muted">Unallocated{% if unallocated < 0 %} <span class="badge overdue">over-allocated</span>{% endif %}</td><td class="num">{{ unallocated|money }}</td></tr></table>
+    <div class="small muted">Unallocated is the client's balance less every matter's earmarked balance. Only this much can pay an invoice on a matter that holds nothing of its own.</div>{% else %}<div class="muted small">No matter-level entries. All {{ unallocated|money }} is unallocated.</div>{% endif %}
   </div>
   <div class="card stat"><div class="label">Uncleared</div><div class="value">{{ rows|selectattr('0.cleared', 'equalto', false)|list|length }}</div><div class="small muted">Tick the box once an item shows on the bank statement.</div></div>
 </div>

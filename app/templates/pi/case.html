@@ -162,7 +162,8 @@
 <table>
   <tr><td>Gross settlement</td><td class="num"><strong>{{ current.gross_cents|money }}</strong></td></tr>
   <tr><td>Attorney fee ({{ current.fee_pct }}% of gross)</td><td class="num">({{ current.fee_cents|money }})</td></tr>
-  {% for e in current_detail.expenses %}<tr><td class="small muted" style="padding-left:24px">Cost: {{ e.description or 'expense' }}{% if e.date %} ({{ e.date }}){% endif %}{% if not e.billable %} [non-billable]{% endif %}</td><td class="num small muted">({{ e.cents|money }})</td></tr>{% endfor %}
+  {% for e in current_detail.expenses %}<tr><td class="small muted" style="padding-left:24px">Cost: {{ e.description or 'expense' }}{% if e.date %} ({{ e.date }}){% endif %}{% if not e.billable %} [non-billable]{% endif %}{% if e.billed %} [already billed on invoice {{ e.invoice_number }}, counted anyway]{% endif %}</td><td class="num small muted">({{ e.cents|money }})</td></tr>{% endfor %}
+  {% for e in current_detail.excluded_expenses %}<tr><td class="small muted" style="padding-left:24px">Not counted: {{ e.description or 'expense' }}{% if e.billed %} (already billed on invoice {{ e.invoice_number }}){% endif %}</td><td class="num small muted">not deducted</td></tr>{% endfor %}
   {% for e in current_detail.extras %}<tr><td class="small muted" style="padding-left:24px">Cost: {{ e.description }}</td><td class="num small muted">({{ e.cents|money }})</td></tr>{% endfor %}
   <tr><td>Costs</td><td class="num">({{ current.costs_cents|money }})</td></tr>
   {% for l in current_detail.liens %}<tr><td class="small muted" style="padding-left:24px">Lien: {{ l.holder }} ({{ l.type.replace('_', ' ') }}){% if l.cents != l.original %}, reduced from {{ l.original|money }}{% endif %}</td><td class="num small muted">({{ l.cents|money }})</td></tr>{% endfor %}
@@ -190,7 +191,21 @@
     <div><label>Other deductions</label><input type="text" name="other_deductions" value="{{ dollars(current.other_deductions_cents) if current else '' }}" placeholder="0.00"></div>
     <div><label>Other deductions payee</label><input type="text" name="other_payee" value="{{ current_detail.other_payee if current else '' }}"></div>
   </div>
-  <p class="small muted">Costs from the matter's expenses (billable or not): <strong>{{ (preview.expenses|sum(attribute='cents'))|money }}</strong> across {{ preview.expenses|length }} entr{{ 'y' if preview.expenses|length == 1 else 'ies' }}. Liens not yet paid: <strong>{{ preview.liens_total|money }}</strong>. Add extra costs that are not logged as expenses:</p>
+  <input type="hidden" name="expenses_listed" value="1">
+  {% if preview.all_expenses %}
+  <p class="small muted" style="margin-bottom:4px">Case costs from the matter's expenses. A cost already billed to the client on an invoice is unticked, because deducting it here would take it out of the client a second time. Tick it back on if it was never actually collected, or untick any cost you do not want deducted.</p>
+  <table style="margin-bottom:8px"><tr><th style="width:28px"></th><th>Cost</th><th>Date</th><th class="num">Amount</th><th>Billing</th></tr>
+  {% for e in preview.all_expenses %}<tr>
+    <td><input type="checkbox" name="expense_id" value="{{ e.id }}"{% if e.counted %} checked{% endif %}></td>
+    <td>{{ e.description or 'expense' }}{% if not e.billable %} <span class="small muted">[non-billable]</span>{% endif %}</td>
+    <td class="nowrap small muted">{{ e.date }}</td>
+    <td class="num">{{ e.cents|money }}</td>
+    <td class="small">{% if e.billed %}<span class="badge paid">billed</span> <span class="muted">already billed on invoice {{ e.invoice_number }}</span> <a class="small" href="/invoices/{{ e.invoice_id }}">view</a>{% else %}<span class="muted">not billed</span>{% endif %}</td>
+  </tr>{% endfor %}
+  <tr><td></td><td><strong>Ticked costs</strong></td><td></td><td class="num"><strong>{{ (preview.expenses|sum(attribute='cents'))|money }}</strong></td><td></td></tr>
+  </table>
+  {% else %}<p class="small muted">No expenses logged on this matter.</p>{% endif %}
+  <p class="small muted">Liens not yet paid: <strong>{{ preview.liens_total|money }}</strong>. Add extra costs that are not logged as expenses:</p>
   <div class="row"><div><label>Extra cost</label><input type="text" name="extra_desc" placeholder="Records fees paid by client"></div><div><label>Amount</label><input type="text" name="extra_amount" placeholder="0.00"></div></div>
   <div class="row"><div><input type="text" name="extra_desc" placeholder="Another extra cost"></div><div><input type="text" name="extra_amount" placeholder="0.00"></div></div>
   <div class="actions" style="margin-top:8px"><button class="btn small">Save worksheet</button></div>

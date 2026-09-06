@@ -85,7 +85,7 @@
 <tr><th>Date</th><th>Kind</th><th>Description</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th></tr>
 {% for l in inv.lines %}
 <tr><td class="nowrap">{{ l.date|d }}</td><td>{{ l.kind }}</td><td>{{ l.description }}{% if l.time_entry_id %} <a class="small muted" href="{{ url_for('time.edit', id=l.time_entry_id) }}">entry</a>{% elif l.expense_id %} <a class="small muted" href="{{ url_for('time.expense_edit', id=l.expense_id) }}">expense</a>{% endif %}</td>
-    <td class="num">{% if l.kind == 'time' %}{{ '%.2f' % l.quantity }}{% endif %}</td><td class="num">{% if l.kind == 'time' %}{{ l.unit_cents|cur(cc) }}{% endif %}</td><td class="num">{{ l.amount_cents|cur(cc) }}</td></tr>
+    <td class="num">{{ format_quantity(l) }}</td><td class="num">{% if l.kind == 'time' %}{{ l.unit_cents|cur(cc) }}{% endif %}</td><td class="num">{{ l.amount_cents|cur(cc) }}</td></tr>
 {% else %}<tr><td colspan="6" class="empty">No lines.</td></tr>{% endfor %}
 <tr><th colspan="5" class="right">Subtotal</th><th class="num">{{ inv.subtotal_cents|cur(cc) }}</th></tr>
 <tr><th colspan="5" class="right">Paid</th><th class="num">{{ inv.paid_cents|cur(cc) }}</th></tr>
@@ -116,7 +116,7 @@
 </form>
 {% if trust_balance > 0 %}
 <h3 style="margin-top:14px">Apply from trust</h3>
-<p class="small muted">{{ inv.client.display_name }} has {{ trust_balance|money }} in trust.</p>
+<p class="small muted">{{ trust_balance|money }} of {{ inv.client.display_name }}'s trust money can be applied to this invoice. Funds earmarked to another matter are not included.</p>
 <form method="post" action="/trust/apply">{{ csrf() }}
   <input type="hidden" name="invoice_id" value="{{ inv.id }}">
   <div class="row">

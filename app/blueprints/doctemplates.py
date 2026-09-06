@@ -7,6 +7,7 @@ import zipfile
 from datetime import date
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, send_file
 from jinja2 import Environment, TemplateSyntaxError, meta
+from markupsafe import escape
 from werkzeug.utils import secure_filename
 from ..extensions import db
 from ..models import DocTemplate, Document, Matter, Firm, Office, audit
@@ -68,6 +69,10 @@ def abs_path(rel):
 
 _JINJA_VAR = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)")
 _PLAIN_VAR = re.compile(r"(?<!{){([A-Z][A-Z0-9_]{1,60})}(?!})")
+_PLAIN_NAME = re.compile(r"^[A-Z][A-Z0-9_]{1,60}$")
+# <w:t> holds run text and nothing else, so the body is [^<]*. The tag pattern refuses a self-closing
+# <w:t/>, which would otherwise pair with a later </w:t> and swallow the markup between them.
+_W_TEXT = re.compile(r"(<w:t(?:\s[^>]*[^/>])?>)([^<]*)(</w:t>)")
 
 
 def detect_fields_text(text):
@@ -102,6 +107,104 @@ def detect_fields_html(body):
     # keep source order where we can, then anything jinja found that the regex did not
     ordered = detect_fields_text(body or "")
     return ordered + [n for n in names if n not in ordered]
+
+
+def plain_field_names(names):
+    """The subset of `names` written in the plain {FIELD} style rather than {{ jinja_style }}."""
+    return {n for n in names if _PLAIN_NAME.match(str(n))}
+
+
+def fill_plain_fields(text, values):
+    """Substitute plain {FIELD} merge fields in already-rendered HTML.
+
+    Only names present in `values` are touched, so CSS braces, JavaScript blocks and any {FIELD} the
+    template uses that we have no value for are left exactly as they were. Values are HTML escaped
+    because this runs after Jinja has finished, so nothing a user types can become markup.
+    """
+    if not text or not values:
+        return text or ""
+
+    def sub(m):
+        name = m.group(1)
+        if name not in values:
+            return m.group(0)
+        return str(escape("" if values[name] is None else str(values[name])))
+
+    return _PLAIN_VAR.sub(sub, text)
+
+
+def _rewrite_runs(xml, names):
+    """Rewrite {FIELD} to {{ FIELD }} inside the <w:t> run text of one Word XML part.
+
+    Word splits a typed field across runs whenever formatting or a spell-check boundary falls inside it,
+    so the whole part's run text is joined before matching. The replacement lands in the run that holds
+    the start of the field and the overlapped characters are removed from the runs after it, which is
+    what docxtpl then sees as one intact Jinja expression. Returns (xml, set of names rewritten).
+    """
+    segs = list(_W_TEXT.finditer(xml))
+    if not segs:
+        return xml, set()
+    texts = [m.group(2) for m in segs]
+    joined = "".join(texts)
+    hits, used = [], set()
+    for m in _PLAIN_VAR.finditer(joined):
+        if m.group(1) in names:
+            hits.append((m.start(), m.end(), "{{ " + m.group(1) + " }}"))
+            used.add(m.group(1))
+    if not hits:
+        return xml, set()
+    new_texts, pos = [], 0
+    for t in texts:
+        start, end = pos, pos + len(t)
+        pos = end
+        out, cursor = [], start
+        for hstart, hend, rep in hits:
+            if hend <= start or hstart >= end:
+                continue
+            if hstart > cursor:
+                out.append(joined[cursor:hstart])
+            if hstart >= start:
+                out.append(rep)
+            cursor = max(cursor, min(hend, end))
+        if cursor < end:
+            out.append(joined[cursor:end])
+        new_texts.append("".join(out))
+    parts, last = [], 0
+    for i, m in enumerate(segs):
+        parts.append(xml[last:m.start()])
+        open_tag = m.group(1)
+        text = new_texts[i]
+        # a field that straddled two runs leaves the trailing run starting with a space, which Word drops
+        # unless the run says to keep it
+        if text != m.group(2) and text != text.strip() and "xml:space" not in open_tag:
+            open_tag = open_tag[:-1] + ' xml:space="preserve">'
+        parts.append(open_tag + text + m.group(3))
+        last = m.end()
+    parts.append(xml[last:])
+    return "".join(parts), used
+
+
+def docx_with_plain_fields(path, names):
+    """Copy a .docx, converting plain {FIELD} fields into {{ FIELD }} so docxtpl can fill them.
+
+    Returns (bytes, set of names rewritten). Only `names` are converted, so a stray brace elsewhere in
+    the document is untouched. Headers and footers are converted too because docxtpl renders those.
+    """
+    import io
+    if not names:
+        with open(path, "rb") as f:
+            return f.read(), set()
+    used = set()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(path) as src, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as out:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "word/document.xml" or re.match(r"word/(header|footer)\d*\.xml$", item.filename):
+                xml, hit = _rewrite_runs(data.decode("utf-8", "ignore"), names)
+                used |= hit
+                data = xml.encode("utf-8")
+            out.writestr(item, data)
+    return buf.getvalue(), used
 
 
 def build_context(matter, user=None):
@@ -312,24 +415,51 @@ def _write_output(matter_id, name, data):
     return f"{rel_dir}/{fname}", len(data), full
 
 
+def _remaining_plain(text, names):
+    """Names from `names` still written as a literal {FIELD} in a finished document."""
+    return {m.group(1) for m in _PLAIN_VAR.finditer(text or "") if m.group(1) in names}
+
+
+def _docx_plain_text(data):
+    import io
+    parts = []
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        for name in z.namelist():
+            if name == "word/document.xml" or re.match(r"word/(header|footer)\d*\.xml$", name):
+                parts.append(re.sub(r"<[^>]+>", "", z.read(name).decode("utf-8", "ignore")))
+    return "\n".join(parts)
+
+
 def render_docx(t, ctx):
+    """Returns (bytes, set of plain {FIELD} names still unfilled in the output)."""
     from docxtpl import DocxTemplate
     import io
-    doc = DocxTemplate(abs_path(t.path))
+    plain = plain_field_names(ctx.keys())
+    data, _ = docx_with_plain_fields(abs_path(t.path), plain)
+    doc = DocxTemplate(io.BytesIO(data))
     doc.render(ctx, autoescape=True)
     buf = io.BytesIO()
     doc.save(buf)
-    return buf.getvalue()
+    out = buf.getvalue()
+    return out, _remaining_plain(_docx_plain_text(out), plain)
 
 
 def render_html_pdf(t, ctx, title):
+    """Returns (bytes, set of plain {FIELD} names still unfilled in the output).
+
+    Plain fields are substituted after Jinja has rendered, not before, so a value that happens to contain
+    {{ or {% cannot turn into template code, and CSS braces never reach the substitution at all.
+    """
     from ..services.pdf import DocPDF, html_to_pdf_body
     html = Environment(autoescape=True).from_string(t.body_html or "").render(**ctx)
+    plain = {n: ctx[n] for n in plain_field_names(ctx.keys())}
+    html = fill_plain_fields(html, plain)
     pdf = DocPDF(Firm.get(), title=title)
     pdf.add_page()
     html_to_pdf_body(pdf, html)
     out = pdf.output()
-    return bytes(out) if not isinstance(out, (bytes, bytearray)) else bytes(out)
+    data = bytes(out) if not isinstance(out, (bytes, bytearray)) else bytes(out)
+    return data, _remaining_plain(html, set(plain))
 
 
 def _extracted_text(full, ext):
@@ -342,17 +472,22 @@ def _extracted_text(full, ext):
 
 
 def generate_document(t, matter, values, user):
-    """Render template `t` for `matter` with merge values and save a Document. Returns the Document."""
+    """Render template `t` for `matter` with merge values and save a Document.
+
+    Returns (Document, list of plain {FIELD} names the template declares that could not be filled). The
+    caller reports those rather than letting the typed value disappear into a delivered document.
+    """
     ctx = build_context(matter, user)
     ctx.update({k: v for k, v in values.items() if k})
     ext = "docx" if t.kind == "docx" else "pdf"
     name = f"{t.name} - {matter.number}.{ext}"
     if t.kind == "docx":
-        data = render_docx(t, ctx)
+        data, left = render_docx(t, ctx)
         mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     else:
-        data = render_html_pdf(t, ctx, title=t.name)
+        data, left = render_html_pdf(t, ctx, title=t.name)
         mime = "application/pdf"
+    unfilled = sorted(left)
     rel, size, full = _write_output(matter.id, name, data)
     doc = Document(matter_id=matter.id, name=name[:300], path=rel, size=size,
                    mime=mime or mimetypes.guess_type(name)[0] or "application/octet-stream",
@@ -362,7 +497,7 @@ def generate_document(t, matter, values, user):
     db.session.flush()
     audit("generate", "document", doc.id, f"{t.name} for {matter.number}", user.id if user else None)
     audit("generate_document", "matter", matter.id, name, user.id if user else None)
-    return doc
+    return doc, unfilled
 
 
 @bp.route("/<int:id>/generate", methods=["GET", "POST"])
@@ -378,12 +513,17 @@ def generate(id):
         flash("The Word file for this template is missing. Upload it again.", "error")
         return redirect(url_for("doctemplates.edit", id=t.id))
     ctx = build_context(m, current_user())
+    # A Word template written as {CLIENT_NAME} means the same thing as {{ client_name }}, so prefill it
+    # from the matching standard field when there is one.
+    for f in plain_field_names(t.fields):
+        if f not in ctx and f.lower() in ctx:
+            ctx[f] = ctx[f.lower()]
     fields = list(t.fields)
     if request.method == "POST":
         # a field present in the form (even empty) overrides the prefill; one that is absent keeps it
         values = {f: request.form[f"f_{f}"] for f in fields if f"f_{f}" in request.form}
         try:
-            doc = generate_document(t, m, values, current_user())
+            doc, unfilled = generate_document(t, m, values, current_user())
         except Exception as e:  # noqa: BLE001
             current_app.logger.exception("document generation failed")
             db.session.rollback()
@@ -392,6 +532,11 @@ def generate(id):
             return render_template("doctemplates/generate.html", t=t, m=m, matters=matters, fields=rows, ctx=ctx)
         db.session.commit()
         flash(f"Generated {doc.name}.", "ok")
+        if unfilled:
+            flash("These merge fields could not be filled, so the template still shows them as written: "
+                  + ", ".join("{" + f + "}" for f in unfilled)
+                  + ". Check the field is not broken across a page, a table cell or a text box in the template.",
+                  "error")
         return redirect(url_for("matters.detail", id=m.id, tab="documents"))
     rows = [(f, ctx.get(f, ""), f in ctx) for f in fields]
     return render_template("doctemplates/generate.html", t=t, m=m, matters=matters, fields=rows, ctx=ctx)

@@ -240,7 +240,9 @@ def test_matter_summary_saves_note(app, client, monkeypatch):
     with app.app_context():
         assert M.Note.query.filter_by(matter_id=mid).count() == notes_before + 1
         n = M.Note.query.filter_by(matter_id=mid).order_by(M.Note.id.desc()).first()
-        assert n.body.startswith("AI summary (") and "Bluebonnet summary text." in n.body and "- Unbilled time" in n.body
+        # the saved summary is attorney work product, so it is marked [internal] and stays out of client drafts
+        assert n.body.startswith("[internal] AI summary (") and "Bluebonnet summary text." in n.body
+        assert "- Unbilled time" in n.body
         assert n.user_id is not None
     r = client.get(f"/matters/{mid}")
     assert r.status_code == 200 and b"AI summary" in r.data

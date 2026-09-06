@@ -12,15 +12,16 @@
   </div>
   <div class="card"><h2>How deliveries work</h2>
     <p class="small">Each event is POSTed as JSON <code>{"event": "invoice.sent", "created_at": "...", "data": {...}}</code> with headers <code>X-Coil-Event</code>, <code>X-Coil-Delivery</code> and <code>X-Coil-Signature: sha256=&lt;hmac&gt;</code>. The signature is an HMAC-SHA256 of the raw body using the webhook's secret; verify it before trusting the payload.</p>
+    <p class="small"><strong>Signing secrets are masked.</strong> Anyone who can read a secret can sign a payload your system will accept as genuinely from Coil, so Coil shows only the first and last four characters and never prints the whole value on this page. This page is limited to the firm owner. Keep the secret where you pasted it when you set the webhook up. If you have lost it, or someone saw it who should not have, delete the webhook and add it again: type your own secret in the box on the left and Coil will use exactly that, or leave the box blank and Coil generates one for you.</p>
     <p class="small">A 2xx response counts as delivered. Anything else, or a timeout after 5 seconds, is retried by <code>python -m app.cli webhooks</code> (run it from cron every few minutes) with backoff at 1, 5, 30, 120 and 720 minutes, up to 5 attempts. You can also retry a delivery from the list below.</p>
   </div>
 </div>
 <div class="card"><h2>Webhooks</h2>
-  {% if hooks %}<table><tr><th>URL</th><th>Events</th><th>Secret</th><th>Status</th><th></th></tr>
+  {% if hooks %}<table><tr><th>URL</th><th>Events</th><th>Signing secret</th><th>Status</th><th></th></tr>
   {% for h in hooks %}<tr>
     <td style="word-break:break-all">{{ h.url }}</td>
     <td class="small">{{ h.events.replace(',', ', ') }}</td>
-    <td><code class="small">{{ h.secret }}</code></td>
+    <td class="nowrap"><code class="small" title="Masked on purpose">{{ h.secret[:4] }}&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;{{ h.secret[-4:] }}</code></td>
     <td>{% if h.is_active %}<span class="badge open">active</span>{% else %}<span class="badge closed">paused</span>{% endif %}</td>
     <td class="nowrap">
       <form method="post" action="/settings/webhooks/{{ h.id }}/test" class="inline">{{ csrf() }}<button class="btn small secondary">Send test</button></form>

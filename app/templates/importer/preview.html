@@ -61,6 +61,16 @@
     {% endfor %}
   </table>
 </div>
+{% if result.warnings %}
+<div class="card">
+  <h3 style="margin-top:0">Rows to check ({{ result.warnings|length }})</h3>
+  <p class="small muted">These rows will import, but not exactly as the file asks. The usual cause is a number in the file that already belongs to a different record in Coil. Coil never overwrites a record it did not import, so the incoming row is kept separate and given the next Coil number.</p>
+  <table><tr><th>Line</th><th>What will happen</th></tr>
+  {% for w in result.warnings[:200] %}<tr><td>{{ w.row }}</td><td class="small">{{ w.message }}</td></tr>{% endfor %}
+  {% if result.warnings|length > 200 %}<tr><td colspan="2" class="muted">... and {{ result.warnings|length - 200 }} more</td></tr>{% endif %}
+  </table>
+</div>
+{% endif %}
 {% if result.errors %}
 <div class="card">
   <h3 style="margin-top:0">Rows with problems ({{ result.errors|length }})</h3>

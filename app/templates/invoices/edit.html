@@ -17,7 +17,7 @@
   <td class="nowrap">{{ l.date|d }}</td>
   <td>{{ l.kind }}</td>
   <td><input type="text" name="desc_{{ l.id }}" value="{{ l.description }}"></td>
-  <td class="num">{% if l.kind == 'time' %}{{ '%.2f' % l.quantity }} h{% endif %}</td>
+  <td class="num">{% if l.kind == 'time' %}{{ format_quantity(l) }} h{% endif %}</td>
   <td class="num"><input type="text" name="amount_{{ l.id }}" value="{{ dollars(l.amount_cents) }}" inputmode="decimal" style="width:110px;text-align:right"></td>
   <td><input type="checkbox" name="remove_{{ l.id }}" value="1"></td>
 </tr>

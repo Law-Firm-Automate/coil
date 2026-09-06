@@ -8,7 +8,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from sqlalchemy import func
 from ..extensions import db
 from ..models import Firm, User, Office, Matter, MatterTemplate, AuditLog, audit
-from ..helpers import login_required, owner_required, current_user, parse_money, parse_date, CURRENCIES
+from ..helpers import (login_required, owner_required, permission_required, current_user, parse_money,
+                      parse_date, CURRENCIES)
 from ..permissions import ROLES, ROLE_DESCRIPTIONS, canonical_role
 from ..services.mail import dev_outbox
 from ..services import sms as smssvc
@@ -38,6 +39,7 @@ def _int(v, default=None):
 
 @bp.route("/settings", methods=["GET", "POST"])
 @login_required
+@permission_required("settings_view")
 def index():
     f = Firm.get()
     if request.method == "POST":
@@ -645,6 +647,7 @@ def template_delete(id):
 # ---- integrations ----
 @bp.route("/settings/integrations")
 @login_required
+@permission_required("settings_view")
 def integrations():
     c = current_app.config
     base = c["BASE_URL"]
@@ -689,6 +692,7 @@ def outbox():
 # ---------------------------------------------------------------- API tokens (Agent G)
 @bp.route("/settings/api", methods=["GET", "POST"])
 @login_required
+@permission_required("time")
 def api_tokens():
     from ..models import ApiToken
     from .api import create_token, RATE_LIMIT
@@ -712,6 +716,7 @@ def api_tokens():
 
 @bp.route("/settings/api/<int:id>/revoke", methods=["POST"])
 @login_required
+@permission_required("time")
 def api_token_revoke(id):
     from ..models import ApiToken
     t = db.session.get(ApiToken, id) or abort(404)
@@ -729,6 +734,7 @@ def api_token_revoke(id):
 # ---------------------------------------------------------------- outgoing webhooks (Agent G)
 @bp.route("/settings/webhooks")
 @login_required
+@permission_required("settings_view")
 def webhooks():
     from ..models import Webhook, WebhookDelivery
     from .webhooks_out import EVENTS
@@ -739,6 +745,7 @@ def webhooks():
 
 @bp.route("/settings/webhooks/new", methods=["POST"])
 @login_required
+@permission_required("settings")
 def webhook_new():
     from ..models import Webhook, new_token
     from .webhooks_out import EVENT_NAMES
@@ -762,6 +769,7 @@ def webhook_new():
 
 @bp.route("/settings/webhooks/<int:id>/toggle", methods=["POST"])
 @login_required
+@permission_required("settings")
 def webhook_toggle(id):
     from ..models import Webhook
     h = db.session.get(Webhook, id) or abort(404)
@@ -773,6 +781,7 @@ def webhook_toggle(id):
 
 @bp.route("/settings/webhooks/<int:id>/delete", methods=["POST"])
 @login_required
+@permission_required("settings")
 def webhook_delete(id):
     from ..models import Webhook, WebhookDelivery
     h = db.session.get(Webhook, id) or abort(404)
@@ -786,6 +795,7 @@ def webhook_delete(id):
 
 @bp.route("/settings/webhooks/<int:id>/test", methods=["POST"])
 @login_required
+@permission_required("settings")
 def webhook_test(id):
     from ..models import Webhook, WebhookDelivery
     from .webhooks_out import attempt_delivery
@@ -804,6 +814,7 @@ def webhook_test(id):
 
 @bp.route("/settings/webhooks/deliveries/<int:id>/retry", methods=["POST"])
 @login_required
+@permission_required("settings")
 def webhook_retry(id):
     from ..models import WebhookDelivery
     from .webhooks_out import attempt_delivery

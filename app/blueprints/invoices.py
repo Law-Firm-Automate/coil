@@ -13,8 +13,9 @@ from fpdf.fonts import FontFace
 from werkzeug.datastructures import MultiDict
 from ..extensions import db
 from ..models import (Firm, Matter, Invoice, InvoiceLine, InvoiceEvent, TimeEntry, Expense, FlatFeeMilestone,
-                      audit, now)
+                      User, audit, now)
 from ..helpers import login_required, current_user, parse_money, parse_date, client_ip, cents_to_str
+from ..i18n import lang_for
 from ..services.mail import send_email
 from ..services.pdf import DocPDF, save_pdf
 
@@ -171,6 +172,12 @@ def _initials(user):
     return "".join(w[0] for w in (user.name or "").split() if w)[:3].upper()
 
 
+def _user(user_id):
+    """The User behind a user_id column, or None. Expense carries user_id with no relationship, and the
+    person may have been deleted since, so never reach for a `.user` attribute that is not there."""
+    return db.session.get(User, user_id) if user_id else None
+
+
 def line_meta(line):
     """(timekeeper initials, UTBMS code) for an invoice line, read from its source time entry or expense.
     Copied split lines and hand-typed lines have neither."""
@@ -184,8 +191,37 @@ def line_meta(line):
     if getattr(line, "expense_id", None):
         e = db.session.get(Expense, line.expense_id)
         if e:
-            return _initials(e.user) if e.user_id else "", (e.expense_code or "")
+            return _initials(_user(e.user_id)), (e.expense_code or "")
     return "", ""
+
+
+def line_hours(line):
+    """The hours behind a time line. Lines built before the precision fix stored the figure rounded to two
+    decimals, so prefer the source time entry's minutes when it is still there."""
+    tid = getattr(line, "time_entry_id", None)
+    if tid:
+        t = db.session.get(TimeEntry, tid)
+        if t and t.minutes:
+            return t.minutes / 60.0
+    return float(line.quantity or 0)
+
+
+def format_quantity(line):
+    """Hours on a time line, printed with just enough decimals that hours x rate comes to the line amount.
+    Two decimals cannot express a 7-minute entry (0.12 x 333.33 = 40.00, not the 38.89 charged), so short
+    entries print more. Non-time lines have no quantity to show, and a line whose amount was typed by hand
+    falls back to two decimals."""
+    if line.kind != "time":
+        return ""
+    hours = line_hours(line)
+    unit = int(line.unit_cents or 0)
+    amount = int(line.amount_cents or 0)
+    if unit:
+        for places in (2, 3, 4, 5):
+            text = f"{hours:.{places}f}"
+            if int(round(float(text) * unit)) == amount:
+                return text
+    return f"{hours:.2f}"
 
 
 def line_description(line, tpl):
@@ -228,7 +264,7 @@ def line_cells(line, cols, tpl, money):
         elif c == "code":
             cells.append(code)
         elif c == "qty":
-            cells.append(f"{line.quantity:.2f}" if is_time else "")
+            cells.append(format_quantity(line))
         elif c == "rate":
             cells.append(money(line.unit_cents) if is_time else "")
         elif c == "amount":
@@ -395,8 +431,10 @@ def _lines_from_form(matter, ctx, f, issued_on):
     for t in ctx["time_entries"]:
         if t.id in time_ids:
             picked_time.append(t)
+            # Full precision, not two decimals: 7 minutes is 0.11667 hours, and 0.12 x the rate does not
+            # come to the amount the client is charged.
             lines.append(InvoiceLine(kind="time", date=t.date, description=t.description or "Legal services",
-                                     quantity=round(t.minutes / 60.0, 2), unit_cents=t.rate_cents,
+                                     quantity=t.minutes / 60.0, unit_cents=t.rate_cents,
                                      amount_cents=t.amount_cents, time_entry_id=t.id, sort=sort))
             sort += 1
     for e in ctx["expenses"]:
@@ -665,7 +703,14 @@ def group_siblings(inv):
 @login_required
 def detail(id):
     inv = db.session.get(Invoice, id) or abort(404)
-    trust_balance = inv.client.trust_balance_cents()
+    # What this invoice can actually draw: the matter's own trust funds plus the client's
+    # unallocated balance. The pooled client total overstates it when another matter is earmarked,
+    # and /trust/apply would refuse the difference.
+    try:
+        from .trust import available_for_matter
+        _own, _unalloc, trust_balance = available_for_matter(inv.client, inv.matter)
+    except Exception:  # noqa: BLE001
+        trust_balance = inv.client.trust_balance_cents()
     apply_default = min(inv.balance_cents, trust_balance) if trust_balance > 0 else 0
     viewed_events = [e for e in inv.events if e.event == "viewed"]
     firm = Firm.get()
@@ -673,6 +718,7 @@ def detail(id):
     return render_template("invoices/detail.html", inv=inv, trust_balance=trust_balance,
                            apply_default=apply_default, public_url=public_url(inv), today=date.today(),
                            viewed_events=viewed_events, dollars=_dollars, siblings=group_siblings(inv),
+                           format_quantity=format_quantity,
                            firm_settings=firm, can_approve=can_approve(u),
                            interest_ready=interest_due(inv, firm, date.today()) > 0,
                            send_block=send_blocked_reason(inv, u))
@@ -730,7 +776,7 @@ def edit(id):
         db.session.commit()
         flash("Invoice updated.", "ok")
         return redirect(url_for("invoices.detail", id=id))
-    return render_template("invoices/edit.html", inv=inv, dollars=_dollars)
+    return render_template("invoices/edit.html", inv=inv, dollars=_dollars, format_quantity=format_quantity)
 
 
 def _unlink_line(line):
@@ -1039,10 +1085,15 @@ def render_invoice_pdf(inv, tpl=None, sample=False):
             if para.strip():
                 _para(pdf, _pdf_txt(para.strip()))
     else:
-        _para(pdf, _pdf_txt(f"Pay online by bank transfer (no fee) or card at: {link}"))
-        if firm.surcharge_enabled and firm.surcharge_bps:
-            _para(pdf, _pdf_txt(f"A {firm.surcharge_bps / 100:.2f}% surcharge applies to card payments. "
-                                f"Bank transfers carry no surcharge."))
+        if online_payment_ok(inv):
+            _para(pdf, _pdf_txt(f"Pay online by bank transfer (no fee) or card at: {link}"))
+            if firm.surcharge_enabled and firm.surcharge_bps:
+                _para(pdf, _pdf_txt(f"A {firm.surcharge_bps / 100:.2f}% surcharge applies to card payments. "
+                                    f"Bank transfers carry no surcharge."))
+        else:
+            # The online pages only take US dollars, so do not point this client at them.
+            _para(pdf, _pdf_txt(f"This invoice is in {cur}. Please pay by bank transfer, or contact us and we "
+                                f"will send you payment instructions. Your invoice is at: {link}"))
         head = _letterhead(firm, inv)
         mail_to = " ".join([x.strip() for x in (head.address or "").splitlines() if x.strip()])
         _para(pdf, _pdf_txt(f"Checks payable to {firm.name}" + (f", mailed to {mail_to}." if mail_to else ".")))
@@ -1100,17 +1151,21 @@ def _send_invoice_email(inv, reminder=False):
     to = (inv.client.email or "").strip()
     if not to:
         return "The client has no email address on file."
-    if inv.status == "draft":
-        inv.status = "sent"
-    inv.sent_at = now()
-    inv.sent_to = to
-    pdf_data = None
+    # Build the PDF before anything is marked sent. A client should never get an invoice email with no
+    # invoice attached, and the firm should never read "sent" when nothing went out. The caller rolls the
+    # session back on an error, so a failure leaves the invoice exactly as it was and it can be sent again.
     try:
         build_pdf(inv)
         with open(inv.pdf_path, "rb") as fh:
             pdf_data = fh.read()
-    except Exception as e:  # PDF failure should not block the email
-        current_app.logger.warning("invoice pdf failed: %s", e)
+    except Exception as e:
+        current_app.logger.exception("invoice pdf failed for invoice %s", inv.id)
+        return (f"The invoice PDF could not be built, so invoice {inv.number} was not sent: {e}. "
+                f"The invoice is unchanged. Fix the problem and send it again.")
+    if inv.status == "draft":
+        inv.status = "sent"
+    inv.sent_at = now()
+    inv.sent_to = to
     link = public_url(inv)
     pixel = f"{_base_url()}/track/invoice/{inv.public_token}.gif"
     subject = (f"Reminder: invoice {inv.number} from {firm.name}" if reminder
@@ -1125,6 +1180,14 @@ def _send_invoice_email(inv, reminder=False):
         f"<td style='padding:4px 8px;border-bottom:1px solid #eee;text-align:right'>{fmt_money(l.amount_cents, cur)}</td></tr>"
         for l in inv.lines)
     currency_note = f" Amounts are in {cur}." if cur != "USD" else ""
+    # Do not promise online payment on an invoice the pay page will refuse (see online_payment_ok).
+    if online_payment_ok(inv):
+        pay_note = "Bank transfer (ACH) carries no fee." + (
+            f" A {firm.surcharge_bps / 100:.2f}% surcharge applies to card payments."
+            if firm.surcharge_enabled and firm.surcharge_bps else "")
+    else:
+        pay_note = (f"This invoice is in {cur}, which our online payment pages do not take, so please pay by "
+                    f"bank transfer or contact us for payment instructions.")
     html = f"""<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1c2430;max-width:600px">
 <p><strong>{escape(firm.name)}</strong></p>
 <p>Hello {escape(inv.client.display_name)},</p>
@@ -1139,15 +1202,20 @@ def _send_invoice_email(inv, reminder=False):
 <tr><td style="padding:6px 8px"><strong>Balance due</strong></td><td style="padding:6px 8px;text-align:right"><strong>{fmt_money(inv.balance_cents, cur)}</strong></td></tr>
 </table>
 <p style="margin:22px 0"><a href="{link}" style="background:#1f5f8b;color:#fff;padding:11px 20px;border-radius:6px;text-decoration:none;display:inline-block">View and pay</a></p>
-<p style="font-size:13px;color:#66707d">Bank transfer (ACH) carries no fee.{(' A ' + format(firm.surcharge_bps / 100, '.2f') + '% surcharge applies to card payments.') if firm.surcharge_enabled and firm.surcharge_bps else ''}{currency_note} A PDF copy is attached.</p>
+<p style="font-size:13px;color:#66707d">{pay_note}{currency_note} A PDF copy is attached.</p>
 <p style="font-size:13px;color:#66707d">If the button does not work, open this link: <a href="{link}">{link}</a></p>
 <p>{escape(firm.name)}{(' | ' + escape(firm.phone)) if firm.phone else ''}</p>
 <img src="{pixel}" width="1" height="1" alt="" style="display:block">
 </div>"""
     text = (f"{intro}\n\nInvoice {inv.number} for {inv.matter.label}\nBalance due: {fmt_money(inv.balance_cents, cur)}\n"
             f"Due: {inv.due_on.isoformat() if inv.due_on else 'on receipt'}\n\nView and pay: {link}\n")
-    attachments = [(f"{inv.number}.pdf", pdf_data, "application/pdf")] if pdf_data else []
-    send_email(to, subject, html, text=text, attachments=attachments, reply_to=firm.email or None)
+    attachments = [(f"{inv.number}.pdf", pdf_data, "application/pdf")]
+    try:
+        send_email(to, subject, html, text=text, attachments=attachments, reply_to=firm.email or None)
+    except Exception as e:
+        current_app.logger.exception("invoice email failed for invoice %s", inv.id)
+        return (f"The email to {to} could not be sent: {e}. Invoice {inv.number} is unchanged and can be "
+                f"sent again.")
     return None
 
 
@@ -1204,6 +1272,16 @@ def remind(id):
 
 
 # ---------------------------------------------------------------- public view + open pixel
+def online_payment_ok(inv):
+    """Whether the Stripe pay buttons may be shown for this invoice.
+
+    Stripe Checkout is built in US dollars in payments.py, and the amount, the surcharge and the recorded
+    payment are all treated as invoice cents. Offering it on a GBP invoice would charge the client the same
+    number in the wrong currency, so a non-USD invoice is pointed at bank transfer instead."""
+    return (inv.currency or "USD").upper() == "USD"
+
+
+
 def _mark_viewed(inv, source):
     """Log a view unless the last one was under 60 seconds ago. Returns True if a new view was logged."""
     last = (InvoiceEvent.query.filter_by(invoice_id=inv.id, event="viewed")
@@ -1233,7 +1311,8 @@ def public_view(token):
     return render_template("invoices/public.html", inv=inv, firm_settings=firm, surcharge_pct=surcharge_pct,
                            trust_balance=trust_balance, payments=[p for p in inv.payments], tpl=tpl,
                            columns=visible_columns(tpl), line_meta=line_meta, line_description=line_description,
-                           column_titles=COLUMN_TITLES)
+                           column_titles=COLUMN_TITLES, format_quantity=format_quantity,
+                           lang=lang_for(inv.client), online_payment=online_payment_ok(inv))
 
 
 @bp.route("/p/firm-logo")
