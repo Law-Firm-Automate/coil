@@ -23,6 +23,12 @@
   {% endif %}
   <label>{{ 'Password (at least 8 characters)' if is_new else 'New password (leave blank to keep the current one)' }}</label>
   <input type="password" name="password" autocomplete="new-password" {{ 'required' if is_new }}>
+  <h3 style="margin-top:14px">Voice line</h3>
+  <div class="row">
+    <div><label>Voice phone (caller id)</label><input type="tel" name="voice_phone" value="{{ u.voice_phone or '' }}" placeholder="+1 512 555 0100"><div class="small muted">The memo line recognises this number, then asks for the PIN.</div></div>
+    <div><label>{{ 'Set voice PIN (4 to 6 digits)' if not u.voice_pin_hash else 'New voice PIN (blank keeps the current one)' }}</label><input type="password" name="voice_pin" inputmode="numeric" pattern="[0-9]{4,6}" autocomplete="off" maxlength="6"><div class="small muted">{% if u.voice_pin_hash %}A PIN is set. It is stored hashed and never shown.{% else %}No PIN yet. Without one this user cannot dictate notes or time by phone.{% endif %}</div>
+    {% if u.voice_pin_hash %}<label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="voice_pin_clear" value="1"> Remove the PIN</label>{% endif %}</div>
+  </div>
   {% if not is_new and not self_only %}<label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="is_active" value="1" {{ 'checked' if u.is_active }}> Active (untick to deactivate; users are never deleted)</label>{% endif %}
   <div class="actions"><button class="btn">{{ 'Add user' if is_new else 'Save' }}</button><a class="btn secondary" href="{{ '/' if self_only else '/settings/users' }}">Cancel</a></div>
 </form>

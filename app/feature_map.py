@@ -203,6 +203,10 @@ FEATURE_MAP = [
         "features": [
             ("Phone intake API: POST /api/v1/leads creates and scores a lead, idempotent on an external reference", "/settings/api", "built"),
             ("Voice intake agent hook: the after-hours DUI agent posts a finished intake to Coil when COIL_LEADS_URL is set", "/intake", "built"),
+            ("Client case status by phone after caller id plus name verification (stage, next event, next task, balance, last update date)", "/settings/voice", "built"),
+            ("Attorney voice line: caller id plus PIN, then dictate a note or log time on a matter by number or description", "/settings/voice", "built"),
+            ("Outbound reminder calls before calendar events and court dates (python -m app.cli voice_reminders)", "/settings/voice", "built"),
+            ("Call log: every voice call with summary, transcript, outcome and links to the lead, contact and matter", "/voice", "built"),
         ],
     },
     {

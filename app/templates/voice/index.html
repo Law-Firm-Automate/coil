@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block title %}Voice line{% endblock %}{% block content %}
+<div class="topbar"><h1>Voice line{% if matter %} <span class="muted" style="font-weight:500">{{ matter.label }}</span>{% endif %}</h1>
+<div class="actions" style="margin:0">{% if current_user().role == 'owner' %}<a class="btn small secondary" href="/settings/voice">Voice line settings</a>{% endif %}<a class="btn small secondary" href="/intake">Intake leads</a></div></div>
+{% if not f.voice_enabled %}<div class="flash">The voice line is switched off. {% if current_user().role == 'owner' %}Turn it on under <a href="/settings/voice">Settings, Voice line</a>.{% else %}The owner can turn it on in Settings.{% endif %}</div>{% endif %}
+<div class="card">
+  <form method="get" class="searchbar" style="flex-wrap:wrap">
+    {% if matter %}<input type="hidden" name="matter_id" value="{{ matter.id }}">{% endif %}
+    <select name="kind" style="width:auto"><option value="">Any kind</option>{% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ k }} ({{ counts[k] }})</option>{% endfor %}</select>
+    <button class="btn secondary">Filter</button>
+    {% if kind or matter %}<a class="small" href="/voice">Clear</a>{% endif %}
+  </form>
+</div>
+<div class="card">
+{% if rows %}
+<table>
+<tr><th>When</th><th>Kind</th><th>Number</th><th>Who</th><th>Outcome</th><th class="num">Length</th><th></th></tr>
+{% for vc in rows %}
+<tr>
+  <td class="nowrap"><a href="/voice/{{ vc.id }}">{{ vc.started_at|dt }}</a></td>
+  <td><span class="badge {{ 'open' if vc.direction == 'in' else 'sent' }}">{{ vc.kind }}</span> <span class="small muted">{{ 'in' if vc.direction == 'in' else 'out' }}</span></td>
+  <td class="nowrap small">{{ vc.from_number if vc.direction == 'in' else vc.to_number }}</td>
+  <td class="small">
+    {% if vc.contact %}<a href="/contacts/{{ vc.contact_id }}">{{ vc.contact.display_name }}</a>{% endif %}
+    {% if vc.matter %}<br><a class="muted" href="/matters/{{ vc.matter_id }}">{{ vc.matter.label }}</a>{% endif %}
+    {% if vc.lead %}<br><a href="/intake/{{ vc.lead_id }}">Lead: {{ vc.lead.name }}</a>{% endif %}
+    {% if vc.user %}<br><span class="muted">{{ vc.user.name }}</span>{% endif %}
+  </td>
+  <td>{% if vc.outcome %}<span class="badge {{ 'paid' if vc.outcome in ('filed','verified','note_saved','time_saved','reminded') else 'overdue' if vc.outcome in ('failed','unverified') else 'draft' }}">{{ vc.outcome.replace('_', ' ') }}</span>{% endif %}</td>
+  <td class="num nowrap">{% if vc.duration_seconds %}{{ (vc.duration_seconds // 60) }}:{{ '%02d' % (vc.duration_seconds % 60) }}{% endif %}</td>
+  <td class="small">{{ vc.summary[:90] }}{% if vc.summary|length > 90 %}&hellip;{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}<div class="empty">No calls yet. The phone agent posts each call here at hangup; reminder calls appear when <code>python -m app.cli voice_reminders</code> runs{% if not twilio %} (Twilio is not configured, so reminders only log){% endif %}.</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}{% block title %}Voice line settings{% endblock %}{% block content %}
+<div class="topbar"><h1>Voice line</h1><div class="actions" style="margin:0"><a class="btn small secondary" href="/voice">Recent calls</a><a class="btn small secondary" href="/settings/api">API tokens</a><a class="btn small secondary" href="/settings">Settings</a></div></div>
+<p class="small muted">The phone agent (after-hours intake, client status, the attorney memo line and reminder calls) reads these settings through the API. What it may say is limited to the lines below; it cannot give legal advice or quote fees beyond them.</p>
+<form method="post">{{ csrf() }}
+<div class="grid c2">
+  <div class="card"><h2>Line</h2>
+    <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="voice_enabled" value="1" {{ 'checked' if f.voice_enabled }}> Voice line on (the API refuses every voice call while this is off)</label>
+    <label>Greeting name</label><input type="text" name="voice_greeting_name" value="{{ f.voice_greeting_name or '' }}" placeholder="{{ f.name }}"><div class="small muted">How the agent names the firm. Blank uses the firm name.</div>
+    <label>Practice areas the intake script may offer</label>
+    {% for key, label in areas %}<label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink);margin-right:14px"><input type="checkbox" name="practice_areas" value="{{ key }}" {{ 'checked' if key in chosen }}> {{ label }}</label>{% endfor %}
+    <h3 style="margin-top:14px">Callback tiers</h3>
+    <div class="row">
+      <div><label>Urgent: call back within (minutes)</label><input type="number" name="urgent_minutes" value="{{ tiers.urgent_minutes }}" min="1"></div>
+      <div><label>High: call back within (minutes)</label><input type="number" name="high_minutes" value="{{ tiers.high_minutes }}" min="1"></div>
+    </div>
+    <label>Standard callback promise (spoken)</label><input type="text" name="standard" value="{{ tiers.standard }}">
+  </div>
+  <div class="card"><h2>Approved lines</h2>
+    {% for key, label, help in line_keys %}
+    <label>{{ label }}</label><textarea name="line_{{ key }}" style="min-height:56px">{{ lines[key] }}</textarea><div class="small muted">{{ help }}</div>
+    {% endfor %}
+  </div>
+</div>
+<div class="grid c2">
+  <div class="card"><h2>Existing clients</h2>
+    <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="voice_client_status" value="1" {{ 'checked' if f.voice_client_status }}> Give case status by phone after verification</label>
+    <p class="small muted">The caller id must match a contact and the spoken name must match that contact (or an alias). The agent then hears open matters with stage, next event, next task, invoice balance and the date of the last update. Never note text, documents, trust balances or other clients.</p>
+  </div>
+  <div class="card"><h2>Reminder calls</h2>
+    <label style="display:inline-flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" name="voice_reminders" value="1" {{ 'checked' if f.voice_reminders }}> Call clients before calendar events and court dates</label>
+    <label>Days ahead</label><input type="number" name="voice_reminder_days" value="{{ f.voice_reminder_days or 1 }}" min="0" max="30" style="max-width:120px">
+    <p class="small muted">Run <code>python -m app.cli voice_reminders</code> once a day. One call per event per client, saying the firm name, event title, date and time. No case detail. {% if not twilio %}<strong>Twilio is not configured</strong>, so the job only logs what it would say.{% endif %}</p>
+  </div>
+</div>
+<div class="actions"><button class="btn">Save voice line settings</button></div>
+</form>
+
+<div class="grid c2">
+<div class="card"><h2>Test a reminder call</h2>
+  <form method="post" action="/voice/reminders/test" class="searchbar">{{ csrf() }}<input type="tel" name="to" placeholder="+1 512 555 0100" required><button class="btn secondary">Place test call</button></form>
+  <p class="small muted">Calls the number with a short test message and records it under Voice line marked TEST.{% if not twilio %} Needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER.{% endif %}</p>
+</div>
+<div class="card"><h2>Attorney PINs</h2>
+  <p class="small">The memo line recognises attorneys by caller id plus a 4 to 6 digit PIN, set on each user's page. Five wrong PINs from a number lock it for an hour.</p>
+  <table><tr><th>User</th><th>Voice phone</th><th>PIN</th><th></th></tr>
+  {% for u in pin_users %}<tr><td>{{ u.name }}</td><td class="small">{{ u.voice_phone or '' }}</td><td>{% if u.voice_pin_hash %}<span class="badge paid">set</span>{% else %}<span class="badge draft">not set</span>{% endif %}</td><td><a class="small" href="/settings/users/{{ u.id }}/edit">Edit</a></td></tr>{% endfor %}
+  </table>
+</div>
+</div>
+
+<div class="card"><h2>What the phone agent needs</h2>
+<p class="small">Set these in the phone agent's environment. The token comes from <a href="/settings/api">API tokens</a> with read and write scope.</p>
+<table>
+<tr><th>Variable</th><th>Value</th></tr>
+<tr><td><code>COIL_LEADS_URL</code></td><td><div class="searchbar"><input type="text" readonly value="{{ base }}/api/v1/leads"><button type="button" class="btn small secondary" data-copy="{{ base }}/api/v1/leads">Copy</button></div></td></tr>
+<tr><td><code>COIL_VOICE_URL</code></td><td><div class="searchbar"><input type="text" readonly value="{{ base }}/api/v1/voice"><button type="button" class="btn small secondary" data-copy="{{ base }}/api/v1/voice">Copy</button></div></td></tr>
+<tr><td><code>COIL_API_TOKEN</code></td><td class="small muted">a token with read,write scope from <a href="/settings/api">API tokens</a> (shown once when created)</td></tr>
+</table>
+<h3 style="margin-top:14px">Endpoints</h3>
+<table><tr><th>Method</th><th>Path</th><th>What it does</th></tr>
+{% for method, url, desc in endpoints %}<tr><td><code>{{ method }}</code></td><td class="small"><code>{{ url }}</code></td><td class="small">{{ desc }}</td></tr>{% endfor %}
+</table>
+<p class="small muted">Every response is JSON. Refusals are <code>{"ok": false, "reason": "..."}</code> with a 403 (409 when a matter hint is ambiguous, 423 when a PIN is locked). Send <code>call_id</code> on every request so Coil keeps one record per call.</p>
+</div>
+{% endblock %}

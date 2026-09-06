@@ -244,6 +244,11 @@ def _fill_user(u, form, is_new, self_only=False):
     pw = form.get("password", "")
     if not u.name or not u.email:
         return "Name and email are required."
+    # Voice line: caller id and the 4 to 6 digit PIN for the attorney memo line (own account may set it too).
+    from .voice import apply_user_voice_fields
+    verr = apply_user_voice_fields(u, form)
+    if verr:
+        return verr
     if is_new and len(pw) < 8:
         return "A password of at least 8 characters is required for a new user."
     if pw and len(pw) < 8:

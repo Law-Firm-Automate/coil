@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Call {{ vc.id }}{% endblock %}{% block content %}
+<div class="topbar"><h1>{{ vc.kind|capitalize }} call <span class="muted" style="font-weight:500">{{ vc.started_at|dt }}</span></h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/voice">All calls</a></div></div>
+<div class="grid c2">
+<div class="card"><h2>Call</h2>
+  <div class="kv">
+    <div>Direction</div><div>{{ 'Inbound' if vc.direction == 'in' else 'Outbound' }}</div>
+    <div>Kind</div><div>{{ vc.kind }}</div>
+    <div>From</div><div>{{ vc.from_number or '' }}</div>
+    <div>To</div><div>{{ vc.to_number or '' }}</div>
+    <div>Outcome</div><div>{{ vc.outcome.replace('_', ' ') if vc.outcome else '' }}</div>
+    <div>Length</div><div>{% if vc.duration_seconds %}{{ vc.duration_seconds // 60 }} min {{ vc.duration_seconds % 60 }} s{% endif %}</div>
+    <div>Provider call id</div><div class="small"><code>{{ vc.call_id }}</code></div>
+  </div>
+</div>
+<div class="card"><h2>Linked</h2>
+  <div class="kv">
+    <div>Contact</div><div>{% if vc.contact %}<a href="/contacts/{{ vc.contact_id }}">{{ vc.contact.display_name }}</a>{% else %}<span class="muted">none</span>{% endif %}</div>
+    <div>Matter</div><div>{% if vc.matter %}<a href="/matters/{{ vc.matter_id }}">{{ vc.matter.label }}</a>{% else %}<span class="muted">none</span>{% endif %}</div>
+    <div>Lead</div><div>{% if vc.lead %}<a href="/intake/{{ vc.lead_id }}">{{ vc.lead.name }}</a>{% else %}<span class="muted">none</span>{% endif %}</div>
+    <div>Attorney</div><div>{{ vc.user.name if vc.user else '' }}</div>
+  </div>
+</div>
+</div>
+<div class="card"><h2>Summary</h2>{% if vc.summary %}<p style="white-space:pre-wrap">{{ vc.summary }}</p>{% else %}<div class="empty">No summary.</div>{% endif %}</div>
+{% if vc.transcript %}<div class="card"><details><summary>Transcript</summary><pre style="white-space:pre-wrap;font-family:inherit;margin-top:8px">{{ vc.transcript }}</pre></details></div>{% endif %}
+{% endblock %}

@@ -120,6 +120,21 @@ The simple, cheaper suite several solos in the thread prefer.
 - E-signature on any document (`/signatures`) · built
 - Custom dashboard (`/dashboard/customize`) · built
 
+## Switching from Clio / MyCase / PracticePanther
+
+Bring a whole practice across from CSV exports, one file at a time, with a preview and a column mapper.
+
+- Contacts: person and company detection, first non-empty email and phone, tags, aliases (`/import`) · built
+- Matters: linked to clients by the old id, name or email; old numbers kept when free (`/import`) · built
+- Time and expenses from one activities file; billed rows arrive non-billable and marked (`/import`) · built
+- Bills with balances: one invoice per old bill plus a payment, so A/R matches (`/import`) · built
+- Trust ledger in date order; rows that would go negative are refused and listed; opening balances form (`/import`) · built
+- Tasks and calendar with matter, assignee, done flag, start and end (`/import`) · built
+- Documents by matter folder from a ZIP, filed under Imported (`/import`) · built
+- Re-import updates instead of duplicating (Coil remembers the old system's ids) (`/import`) · built
+- Manual column mapping for any CSV, failed rows downloadable for a second pass (`/import`) · built
+- Export steps guide per source (`/import/guide`) · built
+
 ## LeanLaw / QuickBooks
 
 Billing that lives on QuickBooks Online.
@@ -196,6 +211,10 @@ Phone intake that lands in the pipeline.
 
 - Phone intake API: POST /api/v1/leads creates and scores a lead, idempotent on an external reference (`/settings/api`) · built
 - Voice intake agent hook: the after-hours DUI agent posts a finished intake to Coil when COIL_LEADS_URL is set (`/intake`) · built
+- Client case status by phone after caller id plus name verification (stage, next event, next task, balance, last update date) (`/settings/voice`) · built
+- Attorney voice line: caller id plus PIN, then dictate a note or log time on a matter by number or description (`/settings/voice`) · built
+- Outbound reminder calls before calendar events and court dates (python -m app.cli voice_reminders) (`/settings/voice`) · built
+- Call log: every voice call with summary, transcript, outcome and links to the lead, contact and matter (`/voice`) · built
 
 ## Vertical case types
 

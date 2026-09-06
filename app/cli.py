@@ -1,5 +1,5 @@
 """Scheduled jobs. Run with `.venv/bin/python -m app.cli agenda`, `... reminders`, `... interest`, `... emailin`,
-`... monthly_invoicing [--force]` or `... payment_plans`.
+`... monthly_invoicing [--force]`, `... payment_plans` or `... voice_reminders`.
 
 All three are idempotent: agenda and reminders write an AuditLog row and skip work that already has one today
 (evergreen top-up requests use a 14-day window), interest checks Invoice.last_interest_on for the month.
@@ -375,6 +375,13 @@ def run_case_audit(today=None):
 # ---------------------------------------------------------------------------
 # payment plans (Agent P; see app/blueprints/money.py)
 # ---------------------------------------------------------------------------
+def run_voice_reminders(today=None):
+    """Outbound reminder calls for calendar events and court dates inside Firm.voice_reminder_days, one per
+    event per client, idempotent through AuditLog action=voice_reminded. Logic lives in blueprints/voice.py."""
+    from .blueprints.voice import run_voice_reminders as _run
+    return _run(today=today)
+
+
 def run_payment_plans(today=None):
     """Charge or remind every active payment plan due today or earlier. Once per plan per day through AuditLog
     plan_charged / plan_reminded. Returns dict(charged, reminded, failed, completed, skipped)."""
@@ -385,9 +392,9 @@ def run_payment_plans(today=None):
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] not in ("agenda", "reminders", "interest", "emailin", "sequences", "webhooks",
-                                   "monthly_invoicing", "case_audit", "payment_plans"):
+                                   "monthly_invoicing", "case_audit", "payment_plans", "voice_reminders"):
         print("usage: python -m app.cli agenda|reminders|interest|emailin|sequences|webhooks|monthly_invoicing "
-              "[--force]|case_audit|payment_plans")
+              "[--force]|case_audit|payment_plans|voice_reminders")
         return 2
     from . import create_app
     app = create_app()
@@ -412,6 +419,13 @@ def main(argv=None):
             r = run_payment_plans()
             print(f"payment_plans: {r['charged']} charged, {r['reminded']} reminded, {r['failed']} failed, "
                   f"{r['completed']} completed, {r['skipped']} already handled today")
+        elif argv[0] == "voice_reminders":
+            r = run_voice_reminders()
+            print(f"voice_reminders: {len(r['placed'])} call(s) placed, {r['failed']} failed, "
+                  f"{r['skipped']} already reminded, {len(r['would'])} would be placed"
+                  + (f" ({r['reason']})" if r["reason"] else ""))
+            for to, text in r["would"]:
+                print(f"  would call {to}: {text}")
         elif argv[0] == "agenda":
             n = run_agenda()
             print(f"agenda: {n} email(s) sent")
