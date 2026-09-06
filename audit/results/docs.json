@@ -1,252 +1,252 @@
 [
- {
-  "group": "Clio Work",
-  "tool": "Case law search on CourtListener (free public database)",
-  "route": "/research",
-  "result": "pass",
-  "checked": "GET /research?q=proximate+cause&court=ny&order_by=dateFiled+desc with _courtlistener._get patched to canned v4 search JSON. Confirmed the wire params (q, court, order_by, type=o), that <mark> tags from CourtListener are stripped, that case name, citations, court, date and cite count render, that query words are re-highlighted in the snippet, and that each result links to /research/opinion/<opinion_id>. Cursor paging read from the next URL.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Clio Work",
-  "tool": "Full opinion reader with optional AI summary and holding",
-  "route": "/research/opinion/<id>",
-  "result": "pass",
-  "checked": "GET /research/opinion/9001?cluster_id=111 with cl._get canned for /opinions/ and /clusters/: html_with_citations is converted to paragraphs, author and cluster metadata render, query words highlighted. POST /research/opinion/9001/summarise with app.llm.complete_json monkeypatched returned both summary and holding on the page. Without a key the panel says the model is not configured instead of erroring.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Clio Work",
-  "tool": "Save authorities to a matter with notes",
-  "route": "/research/save, /research/saved",
-  "result": "pass",
-  "checked": "POST /research/save with case name, citation, court, decided_on, url, snippet and a note. SavedAuthority row created on the right matter with decided_on parsed to 1928-05-29 and the note stored; /research/saved?matter_id= lists it grouped by matter.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Clio Work",
-  "tool": "Research memo export as a PDF filed on the matter",
-  "route": "/research/saved/export",
-  "result": "pass",
-  "checked": "POST /research/saved/export for a matter with one saved authority. A real Document row appears in the Research folder with mime application/pdf and tag research; the file on disk was read back with pypdf and contains the case name, the citation, the attorney note and the CourtListener verification line.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Clio Work",
-  "tool": "Citation check that flags citations which do not resolve",
-  "route": "/research/cite-check",
-  "result": "partial",
-  "checked": "POST /research/cite-check with cl._post canned. A status-200 citation with one cluster renders 'resolved' and a status-404 citation renders 'not found, verify before filing'; the Note written to the matter carries both lines and the counts. Then the same with a status-300 (ambiguous) citation.",
-  "notes": "An ambiguous citation (CourtListener status 300, several candidate clusters) is reported as 'not found, verify before filing' rather than as ambiguous, while the same table row still prints one candidate case name and a working CourtListener link, so the row contradicts itself; the matter Note records it as 'not found' too. _courtlistener.citation_lookup sets found = (status == 200 and clusters), so status 300 makes found False, and cite_check.html only shows the 'N possible matches' badge when found and ambiguous are both true. That branch is therefore only reachable on a status 200 with more than one cluster. The error is in the safe direction (nothing is wrongly marked good), so it is a mislabel, not a bad-cite risk.",
-  "severity": "medium",
-  "repro": "Patch app.blueprints._courtlistener._post to return [{'citation':'1 X. 1','normalized_citations':['1 X. 1'],'status':300,'clusters':[{'id':1,'case_name':'A v. B','date_filed':'2000-01-01','absolute_url':'/opinion/1/a/'},{'id':2,'case_name':'C v. D','date_filed':'2001-01-01','absolute_url':'/opinion/2/c/'}]}], then POST /research/cite-check with text='See 1 X. 1.' and matter_id set. The page shows badge 'not found, verify before filing' next to matched case 'A v. B'; the note line is '- 1 X. 1: not found, verify before filing'."
- },
- {
-  "group": "Filevine",
-  "tool": "PI case facts and stage board",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "POST /pi/start then /pi/<id>/facts with date of loss, incident type, injuries, treatment status, insurer, adjuster, policy limits ($50,000 stored as 5000000 cents) and stage. Values round-tripped from the DB; /pi shows the case in the Treating column. Stage also advances on demand package (to demand) and on disbursement (to settled).",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Filevine",
-  "tool": "Provider and records tracking with request letters",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "Two providers created through /pi/<id>/providers/new with visit dates and billed totals; POST .../request-records and .../request-bills each returned a real PDF (read back with pypdf) addressed to the provider, carrying the patient/date-of-loss/file-number Re block, the HIPAA enclosure line and the right body for records vs itemized billing. bills_requested_on was stamped to today by the route.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Filevine",
-  "tool": "Lien tracking with reduction letters",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "Two liens created; payable_cents honours the negotiated reduction ($12,000 reduced to $8,000 -> 800000; $2,500 unreduced -> 250000). POST .../reduction-letter with pct=40 returned a PDF proposing $1,500.00 on the $2,500 lien, moved the lien from open to negotiating, and left original_cents untouched, as the flash says it should.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Filevine",
-  "tool": "Demand package builder",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "POST /pi/<id>/demand/package with demand_amount=185000.00 and mark_sent. PDF read back contains the demand figure, every provider by name and the specials total $28,100.00 (18,500 + 9,600); a Document row was filed in the Demand folder, demand_sent_on set to today and the stage moved to demand.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Filevine",
-  "tool": "Settlement disbursement worksheet with trust postings",
-  "route": "/pi",
-  "result": "partial",
-  "checked": "Gross $100,000.00 at 33.33% with two matter expenses ($1,250.00 + $325.50), one typed extra cost ($402.00) and two unpaid liens ($8,000.00 + $2,500.00). Every stored line matched to the cent: fee 3333000, costs 197750, liens 1050000, other 0, net 5419250, and fee+costs+liens+other+net == gross. PDF shows the same figures and 'Balanced.'. Disburse without funds was refused with no trust rows written and the worksheet left approved. Disburse with 'record the settlement deposit' wrote 6 trust rows summing to exactly 0 (matter trust balance 0), the net row is -5419250 to the client, both liens flipped to paid and the worksheet is disbursed. A negative net is refused at approve and at disburse.",
-  "notes": "compute_worksheet deducts every Expense row on the matter with no regard to whether it has already been invoiced to and paid by the client, and the worksheet form offers no way to exclude one (only to add extra costs). On a hybrid or hourly-plus-contingency matter where case costs were billed and collected, the same cost is taken out of the client's settlement a second time and the net to client is wrong by that amount, with no correction available in the UI. The pure-contingency path the module is aimed at is unaffected.",
-  "severity": "high",
-  "repro": "On a matter with a $1,250.00 expense, set that Expense.invoice_id to a real invoice (i.e. bill and collect it), then call app.blueprints.pi.compute_worksheet(matter, 1000000, 0). The already-invoiced expense is still in d['expenses'] and still in d['costs'], so net is 125000 cents light. /pi/<id> has no per-expense exclude control (no 'expense_id' or exclude checkbox in the settlement form)."
- },
- {
-  "group": "Filevine",
-  "tool": "Standard PI task set",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "POST /pi/<id>/tasks/standard created 6 tasks: a records request and a follow-up per provider, a Demand follow-up 30 days after the demand, and a Statute of limitations check dated exactly two years after the date of loss, kind=deadline, priority=high, with a note telling the attorney to confirm the state's period. A second POST added nothing and said every standard task already exists.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Eve Legal",
-  "tool": "Discovery drafting: propound from starter sets tailored by AI, or parse a served set and draft responses with objections",
-  "route": "/discovery",
-  "result": "pass",
-  "checked": "Respond side: a real DOCX with three INTERROGATORY NO. n headings, an ANSWER: stub after each and a signature block plus certificate of service parsed into exactly 3 items with the ANSWER stubs and the signature block trimmed off; due_on set to served_on + 30 days. Draft responses with a canned model reply that included a made-up objection key: only overbroad and privileged (both in OBJECTIONS) were stored, the invented key was dropped, and an item the model left blank got the FALLBACK_RESPONSE placeholder. Without a key the whole set falls back to placeholders with a clear message. Propound side: the PI starter set loaded, tailor with a canned model replaced and renumbered the items, and tailor without a key left the set untouched and said so. Export produced a PDF filed under Documents/Discovery containing the court caption, cause number, both INTERROGATORY NO. headings, the objection label and the drafted responses. The 30-day deadline task was created once and refused a duplicate. Plain '1. ... 2. ... 3.' numbering also parses; junk text returns no items.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Eve Legal",
-  "tool": "Deposition summaries with page:line citations and contradictions against the chronology",
-  "route": "/discovery/depositions",
-  "result": "pass",
-  "checked": "A transcript with 'Page 12/13' markers and 12:1 style line numbers uploaded as a Document, then POST /discovery/depositions/new with app.llm.complete_json canned. The detail page renders 'Depo. Tr. 12:2' and 'Depo. Tr. 13:4' next to the quotes, the contradiction against the chronology renders with its source, and the JSON columns store page/line as integers. Export wrote a PDF into Documents/Depositions containing the deponent and the 12:2 cite. A transcript with no markers gives page/line 0 and renders 'Depo. Tr. (no page ref)'. With no key the record is still created and the page says no summary was generated.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Eve Legal",
-  "tool": "Nightly case audit: records, gaps, imaging, limitations, liens, demands (rules) plus AI flags labelled as such",
-  "route": "/audit",
-  "result": "pass",
-  "checked": "Built the conditions for nine rules on one matter (records requested 90 days ago and not received, records in with no bills request, an open lien with no contact, stage=demand with no policy limits, a limitations date 45 days out with no deadline task, a demand sent 45 days ago with no offer, a 60-day treatment gap between two confirmed entries, an MRI mention with no imaging visit, and no activity for 30 days). Run one produced exactly one finding per (kind, key) with the expected severities (missing_records and sol_near high, treatment_gap and limits_unknown medium, bills_missing and lien_no_contact low) and the limitations message carried the right date and 'in 45 days'. Run two on the next day created no new rows, kept every status open, advanced last_seen_on and left first_seen_on alone. Marking the records received through the real provider form and re-running flipped only that finding to resolved. Adding a deadline task whose title matches limitations resolved sol_near. POST /audit/run, /audit and /audit/<matter_id> all render, and `python -m app.cli case_audit` runs. A canned AI reply with an invalid kind and an invalid severity was coerced into the AI_KIND_KEYS/SEVERITIES enums and stored with origin=ai.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Eve Legal",
-  "tool": "Case scoring at intake and on PI cases, with the factors shown",
-  "route": "/intake/pipeline",
-  "result": "pass",
-  "checked": "score_pi_case gave 31/100 with the factor list summing exactly to the base, stored on PiCase.case_score/case_score_json. POST /audit/pi/<id>/rescore?refine=1 without a key returns the rules-only score and says the model was not available. With a canned model returning adjustment 40 the delta is clamped to +15 and recorded with its reason. score_lead gave 47/100 with the factors shown, POST /audit/lead/<id>/rescore works and /intake/pipeline renders.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Eve Legal",
-  "tool": "Medical record extraction into a treatment chronology, with page references and a confirm step",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "A real records PDF with Page 1/2/3 markers uploaded and extracted through POST /records/<id>/extract with app.llm.complete_json canned: 3 ChronologyEntry rows created, all confirmed=False and origin=ai, charges parsed to 450000/85000/120000 cents, page_ref 1/2/3 kept, source_document_id set, and the two providers auto-created and linked. Re-running the same extraction added 0 and reported '3 already on the chronology'. Recalc before confirming refuses; confirm-all then recalc-specials set Mercy General to 450000 and Cedar PT to 205000 (850.00 + 1,200.00) and widened first/last visit dates to 2026-03-20 and 2026-05-12. With no API key the plain regex fallback ran instead, found an entry near a known provider name and the flash said the AI was unavailable and that diagnoses and procedures were not read.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Eve Legal",
-  "tool": "Case overview written from the documents, chronology, providers, liens and notes",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "POST /records/<id>/overview with a canned six-section model reply stored all six labelled sections plus the open-questions list on PiCase.overview_text and appended a provenance line naming the documents read. With no key the same POST fell back to the structured overview, which carried the real computed figures (Medical specials: $6,550.00, liens payable, policy limits unknown) and a flash saying the model was unavailable and the documents were not read.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Eve Legal",
-  "tool": "Narrative demand letter drafted in the firm's voice from style-example letters, saved as a PDF",
-  "route": "/pi",
-  "result": "pass",
-  "checked": "POST /records/<id>/demand-draft with a canned seven-section model reply and style notes rendered the drafted sections on the page and saved the draft JSON. With no key the same POST produced the template letter, marked '[Template text...]' and flagged as template in the draft. POST /records/<id>/demand-draft/save built the PDF and filed it as a Document in the Demand folder; reading the file back it carries the demand of $75,000.00, the FOR SETTLEMENT PURPOSES ONLY caption, the per-provider specials table and Total medical specials $6,550.00.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "NetDocuments",
-  "tool": "Documents per matter, shared to the portal",
-  "route": "/documents",
-  "result": "pass",
-  "checked": "Uploaded a PDF to a matter (shared_to_portal False by default), toggled it with POST /documents/<id>/share, then logged into the client portal for real through /portal/login, the magic link from the dev outbox and /portal/auth/<token>. The shared file is listed on /portal and downloads through /portal/documents/<id>/download as a PDF; an unshared document on the same matter is refused (404).",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "NetDocuments",
-  "tool": "Versions, folders, tags",
-  "route": "/documents",
-  "result": "pass",
-  "checked": "Uploaded brief.pdf v1 into folder Pleadings with tags 'Urgent, filed' (normalised to 'urgent, filed'), then POST /documents/<id>/new-version with a different PDF. Only v2 is listed on /documents?matter_id=, v1 is not, and v1 still downloads and still returns its own bytes. Folder and tag filters each return only the matching document. POST /documents/bulk moved a file with folder ' Discovery / Set One / ' normalised to 'Discovery/Set One' and replaced its tags, and a second bulk call applied a folder move and an added tag to the whole version family. Deleting the current version promotes the surviving one to current and keeps it listed.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "NetDocuments",
-  "tool": "Full-text search inside files",
-  "route": "/documents/search",
-  "result": "pass",
-  "checked": "The phrase 'the pneumatic actuator failed on the loading dock' was written into a real fpdf2 PDF and a real python-docx DOCX and both were uploaded. extract_text pulled the phrase out of both at upload. GET /documents/search?q=pneumatic+actuator returns both files, search_documents reports where='text' for each and the snippet window contains the query word for both. matter_id scoping excludes documents on other matters. Blocked extensions (.exe) and empty files are refused at upload.",
-  "notes": "A scanned image PDF yields no extracted text and is therefore invisible to search; the extraction step is silent about it (only the AI extract and AI dates routes tell the user OCR is needed).",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "NetDocuments",
-  "tool": "Email filing to matters (IMAP)",
-  "route": "/messages/unfiled",
-  "result": "pass",
-  "checked": "Three RFC 822 messages built with email.message and pushed through run_emailin with the IMAP fetch replaced. Matching by bracketed matter number ([M-1001]) and by sender email to a client with exactly one open matter both worked; a third from an unknown sender landed unfiled. Both attachments of the first mail became Documents in the Email folder with tag email, and the bytes on disk match the stored size. Re-running the same fetch returned filed 0 / unfiled 0 / skipped 3 with no new Message or Document rows. /messages/unfiled lists the unmatched mail and its held attachment; filing it by hand moved the mail to the matter, stored the held file as a Document and removed the hold directory. With IMAP unset, imap_configured() is False, fetch_unseen() returns [] and `python -m app.cli emailin` says nothing to do.",
-  "notes": "The live IMAP leg (fetch_unseen against a real server) was not exercised; it needs an IMAP account. Everything downstream of it was tested with parsed dicts, which is how the module is designed to be tested. Caveat: idempotence is keyed only on Message-ID, so a mail with no Message-ID header re-fetched twice is filed twice with duplicate Documents. In practice IMAP marks the message seen so a second fetch does not happen, and almost every MTA supplies a Message-ID.",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Clio Manage",
-  "tool": "Document automation from DOCX and HTML templates",
-  "route": "/doctemplates",
-  "result": "partial",
-  "checked": "DOCX path: a real python-docx template with {{ client_name }}, {{ matter_number }}, {{ firm_name }} and a plain {CLIENT_NAME} field uploaded through /doctemplates/new, then generated for a matter. The output .docx was opened as a zip and word/document.xml read: the client display name and the matter number are both substituted and no {{ }} is left. A merge field deliberately split across two Word runs ('{{ cli' + 'ent_name }}') also substitutes correctly. HTML path: a template generated to PDF, read back with pypdf, has the client name and matter number substituted and no {{ }} left; the Document is stored with mime application/pdf under folder Generated and both outputs carry extracted_text so they are searchable.",
-  "notes": "Plain {FIELD} merge fields are detected but never substituted. detect_fields_text matches a second syntax, (?<!{){([A-Z][A-Z0-9_]{1,60})}(?!}), so a template containing {CLIENT_NAME} lists CLIENT_NAME as a merge field and the generate page renders an input named f_CLIENT_NAME for it. Neither renderer can fill it: render_docx uses docxtpl and render_html_pdf uses Jinja, and both only expand {{ ... }}. Whatever the user types in that box is silently discarded and the literal {CLIENT_NAME} is left in the delivered document. This is the syntax most Word merge templates arrive in, so it is a likely first-use failure.",
-  "severity": "medium",
-  "repro": "Build a .docx containing the line 'Plain style field: {CLIENT_NAME}', upload it at /doctemplates/new with kind=docx, then GET /doctemplates/<id>/generate?matter_id=<m> (the form shows an input named f_CLIENT_NAME) and POST to generate. Unzip the output and read word/document.xml: it still contains the literal {CLIENT_NAME}. Same with an HTML template containing {CLIENT_NAME}."
- },
- {
-  "group": "Clio Manage AI",
-  "tool": "Pull dates from a document into tasks and calendar",
-  "route": "/ai/document/<id>/dates (button on /documents)",
-  "result": "pass",
-  "checked": "A court order uploaded as a real text Document, then POST /ai/document/<id>/dates with app.llm.complete_json canned to return a deadline, a court date, an event, a row with an unparseable date and a row with an empty description. The page shows only the three good rows, sorted earliest first, and silently drops the two bad rows. POST .../dates/create with the three rows ticked created a deadline task due 2026-10-15 at priority high, a court_date task due 2026-12-01 and a calendar event on 2026-11-03, each noting the source document. Re-posting the identical form created no duplicates. A file with no readable text returns the OCR message and, with no API key, the page renders the calm 'AI is off / no key' notice with no traceback.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- },
- {
-  "group": "Clio Manage AI",
-  "tool": "Matter summary",
-  "route": "/ai/matter/<id>/summary (button on /matters/<id>)",
-  "result": "pass",
-  "checked": "POST /ai/matter/<id>/summary with app.llm.complete_json canned rendered the summary prose and every open item. With the key blank the same POST renders the plain 'AI features are turned off / no key' notice at status 200 with no traceback. POST .../summary/save wrote a Note on the matter containing the dated 'AI summary' header, the prose and the open items as a list.",
-  "notes": "",
-  "severity": "",
-  "repro": ""
- }
+  {
+    "group": "Clio Work",
+    "tool": "Case law search on CourtListener (free public database)",
+    "route": "/research",
+    "result": "pass",
+    "checked": "GET /research?q=proximate+cause&court=ny&order_by=dateFiled+desc with _courtlistener._get patched to canned v4 search JSON. Confirmed the wire params (q, court, order_by, type=o), that <mark> tags from CourtListener are stripped, that case name, citations, court, date and cite count render, that query words are re-highlighted in the snippet, and that each result links to /research/opinion/<opinion_id>. Cursor paging read from the next URL.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Work",
+    "tool": "Full opinion reader with optional AI summary and holding",
+    "route": "/research/opinion/<id>",
+    "result": "pass",
+    "checked": "GET /research/opinion/9001?cluster_id=111 with cl._get canned for /opinions/ and /clusters/: html_with_citations is converted to paragraphs, author and cluster metadata render, query words highlighted. POST /research/opinion/9001/summarise with app.llm.complete_json monkeypatched returned both summary and holding on the page. Without a key the panel says the model is not configured instead of erroring.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Work",
+    "tool": "Save authorities to a matter with notes",
+    "route": "/research/save, /research/saved",
+    "result": "pass",
+    "checked": "POST /research/save with case name, citation, court, decided_on, url, snippet and a note. SavedAuthority row created on the right matter with decided_on parsed to 1928-05-29 and the note stored; /research/saved?matter_id= lists it grouped by matter.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Work",
+    "tool": "Research memo export as a PDF filed on the matter",
+    "route": "/research/saved/export",
+    "result": "pass",
+    "checked": "POST /research/saved/export for a matter with one saved authority. A real Document row appears in the Research folder with mime application/pdf and tag research; the file on disk was read back with pypdf and contains the case name, the citation, the attorney note and the CourtListener verification line.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Work",
+    "tool": "Citation check that flags citations which do not resolve",
+    "route": "/research/cite-check",
+    "result": "pass",
+    "checked": "POST /research/cite-check with cl._post canned. A status-200 citation with one cluster renders 'resolved' and a status-404 citation renders 'not found, verify before filing'; the Note written to the matter carries both lines and the counts. Then the same with a status-300 (ambiguous) citation.",
+    "notes": "FIXED. Ambiguous results are reported as ambiguous with their candidates listed, distinct from not found. Both still say verify before filing. | Audit note: An ambiguous citation (CourtListener status 300, several candidate clusters) is reported as 'not found, verify before filing' rather than as ambiguous, while the same table row still prints one candidate case name and a working CourtListener link, so the row contradicts itself; the matter Note records it as 'not found' too. _courtlistener.citation_lookup sets found = (status == 200 and clusters), so status 300 makes found False, and cite_check.html only shows the 'N possible matches' badge when found and ambiguous are both true. That branch is therefore only reachable on a status 200 with more than one cluster. The error is in the safe direction (nothing is wrongly marked good), so it is a mislabel, not a bad-cite risk.",
+    "severity": "",
+    "repro": "Patch app.blueprints._courtlistener._post to return [{'citation':'1 X. 1','normalized_citations':['1 X. 1'],'status':300,'clusters':[{'id':1,'case_name':'A v. B','date_filed':'2000-01-01','absolute_url':'/opinion/1/a/'},{'id':2,'case_name':'C v. D','date_filed':'2001-01-01','absolute_url':'/opinion/2/c/'}]}], then POST /research/cite-check with text='See 1 X. 1.' and matter_id set. The page shows badge 'not found, verify before filing' next to matched case 'A v. B'; the note line is '- 1 X. 1: not found, verify before filing'."
+  },
+  {
+    "group": "Filevine",
+    "tool": "PI case facts and stage board",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "POST /pi/start then /pi/<id>/facts with date of loss, incident type, injuries, treatment status, insurer, adjuster, policy limits ($50,000 stored as 5000000 cents) and stage. Values round-tripped from the DB; /pi shows the case in the Treating column. Stage also advances on demand package (to demand) and on disbursement (to settled).",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Filevine",
+    "tool": "Provider and records tracking with request letters",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "Two providers created through /pi/<id>/providers/new with visit dates and billed totals; POST .../request-records and .../request-bills each returned a real PDF (read back with pypdf) addressed to the provider, carrying the patient/date-of-loss/file-number Re block, the HIPAA enclosure line and the right body for records vs itemized billing. bills_requested_on was stamped to today by the route.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Filevine",
+    "tool": "Lien tracking with reduction letters",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "Two liens created; payable_cents honours the negotiated reduction ($12,000 reduced to $8,000 -> 800000; $2,500 unreduced -> 250000). POST .../reduction-letter with pct=40 returned a PDF proposing $1,500.00 on the $2,500 lien, moved the lien from open to negotiating, and left original_cents untouched, as the flash says it should.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Filevine",
+    "tool": "Demand package builder",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "POST /pi/<id>/demand/package with demand_amount=185000.00 and mark_sent. PDF read back contains the demand figure, every provider by name and the specials total $28,100.00 (18,500 + 9,600); a Document row was filed in the Demand folder, demand_sent_on set to today and the stage moved to demand.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Filevine",
+    "tool": "Settlement disbursement worksheet with trust postings",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "Gross $100,000.00 at 33.33% with two matter expenses ($1,250.00 + $325.50), one typed extra cost ($402.00) and two unpaid liens ($8,000.00 + $2,500.00). Every stored line matched to the cent: fee 3333000, costs 197750, liens 1050000, other 0, net 5419250, and fee+costs+liens+other+net == gross. PDF shows the same figures and 'Balanced.'. Disburse without funds was refused with no trust rows written and the worksheet left approved. Disburse with 'record the settlement deposit' wrote 6 trust rows summing to exactly 0 (matter trust balance 0), the net row is -5419250 to the client, both liens flipped to paid and the worksheet is disbursed. A negative net is refused at approve and at disburse.",
+    "notes": "FIXED. Costs default to expenses not yet billed to the client; already-billed ones show unticked with the invoice named, any row can be flipped, and the counted ids are stored on the worksheet. | Audit note: compute_worksheet deducts every Expense row on the matter with no regard to whether it has already been invoiced to and paid by the client, and the worksheet form offers no way to exclude one (only to add extra costs). On a hybrid or hourly-plus-contingency matter where case costs were billed and collected, the same cost is taken out of the client's settlement a second time and the net to client is wrong by that amount, with no correction available in the UI. The pure-contingency path the module is aimed at is unaffected.",
+    "severity": "",
+    "repro": "On a matter with a $1,250.00 expense, set that Expense.invoice_id to a real invoice (i.e. bill and collect it), then call app.blueprints.pi.compute_worksheet(matter, 1000000, 0). The already-invoiced expense is still in d['expenses'] and still in d['costs'], so net is 125000 cents light. /pi/<id> has no per-expense exclude control (no 'expense_id' or exclude checkbox in the settlement form)."
+  },
+  {
+    "group": "Filevine",
+    "tool": "Standard PI task set",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "POST /pi/<id>/tasks/standard created 6 tasks: a records request and a follow-up per provider, a Demand follow-up 30 days after the demand, and a Statute of limitations check dated exactly two years after the date of loss, kind=deadline, priority=high, with a note telling the attorney to confirm the state's period. A second POST added nothing and said every standard task already exists.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Eve Legal",
+    "tool": "Discovery drafting: propound from starter sets tailored by AI, or parse a served set and draft responses with objections",
+    "route": "/discovery",
+    "result": "pass",
+    "checked": "Respond side: a real DOCX with three INTERROGATORY NO. n headings, an ANSWER: stub after each and a signature block plus certificate of service parsed into exactly 3 items with the ANSWER stubs and the signature block trimmed off; due_on set to served_on + 30 days. Draft responses with a canned model reply that included a made-up objection key: only overbroad and privileged (both in OBJECTIONS) were stored, the invented key was dropped, and an item the model left blank got the FALLBACK_RESPONSE placeholder. Without a key the whole set falls back to placeholders with a clear message. Propound side: the PI starter set loaded, tailor with a canned model replaced and renumbered the items, and tailor without a key left the set untouched and said so. Export produced a PDF filed under Documents/Discovery containing the court caption, cause number, both INTERROGATORY NO. headings, the objection label and the drafted responses. The 30-day deadline task was created once and refused a duplicate. Plain '1. ... 2. ... 3.' numbering also parses; junk text returns no items.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Eve Legal",
+    "tool": "Deposition summaries with page:line citations and contradictions against the chronology",
+    "route": "/discovery/depositions",
+    "result": "pass",
+    "checked": "A transcript with 'Page 12/13' markers and 12:1 style line numbers uploaded as a Document, then POST /discovery/depositions/new with app.llm.complete_json canned. The detail page renders 'Depo. Tr. 12:2' and 'Depo. Tr. 13:4' next to the quotes, the contradiction against the chronology renders with its source, and the JSON columns store page/line as integers. Export wrote a PDF into Documents/Depositions containing the deponent and the 12:2 cite. A transcript with no markers gives page/line 0 and renders 'Depo. Tr. (no page ref)'. With no key the record is still created and the page says no summary was generated.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Eve Legal",
+    "tool": "Nightly case audit: records, gaps, imaging, limitations, liens, demands (rules) plus AI flags labelled as such",
+    "route": "/audit",
+    "result": "pass",
+    "checked": "Built the conditions for nine rules on one matter (records requested 90 days ago and not received, records in with no bills request, an open lien with no contact, stage=demand with no policy limits, a limitations date 45 days out with no deadline task, a demand sent 45 days ago with no offer, a 60-day treatment gap between two confirmed entries, an MRI mention with no imaging visit, and no activity for 30 days). Run one produced exactly one finding per (kind, key) with the expected severities (missing_records and sol_near high, treatment_gap and limits_unknown medium, bills_missing and lien_no_contact low) and the limitations message carried the right date and 'in 45 days'. Run two on the next day created no new rows, kept every status open, advanced last_seen_on and left first_seen_on alone. Marking the records received through the real provider form and re-running flipped only that finding to resolved. Adding a deadline task whose title matches limitations resolved sol_near. POST /audit/run, /audit and /audit/<matter_id> all render, and `python -m app.cli case_audit` runs. A canned AI reply with an invalid kind and an invalid severity was coerced into the AI_KIND_KEYS/SEVERITIES enums and stored with origin=ai.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Eve Legal",
+    "tool": "Case scoring at intake and on PI cases, with the factors shown",
+    "route": "/intake/pipeline",
+    "result": "pass",
+    "checked": "score_pi_case gave 31/100 with the factor list summing exactly to the base, stored on PiCase.case_score/case_score_json. POST /audit/pi/<id>/rescore?refine=1 without a key returns the rules-only score and says the model was not available. With a canned model returning adjustment 40 the delta is clamped to +15 and recorded with its reason. score_lead gave 47/100 with the factors shown, POST /audit/lead/<id>/rescore works and /intake/pipeline renders.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Eve Legal",
+    "tool": "Medical record extraction into a treatment chronology, with page references and a confirm step",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "A real records PDF with Page 1/2/3 markers uploaded and extracted through POST /records/<id>/extract with app.llm.complete_json canned: 3 ChronologyEntry rows created, all confirmed=False and origin=ai, charges parsed to 450000/85000/120000 cents, page_ref 1/2/3 kept, source_document_id set, and the two providers auto-created and linked. Re-running the same extraction added 0 and reported '3 already on the chronology'. Recalc before confirming refuses; confirm-all then recalc-specials set Mercy General to 450000 and Cedar PT to 205000 (850.00 + 1,200.00) and widened first/last visit dates to 2026-03-20 and 2026-05-12. With no API key the plain regex fallback ran instead, found an entry near a known provider name and the flash said the AI was unavailable and that diagnoses and procedures were not read.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Eve Legal",
+    "tool": "Case overview written from the documents, chronology, providers, liens and notes",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "POST /records/<id>/overview with a canned six-section model reply stored all six labelled sections plus the open-questions list on PiCase.overview_text and appended a provenance line naming the documents read. With no key the same POST fell back to the structured overview, which carried the real computed figures (Medical specials: $6,550.00, liens payable, policy limits unknown) and a flash saying the model was unavailable and the documents were not read.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Eve Legal",
+    "tool": "Narrative demand letter drafted in the firm's voice from style-example letters, saved as a PDF",
+    "route": "/pi",
+    "result": "pass",
+    "checked": "POST /records/<id>/demand-draft with a canned seven-section model reply and style notes rendered the drafted sections on the page and saved the draft JSON. With no key the same POST produced the template letter, marked '[Template text...]' and flagged as template in the draft. POST /records/<id>/demand-draft/save built the PDF and filed it as a Document in the Demand folder; reading the file back it carries the demand of $75,000.00, the FOR SETTLEMENT PURPOSES ONLY caption, the per-provider specials table and Total medical specials $6,550.00.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "NetDocuments",
+    "tool": "Documents per matter, shared to the portal",
+    "route": "/documents",
+    "result": "pass",
+    "checked": "Uploaded a PDF to a matter (shared_to_portal False by default), toggled it with POST /documents/<id>/share, then logged into the client portal for real through /portal/login, the magic link from the dev outbox and /portal/auth/<token>. The shared file is listed on /portal and downloads through /portal/documents/<id>/download as a PDF; an unshared document on the same matter is refused (404).",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "NetDocuments",
+    "tool": "Versions, folders, tags",
+    "route": "/documents",
+    "result": "pass",
+    "checked": "Uploaded brief.pdf v1 into folder Pleadings with tags 'Urgent, filed' (normalised to 'urgent, filed'), then POST /documents/<id>/new-version with a different PDF. Only v2 is listed on /documents?matter_id=, v1 is not, and v1 still downloads and still returns its own bytes. Folder and tag filters each return only the matching document. POST /documents/bulk moved a file with folder ' Discovery / Set One / ' normalised to 'Discovery/Set One' and replaced its tags, and a second bulk call applied a folder move and an added tag to the whole version family. Deleting the current version promotes the surviving one to current and keeps it listed.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "NetDocuments",
+    "tool": "Full-text search inside files",
+    "route": "/documents/search",
+    "result": "pass",
+    "checked": "The phrase 'the pneumatic actuator failed on the loading dock' was written into a real fpdf2 PDF and a real python-docx DOCX and both were uploaded. extract_text pulled the phrase out of both at upload. GET /documents/search?q=pneumatic+actuator returns both files, search_documents reports where='text' for each and the snippet window contains the query word for both. matter_id scoping excludes documents on other matters. Blocked extensions (.exe) and empty files are refused at upload.",
+    "notes": "A scanned image PDF yields no extracted text and is therefore invisible to search; the extraction step is silent about it (only the AI extract and AI dates routes tell the user OCR is needed).",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "NetDocuments",
+    "tool": "Email filing to matters (IMAP)",
+    "route": "/messages/unfiled",
+    "result": "pass",
+    "checked": "Three RFC 822 messages built with email.message and pushed through run_emailin with the IMAP fetch replaced. Matching by bracketed matter number ([M-1001]) and by sender email to a client with exactly one open matter both worked; a third from an unknown sender landed unfiled. Both attachments of the first mail became Documents in the Email folder with tag email, and the bytes on disk match the stored size. Re-running the same fetch returned filed 0 / unfiled 0 / skipped 3 with no new Message or Document rows. /messages/unfiled lists the unmatched mail and its held attachment; filing it by hand moved the mail to the matter, stored the held file as a Document and removed the hold directory. With IMAP unset, imap_configured() is False, fetch_unseen() returns [] and `python -m app.cli emailin` says nothing to do.",
+    "notes": "The live IMAP leg (fetch_unseen against a real server) was not exercised; it needs an IMAP account. Everything downstream of it was tested with parsed dicts, which is how the module is designed to be tested. Caveat: idempotence is keyed only on Message-ID, so a mail with no Message-ID header re-fetched twice is filed twice with duplicate Documents. In practice IMAP marks the message seen so a second fetch does not happen, and almost every MTA supplies a Message-ID.",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage",
+    "tool": "Document automation from DOCX and HTML templates",
+    "route": "/doctemplates",
+    "result": "pass",
+    "checked": "DOCX path: a real python-docx template with {{ client_name }}, {{ matter_number }}, {{ firm_name }} and a plain {CLIENT_NAME} field uploaded through /doctemplates/new, then generated for a matter. The output .docx was opened as a zip and word/document.xml read: the client display name and the matter number are both substituted and no {{ }} is left. A merge field deliberately split across two Word runs ('{{ cli' + 'ent_name }}') also substitutes correctly. HTML path: a template generated to PDF, read back with pypdf, has the client name and matter number substituted and no {{ }} left; the Document is stored with mime application/pdf under folder Generated and both outputs carry extracted_text so they are searchable.",
+    "notes": "FIXED. Plain {FIELD} merge fields are converted before rendering, including fields split across Word runs, and any field that could not be filled is named on the page. | Audit note: Plain {FIELD} merge fields are detected but never substituted. detect_fields_text matches a second syntax, (?<!{){([A-Z][A-Z0-9_]{1,60})}(?!}), so a template containing {CLIENT_NAME} lists CLIENT_NAME as a merge field and the generate page renders an input named f_CLIENT_NAME for it. Neither renderer can fill it: render_docx uses docxtpl and render_html_pdf uses Jinja, and both only expand {{ ... }}. Whatever the user types in that box is silently discarded and the literal {CLIENT_NAME} is left in the delivered document. This is the syntax most Word merge templates arrive in, so it is a likely first-use failure.",
+    "severity": "",
+    "repro": "Build a .docx containing the line 'Plain style field: {CLIENT_NAME}', upload it at /doctemplates/new with kind=docx, then GET /doctemplates/<id>/generate?matter_id=<m> (the form shows an input named f_CLIENT_NAME) and POST to generate. Unzip the output and read word/document.xml: it still contains the literal {CLIENT_NAME}. Same with an HTML template containing {CLIENT_NAME}."
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Pull dates from a document into tasks and calendar",
+    "route": "/ai/document/<id>/dates (button on /documents)",
+    "result": "pass",
+    "checked": "A court order uploaded as a real text Document, then POST /ai/document/<id>/dates with app.llm.complete_json canned to return a deadline, a court date, an event, a row with an unparseable date and a row with an empty description. The page shows only the three good rows, sorted earliest first, and silently drops the two bad rows. POST .../dates/create with the three rows ticked created a deadline task due 2026-10-15 at priority high, a court_date task due 2026-12-01 and a calendar event on 2026-11-03, each noting the source document. Re-posting the identical form created no duplicates. A file with no readable text returns the OCR message and, with no API key, the page renders the calm 'AI is off / no key' notice with no traceback.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  },
+  {
+    "group": "Clio Manage AI",
+    "tool": "Matter summary",
+    "route": "/ai/matter/<id>/summary (button on /matters/<id>)",
+    "result": "pass",
+    "checked": "POST /ai/matter/<id>/summary with app.llm.complete_json canned rendered the summary prose and every open item. With the key blank the same POST renders the plain 'AI features are turned off / no key' notice at status 200 with no traceback. POST .../summary/save wrote a Note on the matter containing the dated 'AI summary' header, the prose and the open items as a list.",
+    "notes": "",
+    "severity": "",
+    "repro": ""
+  }
 ]
