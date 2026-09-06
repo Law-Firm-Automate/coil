@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block title %}Import {{ job.id }}{% endblock %}{% block content %}
+<div class="topbar"><h1>Import: {{ entity_label }} from {{ source_label }}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/import">Back to imports</a>{% if job.errors %}<a class="btn small" href="/import/jobs/{{ job.id }}/failed.csv">Download rows that failed as CSV</a>{% endif %}</div></div>
+<div class="grid c4">
+  <div class="card stat"><div class="muted small">Rows in file</div><div style="font-size:1.6rem;font-weight:700">{{ job.rows }}</div></div>
+  <div class="card stat"><div class="muted small">Created</div><div style="font-size:1.6rem;font-weight:700">{{ job.created }}</div></div>
+  <div class="card stat"><div class="muted small">Updated</div><div style="font-size:1.6rem;font-weight:700">{{ job.updated }}</div></div>
+  <div class="card stat"><div class="muted small">Skipped / problems</div><div style="font-size:1.6rem;font-weight:700">{{ job.skipped }} / {{ job.errors|length }}</div></div>
+</div>
+<div class="card">
+  <dl class="kv">
+    <dt>File</dt><dd>{{ job.filename }}</dd>
+    <dt>Run</dt><dd>{{ job.created_at|dt }} by {{ job.created_by.name if job.created_by else '' }}</dd>
+    <dt>Status</dt><dd><span class="badge {{ 'open' if job.status == 'committed' else 'draft' }}">{{ job.status }}</span></dd>
+    {% if meta.mapping %}<dt>Mapping used</dt><dd class="small">{% for k, v in meta.mapping.items() if v %}<span class="badge">{{ v|replace('|', ' + ') }} &rarr; {{ k }}</span> {% endfor %}</dd>{% endif %}
+    {% if meta.folders %}<dt>Folders</dt><dd class="small">{% for k, v in meta.folders.items() %}<span class="badge {{ 'open' if v else 'overdue' }}">{{ k }}</span> {% endfor %}</dd>{% endif %}
+  </dl>
+</div>
+<div class="card">
+  <h3 style="margin-top:0">Rows with problems</h3>
+  {% if job.errors %}
+  <p class="small muted">Download them as a CSV, fix the values in a spreadsheet, and upload that file again. Rows that succeeded will not be duplicated.</p>
+  <table><tr><th>Line</th><th>Problem</th><th>Row</th></tr>
+  {% for e in job.errors %}<tr><td>{{ e.row }}</td><td class="small">{{ e.message }}</td><td class="small muted">{% for k, v in (e.data or {}).items() if v %}{{ k }}: {{ v|truncate(40) }}; {% endfor %}</td></tr>{% endfor %}
+  </table>
+  {% else %}<div class="empty">Every row went in.</div>{% endif %}
+</div>
+{% endblock %}

@@ -31,6 +31,9 @@ class User(db.Model):
     office_id = db.Column(db.Integer, db.ForeignKey("offices.id"))
     # JSON list of dashboard card keys the user wants, in order. Empty = default set.
     dashboard_json = db.Column(db.Text, default="")
+    # Phone PIN for the attorney voice line (dictate notes and time by phone). Hashed like the password.
+    voice_pin_hash = db.Column(db.String(300), default="")
+    voice_phone = db.Column(db.String(50), default="")  # caller id the voice line recognises for this user
     created_at = db.Column(db.DateTime, default=now)
     office = db.relationship("Office", foreign_keys=[office_id])
 
@@ -94,6 +97,16 @@ class Firm(db.Model):
     review_request_days = db.Column(db.Integer, default=3)  # days after close
     booking_slug = db.Column(db.String(60), default="")  # public booking page /book/<slug>
     booking_intro = db.Column(db.Text, default="")
+    # Voice line: what the after-hours intake agent may say for this firm, and whether existing clients may
+    # hear case status by phone after verification.
+    voice_enabled = db.Column(db.Boolean, default=False)
+    voice_greeting_name = db.Column(db.String(120), default="")  # "Harbor Defense", falls back to firm name
+    voice_practice_areas = db.Column(db.Text, default="")  # comma list of intake scripts to offer callers
+    voice_approved_lines_json = db.Column(db.Text, default="{}")  # {"no_advice": "...", "fees": "...", ...}
+    voice_callback_json = db.Column(db.Text, default='{"urgent_minutes": 15, "high_minutes": 30, "standard": "by 9:00 tomorrow morning"}')
+    voice_client_status = db.Column(db.Boolean, default=False)
+    voice_reminders = db.Column(db.Boolean, default=False)  # outbound reminder calls before court dates and appointments
+    voice_reminder_days = db.Column(db.Integer, default=1)
     ai_enabled = db.Column(db.Boolean, default=False)  # AI features also need an API key in the environment
     sequences_auto_send = db.Column(db.Boolean, default=False)  # follow-up sequences send only when this is on; otherwise drafts
 
@@ -1569,6 +1582,30 @@ class Charge(db.Model):
     sentence = db.Column(db.Text, default="")
     created_at = db.Column(db.DateTime, default=now)
     matter = db.relationship("Matter")
+
+
+class VoiceCall(db.Model):
+    """One call handled by the voice line, whatever it was for. Recording is not stored; the transcript is."""
+    __tablename__ = "voice_calls"
+    id = db.Column(db.Integer, primary_key=True)
+    direction = db.Column(db.String(5), default="in")  # in | out
+    kind = db.Column(db.String(20), default="intake")  # intake | status | memo | reminder | other
+    call_id = db.Column(db.String(120), default="")  # provider call id
+    from_number = db.Column(db.String(50), default="")
+    to_number = db.Column(db.String(50), default="")
+    contact_id = db.Column(db.Integer, db.ForeignKey("contacts.id"))
+    matter_id = db.Column(db.Integer, db.ForeignKey("matters.id"))
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))  # attorney on a memo call
+    lead_id = db.Column(db.Integer, db.ForeignKey("intake_leads.id"))
+    summary = db.Column(db.Text, default="")
+    transcript = db.Column(db.Text, default="")
+    outcome = db.Column(db.String(40), default="")  # filed | verified | unverified | note_saved | time_saved | reminded | no_answer | failed
+    duration_seconds = db.Column(db.Integer, default=0)
+    started_at = db.Column(db.DateTime, default=now)
+    contact = db.relationship("Contact")
+    matter = db.relationship("Matter")
+    user = db.relationship("User")
+    lead = db.relationship("IntakeLead")
 
 
 class ImportJob(db.Model):

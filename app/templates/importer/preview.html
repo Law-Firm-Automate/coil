@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% block title %}Preview import{% endblock %}{% block content %}
+<div class="topbar"><h1>Preview: {{ entity_label }} from {{ source_label }}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/import">Choose a different file</a></div></div>
+{% set c = result.counts %}
+<div class="card">
+  <p><strong>{{ data.filename }}</strong>: {{ c.rows }} rows. With the mapping below Coil would <strong>create {{ c.created }}</strong>, <strong>update {{ c.updated }}</strong>, skip {{ c.skipped }}, and report <strong>{{ c.errors }}</strong> rows with problems. Nothing has been written yet.</p>
+  {% if missing_required %}<div class="flash error">These required fields have no column yet: {{ missing_required|join(', ') }}. Pick a source column for each, then re-check.</div>{% endif %}
+</div>
+
+<form method="post" action="/import/preview/{{ token }}">{{ csrf() }}
+<div class="grid c2">
+  <div class="card">
+    <h3 style="margin-top:0">Column mapping</h3>
+    <p class="small muted">Detected automatically from the headers. Change any field's source column here, then <em>Re-check</em> to see the effect before importing. Fields with several columns (Clio's work and home email, for instance) take the first non-empty value.</p>
+    <table>
+      <tr><th>Coil field</th><th>Source column</th><th>First row</th></tr>
+      {% for field, label, req, multi in fields %}
+      {% set cur = data.mapping.get(field, '') %}
+      <tr><td>{{ label }}{% if req %} <span class="badge overdue">required</span>{% endif %}</td>
+        <td><select name="map_{{ field }}">
+          <option value="">(not imported)</option>
+          {% if cur and '|' in cur %}<option value="{{ cur }}" selected>{{ cur|replace('|', ' + ') }}</option>{% endif %}
+          {% for h in data.headers %}<option value="{{ h }}" {% if h == cur %}selected{% endif %}>{{ h }}</option>{% endfor %}
+        </select></td>
+        <td class="small muted">{% if cur %}{% for h in cur.split('|') %}{% if first_row.get(h) %}{{ first_row.get(h)|truncate(40) }}{% endif %}{% endfor %}{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    {% if unmapped %}<p class="small muted">Not imported: {{ unmapped|join(', ') }}.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Options</h3>
+    <label>Rows that match something already in Coil</label>
+    <select name="duplicates"><option value="update" {% if data.options.duplicates == 'update' %}selected{% endif %}>Update the existing record (re-import safely)</option><option value="skip" {% if data.options.duplicates == 'skip' %}selected{% endif %}>Skip them</option></select>
+    {% if data.entity in ('contacts', 'matters') %}
+    <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="keep_unmapped" value="1" {% if data.options.keep_unmapped %}checked{% endif %}> Keep unmapped columns as custom fields</label>
+    {% endif %}
+    {% if data.entity == 'contacts' %}
+    <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="mark_clients" value="1" {% if data.options.mark_clients %}checked{% endif %}> Mark every imported contact as a client</label>
+    {% endif %}
+    {% if data.entity == 'activities' %}<p class="small muted">Rows the old system had already billed come in as non-billable with "[billed in previous system]" in front of the description, so they cannot land on a new invoice by accident.</p>{% endif %}
+    {% if data.entity == 'bills' %}<p class="small muted">Each bill becomes one invoice with a single line for its total and a payment for the paid amount, so the balance and A/R match the old system. Line items are not rebuilt.</p>{% endif %}
+    {% if data.entity == 'trust' %}<p class="small muted">Rows are applied in date order. Any row that would take a client below zero is refused and listed so you can add the opening balance and re-upload just those rows.</p>{% endif %}
+    <div class="actions">
+      <button class="btn secondary" name="do" value="recheck">Re-check with this mapping</button>
+      <button class="btn" name="do" value="commit" {% if missing_required %}disabled{% endif %}>Import {{ c.rows }} rows</button>
+    </div>
+    {% if c.errors %}<p class="small muted">Rows with problems are listed after the import so you can download and fix them; the good rows still go in.</p>{% endif %}
+  </div>
+</div>
+</form>
+
+<div class="card" style="overflow:auto">
+  <h3 style="margin-top:0">First {{ result.rows|length }} rows as Coil reads them</h3>
+  <table>
+    <tr><th>Line</th><th>Result</th>{% for field, label, req, multi in fields %}{% if data.mapping.get(field) %}<th>{{ label }}</th>{% endif %}{% endfor %}<th>Notes</th></tr>
+    {% for r in result.rows %}
+    <tr><td class="muted">{{ r.row }}</td>
+      <td><span class="badge {{ 'open' if r.action == 'create' else 'sent' if r.action == 'update' else 'overdue' if r.action == 'error' else 'draft' }}">{{ r.action }}</span></td>
+      {% for field, label, req, multi in fields %}{% if data.mapping.get(field) %}<td class="small">{{ r['values'].get(field, '')|truncate(50) }}</td>{% endif %}{% endfor %}
+      <td class="small muted">{{ r.messages|join(' ') }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% if result.errors %}
+<div class="card">
+  <h3 style="margin-top:0">Rows with problems ({{ result.errors|length }})</h3>
+  <table><tr><th>Line</th><th>Problem</th></tr>
+  {% for e in result.errors[:200] %}<tr><td>{{ e.row }}</td><td class="small">{{ e.message }}</td></tr>{% endfor %}
+  {% if result.errors|length > 200 %}<tr><td colspan="2" class="muted">... and {{ result.errors|length - 200 }} more</td></tr>{% endif %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

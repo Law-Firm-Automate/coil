@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block title %}Preview documents import{% endblock %}{% block content %}
+<div class="topbar"><h1>Preview: documents from {{ source_label }}</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/import">Choose a different file</a></div></div>
+{% set total = data.folders|map(attribute='files')|map('length')|sum %}
+{% set unmatched = data.folders|rejectattr('matter_id')|list %}
+<div class="card">
+  <p><strong>{{ data.filename }}</strong>: {{ data.folders|length }} folders, {{ total }} files. Each top-level folder should be a matter number or matter name; its files land on that matter in the folder "Imported" (subfolders are kept underneath). Files already imported from this ZIP path are skipped, so re-uploading is safe.</p>
+  {% if unmatched %}<div class="flash error">{{ unmatched|length }} folder(s) do not match a matter. Pick the matter below or leave them; their files are reported as problems and nothing else is affected.</div>{% endif %}
+</div>
+<form method="post" action="/import/preview/{{ token }}">{{ csrf() }}
+<div class="card" style="overflow:auto">
+  <table>
+    <tr><th>Folder</th><th>Files</th><th>Matter</th></tr>
+    {% for f in data.folders %}
+    {% set chosen = data.folder_matters.get(f.folder) or f.matter_id %}
+    <tr><td>{{ f.folder }}</td><td>{{ f.files|length }} <span class="small muted">({{ f.files[:3]|map(attribute='name')|join(', ') }}{% if f.files|length > 3 %} ...{% endif %})</span></td>
+      <td><select name="folder_{{ folder_key(f.folder) }}"><option value="">(no match, skip)</option>{% for m in matters %}<option value="{{ m.id }}" {% if m.id == chosen %}selected{% endif %}>{{ m.label }}</option>{% endfor %}</select>
+        {% if f.matter_id %}<span class="badge open">matched</span>{% else %}<span class="badge overdue">no match</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  <div class="actions"><button class="btn secondary" name="do" value="recheck">Save folder choices</button><button class="btn" name="do" value="commit">Import {{ total }} files</button></div>
+</div>
+</form>
+{% if data.skipped %}
+<div class="card"><h3 style="margin-top:0">Skipped inside the ZIP ({{ data.skipped|length }})</h3>
+<table><tr><th>File</th><th>Why</th></tr>{% for s in data.skipped[:200] %}<tr><td class="small">{{ s.file }}</td><td class="small muted">{{ s.reason }}</td></tr>{% endfor %}</table></div>
+{% endif %}
+{% endblock %}

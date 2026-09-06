@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}Switching from another system{% endblock %}{% block content %}
+<div class="topbar"><h1>Switching from another system</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/import">Go to imports</a></div></div>
+
+<div class="card">
+  <h3 style="margin-top:0">The short version</h3>
+  <ol>
+    <li>Export each list from the old system as CSV. Pick "all columns" wherever that is offered; extra columns are harmless and ids make re-imports exact.</li>
+    <li>Upload the files on the <a href="/import">imports page</a> in this order: contacts, matters, time and expenses, bills, trust, tasks, calendar, notes, documents. Each file links to the ones before it.</li>
+    <li>On each preview page check the column mapping and the first twenty rows, then import. Rows with problems are listed with a downloadable CSV; fix those rows and upload that smaller file. Nothing is duplicated on a second pass.</li>
+    <li>Before the trust file, add opening balances for any client whose export does not go back to the first deposit.</li>
+    <li>Keep the old system in read-only mode for a month. Time already billed there arrives as non-billable so it cannot be billed twice.</li>
+  </ol>
+</div>
+
+<div class="grid c3">
+  <div class="card">
+    <h3 style="margin-top:0">Clio Manage</h3>
+    <p class="small"><strong>Contacts:</strong> Contacts, scroll to the bottom, Export, CSV, "all columns". Person and company rows share one file; the Type column tells them apart. Several email and phone columns are fine, Coil takes the first that is filled.</p>
+    <p class="small"><strong>Matters:</strong> Matters, Export, CSV, all columns. Coil uses Client ID to link, then Client Name. Custom Number or Display Number becomes the Coil matter number when it is free. Status Open, Pending and Closed carry over.</p>
+    <p class="small"><strong>Time and expenses:</strong> Activities, quick filter All, clear the date range, Export, CSV, all available columns. The Type column (TimeEntry, ExpenseEntry, HardCostEntry) decides which each row becomes. Quantity is decimal hours. Billed or Bill state marks rows already on a Clio bill.</p>
+    <p class="small"><strong>Bills:</strong> Billing, All bills, Export, CSV. Coil reads Bill #, Client, Matter, Issued, Due, Total, Paid or Balance, and State.</p>
+    <p class="small"><strong>Trust:</strong> Accounts, open the trust account, Export transactions, CSV, or the Transactions tab on a client. Funds In and Funds Out columns, or a signed Amount, both work. Add opening balances first if the date range does not start at the first deposit.</p>
+    <p class="small"><strong>Tasks, calendar, notes:</strong> Tasks page Export, Calendar export (Excel Ready CSV on the Exports page), Matter Notes export on the same page.</p>
+    <p class="small"><strong>Documents:</strong> Documents, download per matter, put each matter's files in a folder named after the matter number or name, ZIP the folders (under 200 MB per ZIP).</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">MyCase</h3>
+    <p class="small"><strong>Everything at once:</strong> Settings, Import/Export, Full Data Backup. You get a ZIP with one CSV per area (contacts, cases, time and expense entries, invoices, trust, tasks, calendar, notes). Upload each CSV to the matching card.</p>
+    <p class="small"><strong>Contacts and cases only:</strong> the same page has separate Contacts and Cases exports; choose CSV and "all cases".</p>
+    <p class="small">Cases use "Case/Matter Name", "Number", "Case Closed" (TRUE means closed), "Lead Attorney", "SOL Date". Time entries use Hours. Coil links entries to cases by the case name or number.</p>
+    <p class="small"><strong>Documents:</strong> download from each case, folder per case name, ZIP.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">PracticePanther</h3>
+    <p class="small">First set Settings, Company Settings: Contact display "First M Last", Matter display "Number-MatterName", Users "First M Last", so names in the exports line up.</p>
+    <p class="small"><strong>Contacts:</strong> Contacts, filter Any User, All Time, Export to Excel, then save as CSV.</p>
+    <p class="small"><strong>Matters:</strong> Matters, Any User, Any Status, All Time, Choose Columns (tick everything), Export. Coil reads Matter number, Matter name, Linked client, Assigned user, Status.</p>
+    <p class="small"><strong>Time and expenses:</strong> Time Entries and Expenses (under More), Any User, Any Status, All Time, all columns, Export. Status Billed means already invoiced; NotBillable stays non-billable. Assigned To is the user's email.</p>
+    <p class="small"><strong>Invoices, trust, tasks, events, notes:</strong> each has its own list under Billing or Activities with the same filter-then-export pattern.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Any other system (Generic CSV)</h3>
+  <p class="small">Any CSV with a header row works. Coil guesses columns from common names (Name, Email, Matter, Date, Hours, Amount ...) and lets you assign the rest on the preview page. Dates can be YYYY-MM-DD or MM/DD/YYYY. Hours can be 1.5, 1:30, or 1h 30m. Money can have $ and commas. Include an id column from the old system if you have one; that is what makes a second upload update instead of duplicate.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}{% block title %}Import from another system{% endblock %}{% block content %}
+<div class="topbar"><h1>Switch to Coil</h1>
+<div class="actions" style="margin:0"><a class="btn small secondary" href="/import/guide">How to export from Clio, MyCase, PracticePanther</a></div></div>
+
+<div class="card">
+  <p>Bring your practice across one file at a time. Export each list from the old system as a CSV, upload it here, check the column mapping on the preview page, then import. Do them in this order, because later files link to earlier ones: <strong>contacts, matters, time and expenses, bills, trust, tasks, calendar, notes, documents</strong>.</p>
+  <p>Coil remembers the old system's id for every row it imports. Uploading a file a second time updates the records it already created instead of making duplicates, so you can fix a spreadsheet and re-upload it as often as you like. An import never deletes anything.</p>
+  <div class="row">
+    <div><label for="source">Which system are you leaving?</label>
+      <select id="source" name="source" onchange="document.querySelectorAll('input[name=source]').forEach(function(i){i.value=this.value}.bind(this))">
+        {% for k, label in sources %}<option value="{{ k }}" {% if k == source %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <p class="small muted">Picks the column names to look for. Generic CSV works for anything else; you map the columns by hand on the preview page.</p></div>
+  </div>
+</div>
+
+<div class="grid c3">
+{% for key, label, blurb in entities %}
+  <div class="card">
+    <h3 style="margin-top:0">{{ loop.index }}. {{ label }}</h3>
+    <p class="small muted">{{ blurb }}</p>
+    <form method="post" action="/import/{{ key }}/upload" enctype="multipart/form-data">{{ csrf() }}
+      <input type="hidden" name="source" value="{{ source }}">
+      <input type="file" name="file" accept="{{ '.zip' if key == 'documents' else '.csv,.txt,.tsv' }}" required>
+      <div class="actions"><button class="btn small">Upload and preview</button></div>
+    </form>
+    {% if key == 'trust' %}
+    <details style="margin-top:8px"><summary class="small">Add an opening balance first</summary>
+      <p class="small muted">If the trust export starts part-way through a client's history, record what they held before the first row so disbursements do not go negative.</p>
+      <form method="post" action="/import/trust/opening">{{ csrf() }}
+        <label>Client</label><select name="client_id" required><option value="">Choose</option>{% for c in clients %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select>
+        <label>Matter (optional)</label><select name="matter_id"><option value="">Client level</option>{% for m in matters %}<option value="{{ m.id }}">{{ m.label }}</option>{% endfor %}</select>
+        <div class="row"><div><label>Amount</label><input name="amount" placeholder="2,500.00" required></div><div><label>As of</label><input type="date" name="date" value="{{ today() }}"></div></div>
+        <div class="actions"><button class="btn small secondary">Record opening deposit</button></div>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Import history</h3>
+  {% if jobs %}
+  <table>
+    <tr><th>When</th><th>Source</th><th>What</th><th>File</th><th>Rows</th><th>Created</th><th>Updated</th><th>Skipped</th><th>Problems</th><th></th></tr>
+    {% for j in jobs %}
+    <tr><td>{{ j.created_at|dt }}</td><td>{{ source_labels.get(j.source, j.source) }}</td><td>{{ entity_labels.get(j.entity, j.entity) }}</td>
+      <td class="small">{{ j.filename }}</td><td>{{ j.rows }}</td><td>{{ j.created }}</td><td>{{ j.updated }}</td><td>{{ j.skipped }}</td>
+      <td>{% if j.errors %}<a href="/import/jobs/{{ j.id }}"><span class="badge overdue">{{ j.errors|length }} errors</span></a>{% else %}<span class="badge open">none</span>{% endif %}</td>
+      <td><a class="btn small secondary" href="/import/jobs/{{ j.id }}">Details</a></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">Nothing imported yet.</div>{% endif %}
+</div>
+{% endblock %}

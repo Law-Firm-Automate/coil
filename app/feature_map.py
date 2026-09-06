@@ -135,6 +135,22 @@ FEATURE_MAP = [
         ],
     },
     {
+        "company": "Switching from Clio / MyCase / PracticePanther",
+        "blurb": "Bring a whole practice across from CSV exports, one file at a time, with a preview and a column mapper.",
+        "features": [
+            ("Contacts: person and company detection, first non-empty email and phone, tags, aliases", "/import", "built"),
+            ("Matters: linked to clients by the old id, name or email; old numbers kept when free", "/import", "built"),
+            ("Time and expenses from one activities file; billed rows arrive non-billable and marked", "/import", "built"),
+            ("Bills with balances: one invoice per old bill plus a payment, so A/R matches", "/import", "built"),
+            ("Trust ledger in date order; rows that would go negative are refused and listed; opening balances form", "/import", "built"),
+            ("Tasks and calendar with matter, assignee, done flag, start and end", "/import", "built"),
+            ("Documents by matter folder from a ZIP, filed under Imported", "/import", "built"),
+            ("Re-import updates instead of duplicating (Coil remembers the old system's ids)", "/import", "built"),
+            ("Manual column mapping for any CSV, failed rows downloadable for a second pass", "/import", "built"),
+            ("Export steps guide per source", "/import/guide", "built"),
+        ],
+    },
+    {
         "company": "LeanLaw / QuickBooks",
         "blurb": "Billing that lives on QuickBooks Online.",
         "features": [
