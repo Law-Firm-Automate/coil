@@ -299,3 +299,52 @@ def test_saving_from_a_current_page_still_works(app, client):
     db, M = _models()
     with app.app_context():
         assert db.session.get(M.Invoice, inv_id).notes == "SECOND"
+
+
+# --- 6. the matters export that was missing ------------------------------------------------
+
+def test_matters_csv_exports_and_carries_the_numbers(app, client):
+    mid = _matter_holding_trust(app, 75000, "O")
+    r = client.get("/exports/matters.csv")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["Content-Type"]
+    body = r.data.decode()
+    header = body.splitlines()[0]
+    for col in ("Number", "Client", "Status", "LimitationDate", "TrustBalance", "Outstanding"):
+        assert col in header, f"{col} missing from the matters export"
+    row = [ln for ln in body.splitlines() if "M-TGO" in ln]
+    assert row, "the seeded matter is not in the export"
+    assert "750.00" in row[0], "the trust balance on screen is not the one in the CSV"
+
+
+def test_matters_export_is_linked_from_the_exports_page(app, client):
+    r = client.get("/exports")
+    assert b"/exports/matters.csv" in r.data
+
+
+# --- 7. saying why a control is missing ----------------------------------------------------
+
+def test_paid_invoice_says_why_void_is_unavailable(app, client):
+    mid = _matter_holding_trust(app, 0, "P")
+    inv_id = _draft_invoice(app, mid, 5000, "INV-VOID-1")
+    db, M = _models()
+    with app.app_context():
+        inv = db.session.get(M.Invoice, inv_id)
+        inv.status = "sent"
+        db.session.add(M.Payment(invoice_id=inv.id, client_id=inv.client_id, received_on=date.today(),
+                                 amount_cents=5000, method="check", reference="TEST"))
+        db.session.flush()
+        inv.recalc()          # paid_cents is a stored column, not a live sum
+        db.session.commit()
+
+    r = client.get(f"/invoices/{inv_id}")
+    assert b"cannot be voided" in r.data
+    assert b"issue a credit" in r.data
+
+
+def test_unpaid_invoice_still_offers_void(app, client):
+    mid = _matter_holding_trust(app, 0, "Q")
+    inv_id = _draft_invoice(app, mid, 5000, "INV-VOID-2")
+    r = client.get(f"/invoices/{inv_id}")
+    assert b"cannot be voided" not in r.data
+    assert b"Void" in r.data

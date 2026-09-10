@@ -14,7 +14,8 @@
   <td>{{ p.installments }} x {{ p.installment_cents|money }} {{ labels[p.frequency] }}</td>
   <td>{{ p.paid_installments }} of {{ p.installments }} paid</td>
   <td class="nowrap">{% if p.status == 'active' and p.next_charge_on %}{{ p.next_charge_on|d }}{% if p.next_charge_on <= today %} <span class="badge pending">due</span>{% endif %}{% elif p.status in ('cancelled', 'completed') %}<span class="muted">&mdash;</span>{% elif p.next_charge_on %}<span class="muted">{{ p.next_charge_on|d }}</span>{% endif %}</td>
-  <td class="num">{{ next_cents(p)|money }}</td>
+  {# A cancelled or completed plan has no next charge, so an amount here reads as money still owed. #}
+  <td class="num">{% if p.status in ('cancelled', 'completed') %}<span class="muted">&mdash;</span>{% else %}{{ next_cents(p)|money }}{% endif %}</td>
   <td>{{ 'card on file' if p.auto_charge else 'email reminder' }}</td>
   <td><a href="/money/plans/{{ p.id }}"><span class="badge {{ {'active':'open','paused':'draft','failed':'overdue','completed':'paid','cancelled':'void'}[p.status] }}">{{ p.status }}</span></a>{% if p.last_error %}<br><span class="small muted">{{ p.last_error }}</span>{% endif %}</td>
 </tr>

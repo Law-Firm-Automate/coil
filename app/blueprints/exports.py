@@ -4,7 +4,7 @@ import io
 from datetime import date
 from flask import Blueprint, render_template, Response, request, flash
 from ..extensions import db
-from ..models import Invoice, Payment, Contact, TimeEntry, TrustTransaction, Firm, now
+from ..models import Invoice, Payment, Contact, Matter, TimeEntry, TrustTransaction, Firm, now
 from ..helpers import login_required, parse_date, current_user
 from . import ledes
 
@@ -18,6 +18,10 @@ TIME_COLUMNS = ["Id", "Date", "MatterNumber", "Matter", "Client", "User", "Hours
                 "Billable", "InvoiceNo", "ActivityCode", "Description"]
 TRUST_COLUMNS = ["Id", "Date", "Type", "Client", "MatterNumber", "Matter", "Amount", "Description", "Payee",
                  "Reference", "InvoiceNo", "Cleared", "ClearedOn", "CreatedBy", "CreatedAt"]
+MATTER_COLUMNS = ["Id", "Number", "Name", "Client", "Status", "PracticeArea", "BillingType", "Rate",
+                  "Responsible", "OpenedOn", "ClosedOn", "LimitationDate", "Court", "CaseNumber", "TrustBalance",
+                  "Outstanding",
+                  "UnbilledTime", "Description"]
 CONTACT_COLUMNS = ["Id", "Kind", "FirstName", "LastName", "Company", "Email", "Phone", "Address", "Tags", "IsClient",
                    "Aliases", "CreatedAt"]
 
@@ -180,6 +184,22 @@ def trust_csv():
                      "yes" if tx.cleared else "no", tx.cleared_on.isoformat() if tx.cleared_on else "",
                      tx.created_by.name if tx.created_by else "", tx.created_at.isoformat() if tx.created_at else ""])
     return _csv("trust-ledger.csv", TRUST_COLUMNS, rows)
+
+
+@bp.route("/matters.csv")
+@login_required
+def matters_csv():
+    rows = []
+    for m in Matter.query.order_by(Matter.number).all():
+        rows.append([m.id, m.number or "", m.name or "",
+                     m.client.display_name if m.client else "",
+                     m.status or "", m.practice_area or "", m.billing_type or "",
+                     _dollars(m.hourly_rate_cents or 0),
+                     m.responsible.name if m.responsible else "",
+                     _d(m.opened_on), _d(m.closed_on), _d(m.sol_date), m.court or "", m.case_number or "",
+                     _dollars(m.trust_balance_cents()), _dollars(m.outstanding_cents()),
+                     _dollars(m.unbilled_time_cents()), (m.description or "")])
+    return _csv("matters.csv", MATTER_COLUMNS, rows)
 
 
 @bp.route("/contacts.csv")

@@ -13,6 +13,10 @@
     {% endif %}
     {% if inv.status != 'void' and (inv.paid_cents or 0) == 0 %}
       <form method="post" action="{{ url_for('invoices.void', id=inv.id) }}" class="inline">{{ csrf() }}<button class="btn danger small" data-confirm="Void invoice {{ inv.number }}?{% if siblings %} This voids the whole split group ({{ siblings|length + 1 }} invoices).{% endif %} Its time, expenses and milestones become billable again.">Void{% if siblings %} group{% endif %}</button></form>
+    {% elif inv.status != 'void' %}
+      {# Someone comes looking for Void, finds nothing, and has no idea why. Say it. Voiding an
+         invoice money has already been paid against would erase the record of a real payment. #}
+      <span class="small muted" title="Voiding would erase the record of money that has already changed hands">{{ inv.paid_cents|money }} has been paid against this invoice, so it cannot be voided. Refund the payment first, or issue a credit.</span>
     {% endif %}
   </div>
 </div>
