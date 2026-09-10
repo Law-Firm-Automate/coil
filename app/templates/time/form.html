@@ -29,7 +29,10 @@
       </select></div>
     <div><label>Date</label><input type="date" name="date" value="{{ v.get('date') or entry.date|iso }}" required></div>
     <div><label>Duration</label><input type="text" name="duration" id="duration" value="{{ v.get('duration') if v.get('duration') is not none else (entry.minutes|hours if entry.id else '') }}" placeholder="1.5, 1:30, or 90m" required autofocus>
-      <div class="small muted">Accepts hours (1.5), h:mm (1:30), or minutes (90m).</div></div>
+      <div class="small muted">Accepts hours (1.5), h:mm (1:30), or minutes (90m).</div>
+      {% if needs_duration_confirm %}
+      <label class="small" style="display:block;margin-top:6px"><input type="checkbox" name="confirm_unusual" value="1"> Yes, this duration is correct</label>
+      {% endif %}</div>
     <div><label>Rate per hour</label><input type="text" name="rate" id="rate" value="{{ v.get('rate') if v.get('rate') is not none else '%.2f' % ((entry.rate_cents or 0) / 100) }}" inputmode="decimal"></div>
     <div><label>UTBMS task code</label><select name="task_code">{% set curt = v.get('task_code') if v.get('task_code') is not none else (entry.task_code or '') %}{% for code, label in task_codes %}<option value="{{ code }}" {{ 'selected' if curt == code }}>{{ label }}</option>{% endfor %}</select></div>
     <div><label>UTBMS activity code</label><select name="activity_code">{% set cura = v.get('activity_code') if v.get('activity_code') is not none else (entry.activity_code or '') %}{% for code, label in activity_codes %}<option value="{{ code }}" {{ 'selected' if cura == code }}>{{ label }}</option>{% endfor %}</select></div>

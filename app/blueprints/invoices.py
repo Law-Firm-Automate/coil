@@ -14,7 +14,8 @@ from werkzeug.datastructures import MultiDict
 from ..extensions import db
 from ..models import (Firm, Matter, Invoice, InvoiceLine, InvoiceEvent, TimeEntry, Expense, FlatFeeMilestone,
                       User, audit, now)
-from ..helpers import login_required, current_user, parse_money, parse_date, client_ip, cents_to_str
+from ..helpers import (login_required, current_user, parse_money, parse_date, client_ip, cents_to_str,
+                        UNUSUAL_INVOICE_CENTS)
 from ..i18n import lang_for
 from ..services.mail import send_email
 from ..services.pdf import DocPDF, save_pdf
@@ -566,6 +567,19 @@ def new():
     if not lines:
         flash("Pick at least one item to invoice, or enter an amount.", "error")
         return render_template("invoices/new.html", **ctx), 400
+    # A negative discount line is legitimate; an invoice that totals below zero is not. That is
+    # a refund, and a refund is a credit note against the original invoice, not a bill for less
+    # than nothing.
+    total = sum(ln.amount_cents for ln in lines)
+    if total < 0:
+        flash(f"This would come to {cents_to_str(total)}. An invoice cannot total less than zero. "
+              f"Check the adjustment amount, and use a credit against the original invoice if you "
+              f"are giving money back.", "error")
+        return render_template("invoices/new.html", **ctx), 400
+    if total > UNUSUAL_INVOICE_CENTS and not f.get("confirm_unusual"):
+        flash(f"This invoice comes to {cents_to_str(total)}. If that is right, tick the box and "
+              f"send it again.", "error")
+        return render_template("invoices/new.html", needs_total_confirm=True, **ctx), 400
     if not ctx["payers_ok"]:
         flash("Split payers on this matter do not add up to 100%. Fix the payers on the matter first.", "error")
         return render_template("invoices/new.html", **ctx), 400
@@ -745,6 +759,14 @@ def edit(id):
     if request.method == "POST":
         f = request.form
         u = current_user()
+        # Optimistic lock: the form carries the version it was rendered from. If the row has moved
+        # on, someone else saved while this tab sat open, and going ahead would drop their work.
+        seen = f.get("version", type=int)
+        if seen is not None and seen != (inv.version or 0):
+            flash("Someone else saved this invoice while you had it open. This page has been "
+                  "reloaded with their version, so check it before making your changes again.",
+                  "error")
+            return redirect(url_for("invoices.edit", id=id))
         removed = 0
         for line in list(inv.lines):
             if f.get(f"remove_{line.id}"):
@@ -774,6 +796,7 @@ def edit(id):
         db.session.flush()
         inv.recalc()
         inv.pdf_path = ""  # stale after edits; regenerated on next send or download
+        inv.version = (inv.version or 0) + 1
         # An edited invoice goes back through approval when the editor cannot approve it themselves.
         if inv.approval_status in ("pending", "approved", "rejected") and _initial_approval(u, Firm.get()) == "pending":
             inv.approval_status = "pending"

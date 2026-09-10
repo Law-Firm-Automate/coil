@@ -96,6 +96,9 @@ unnoticed. Leave them unticked if they were only for your own records.</p>{% end
   <div class="label">Invoice total</div>
   <div class="value" id="total">$0.00</div>
   <div class="small muted">Updates as you pick items.</div>
+  {% if needs_total_confirm %}
+  <label class="small" style="display:block;margin:8px 0"><input type="checkbox" name="confirm_unusual" value="1"> Yes, this amount is correct</label>
+  {% endif %}
   <div class="actions"><button class="btn" {{ 'disabled' if not payers_ok }}>{{ 'Create split draft invoices' if payers else 'Create draft invoice' }}</button> <a class="btn secondary" href="/matters/{{ matter.id }}">Cancel</a></div>
   <p class="small muted">The invoice is saved as a draft. You can edit lines, then send it from the invoice page.</p>
 </div>

@@ -154,6 +154,28 @@ def clear(txn_id):
 
 
 # ==== new transaction ====
+def _reconciled_through():
+    """The period_end of the newest reconciliation, or None if the firm has never reconciled."""
+    r = TrustReconciliation.query.order_by(TrustReconciliation.period_end.desc()).first()
+    return r.period_end if r else None
+
+
+def _closes_a_reconciled_period(when):
+    """A trust entry dated into a period already reconciled changes a signed-off number.
+
+    The reconciliation said the bank, the book and the client ledgers agreed on that date.
+    Slipping an entry in behind it makes that statement false without anyone noticing, and
+    the next reconciliation inherits a discrepancy with no obvious cause. Refuse, and name
+    the date, so the fix is to reconcile again rather than to hunt.
+    """
+    through = _reconciled_through()
+    if through and when <= through:
+        return (f"Trust was reconciled through {through:%b %-d, %Y}. An entry dated "
+                f"{when:%b %-d, %Y} would change a period that has already been signed off. "
+                f"Date it after {through:%b %-d, %Y}, or reconcile again first.")
+    return None
+
+
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 def new():
@@ -207,6 +229,9 @@ def new():
                                   f"The rest is earmarked to specific matters, so a {label} of "
                                   f"{cents_to_str(amount)} with no matter selected is refused. Pick the matter "
                                   f"the money is coming from.")
+        locked = _closes_a_reconciled_period(when)
+        if locked:
+            errors.append(locked)
         if errors:
             for e in errors:
                 flash(e, "error")

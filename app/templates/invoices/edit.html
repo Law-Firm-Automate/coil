@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Edit invoice {{ inv.number }}{% endblock %}{% block content %}
 <div class="topbar"><h1>Edit invoice {{ inv.number }} <span class="badge draft">draft</span></h1>
 <div class="actions" style="margin:0"><a class="btn secondary small" href="{{ url_for('invoices.detail', id=inv.id) }}">Back to invoice</a></div></div>
-<form method="post">{{ csrf() }}
+<form method="post">{{ csrf() }}<input type="hidden" name="version" value="{{ inv.version or 0 }}">
 <div class="card">
   <div class="row">
     <div><label>Issue date</label><input type="date" name="issued_on" value="{{ inv.issued_on|iso }}"></div>

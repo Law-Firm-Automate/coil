@@ -16,6 +16,13 @@ def cents_to_str(c, symbol="$"):
     return f"({s})" if neg else s
 
 
+# A single time entry longer than a day, or an invoice above this, is almost always a typo
+# rather than a real figure. Neither is refused outright: a marathon trial day and a large
+# settlement both exist. The user is asked to confirm, once, and then it goes through.
+UNUSUAL_MINUTES = 24 * 60
+UNUSUAL_INVOICE_CENTS = 1_000_000_00
+
+
 def parse_money(s):
     """'1,250.50' -> 125050. Blank -> 0."""
     if s is None:

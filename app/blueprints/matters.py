@@ -295,8 +295,14 @@ def edit(id):
         if not m.name:
             flash("A matter name is required.", "error")
             return render_template("matters/form.html", is_new=False, **_form_context(m))
-        if m.status == "closed" and not m.closed_on:
-            m.closed_on = date.today()
+        if m.status == "closed":
+            blocked = _blocked_from_closing(m)
+            if blocked:
+                db.session.rollback()
+                flash(blocked, "error")
+                return redirect(url_for("matters.edit", id=m.id))
+            if not m.closed_on:
+                m.closed_on = date.today()
         if m.status != "closed":
             m.closed_on = None
         _save_milestones(m, request.form)
@@ -339,10 +345,30 @@ def detail(id):
                            templates=MatterTemplate.query.filter_by(is_active=True).order_by(MatterTemplate.name).all())
 
 
+def _blocked_from_closing(m):
+    """Client money still in the matter is a reason not to close it.
+
+    A closed matter drops out of the screens a firm looks at every day, so trust left
+    behind stops being noticed. That is how a balance sits untouched long enough to
+    become a bar complaint. Refuse, and say the number, because "you cannot close this"
+    without the amount sends someone hunting through the ledger.
+    """
+    bal = m.trust_balance_cents()
+    if bal:
+        from ..helpers import cents_to_str
+        return (f"{m.number} still holds {cents_to_str(bal)} in trust. "
+                f"Disburse or transfer the balance to zero before closing the matter.")
+    return None
+
+
 @bp.route("/<int:id>/close", methods=["POST"])
 @login_required
 def close(id):
     m = db.session.get(Matter, id) or abort(404)
+    blocked = _blocked_from_closing(m)
+    if blocked:
+        flash(blocked, "error")
+        return redirect(url_for("matters.detail", id=m.id))
     m.status = "closed"
     m.closed_on = date.today()
     audit("close", "matter", m.id, "", current_user().id)

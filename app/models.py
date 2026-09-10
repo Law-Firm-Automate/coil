@@ -494,6 +494,9 @@ class Invoice(db.Model):
     first_viewed_at = db.Column(db.DateTime)
     view_count = db.Column(db.Integer, default=0)
     pdf_path = db.Column(db.String(400), default="")
+    # Optimistic lock. Two people with the same draft open both used to save, and the second
+    # write silently threw away the first. Bumped on every successful edit.
+    version = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=now)
     # Approval workflow: none | pending | approved | rejected. Only matters when Firm.require_invoice_approval.
     approval_status = db.Column(db.String(20), default="none")

@@ -8,7 +8,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 from ..extensions import db
 from ..models import Matter, TimeEntry, Timer, Expense, User, audit, now
-from ..helpers import login_required, current_user, parse_money, parse_date, parse_minutes
+from ..helpers import login_required, current_user, parse_money, parse_date, UNUSUAL_MINUTES, parse_minutes
 from .ledes import choices as utbms_choices, valid_code
 
 bp = Blueprint("time", __name__, url_prefix="/time")
@@ -81,6 +81,14 @@ def index():
                               "from": request.args.get("from", ""), "to": request.args.get("to", "")})
 
 
+def _over_a_day(form):
+    """True when the posted duration is the implausible one we asked the user to confirm."""
+    try:
+        return parse_minutes(form.get("duration")) > UNUSUAL_MINUTES
+    except (ValueError, TypeError):
+        return False
+
+
 def _entry_from_form(entry, form):
     """Apply form fields to a TimeEntry. Returns an error string or None."""
     matter = db.session.get(Matter, form.get("matter_id", type=int))
@@ -92,6 +100,9 @@ def _entry_from_form(entry, form):
         return "Duration should look like 1.5, 1:30, or 90m."
     if minutes <= 0:
         return "Duration must be greater than zero."
+    if minutes > UNUSUAL_MINUTES and not form.get("confirm_unusual"):
+        return (f"That is {minutes / 60:,.1f} hours on a single entry, longer than a day. "
+                f"If it is right, tick the box below and save again.")
     entry.matter_id = matter.id
     entry.date = parse_date(form.get("date"), date.today())
     entry.minutes = minutes
@@ -116,7 +127,8 @@ def new():
         if err:
             flash(err, "error")
             return render_template("time/form.html", entry=entry, matters=matters, rates=rates,
-                                   activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=request.form), 400
+                                   activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=request.form,
+                                   needs_duration_confirm=_over_a_day(request.form)), 400
         db.session.add(entry)
         db.session.flush()
         audit("create", "time_entry", entry.id, f"{entry.minutes}m on {entry.matter.number}", u.id)
@@ -154,7 +166,8 @@ def edit(id):
         if err:
             flash(err, "error")
             return render_template("time/form.html", entry=entry, matters=matters, rates=rates,
-                                   activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=request.form), 400
+                                   activity_codes=ACTIVITY_CODES, task_codes=TASK_CODES, form=request.form,
+                                   needs_duration_confirm=_over_a_day(request.form)), 400
         audit("update", "time_entry", entry.id, f"{entry.minutes}m", u.id)
         db.session.commit()
         flash("Time entry saved.", "ok")
