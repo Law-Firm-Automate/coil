@@ -2,6 +2,7 @@
 import calendar as stdcal
 import hashlib
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, Response
 from sqlalchemy import or_, and_
 from ..extensions import db
@@ -212,7 +213,24 @@ def _fold(line):
     return [out[0]] + [" " + l for l in out[1:]]
 
 
-def build_ics(events, name="Calendar"):
+def _to_utc(dt, tz_name):
+    """Timed events are stored as the naive wall-clock a staff member typed into a
+    datetime-local input, in the firm's configured timezone, not UTC. The feed format
+    demands real UTC ('...Z'), so convert instead of relabeling the same digits: a
+    Chicago 00:30 event exported as '...T003000Z' reads, correctly, as 7:30pm the
+    previous day anywhere the offset isn't zero, and is off by the timezone's full
+    offset everywhere else. Falls back to the naive digits if the zone name is bad,
+    which is what the feed already did, rather than breaking the whole calendar.
+    """
+    if dt is None:
+        return dt
+    try:
+        return dt.replace(tzinfo=ZoneInfo(tz_name or "UTC")).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    except (ZoneInfoNotFoundError, ValueError):
+        return dt
+
+
+def build_ics(events, name="Calendar", tz_name="UTC"):
     stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Solo Practice//Calendar//EN", "CALSCALE:GREGORIAN",
              "METHOD:PUBLISH", f"X-WR-CALNAME:{_ics_escape(name)}"]
@@ -224,7 +242,8 @@ def build_ics(events, name="Calendar"):
             lines += [f"DTSTART;VALUE=DATE:{start:%Y%m%d}", f"DTEND;VALUE=DATE:{end:%Y%m%d}"]
         else:
             end = e.ends_at or (e.starts_at + timedelta(hours=1))
-            lines += [f"DTSTART:{e.starts_at:%Y%m%dT%H%M%SZ}", f"DTEND:{end:%Y%m%dT%H%M%SZ}"]
+            start_utc, end_utc = _to_utc(e.starts_at, tz_name), _to_utc(end, tz_name)
+            lines += [f"DTSTART:{start_utc:%Y%m%dT%H%M%SZ}", f"DTEND:{end_utc:%Y%m%dT%H%M%SZ}"]
         if e.recurrence in RRULE_FREQ:
             rule = RRULE_FREQ[e.recurrence]
             if e.recurrence_until:
@@ -246,8 +265,8 @@ def build_ics(events, name="Calendar"):
     return "\r\n".join(folded) + "\r\n"
 
 
-def _ics_response(events, name):
-    body = build_ics(events, name=name)
+def _ics_response(events, name, tz_name="UTC"):
+    body = build_ics(events, name=name, tz_name=tz_name)
     return Response(body, mimetype="text/calendar",
                     headers={"Content-Disposition": "inline; filename=calendar.ics", "Cache-Control": "no-cache"})
 
@@ -258,7 +277,8 @@ def feed(secret):
     if secret != feed_secret():
         abort(404)
     from ..models import Firm
-    return _ics_response(CalendarEvent.query.order_by(CalendarEvent.starts_at).all(), Firm.get().name)
+    firm = Firm.get()
+    return _ics_response(CalendarEvent.query.order_by(CalendarEvent.starts_at).all(), firm.name, firm.timezone)
 
 
 @bp.route("/feed/u/<int:user_id>/<secret>.ics")
@@ -270,4 +290,5 @@ def user_feed(user_id, secret):
     events = CalendarEvent.query.filter(or_(CalendarEvent.user_id == user_id, CalendarEvent.user_id == None)).order_by(
         CalendarEvent.starts_at).all()
     from ..models import Firm
-    return _ics_response(events, f"{Firm.get().name}: {u.name}")
+    firm = Firm.get()
+    return _ics_response(events, f"{firm.name}: {u.name}", firm.timezone)

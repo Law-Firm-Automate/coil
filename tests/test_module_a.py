@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -190,6 +190,41 @@ def test_calendar_event_and_ics_feed(client):
     assert all(len(l.encode()) <= 75 for l in ics.split("\r\n"))
     assert client.get("/calendar/feed/wrongsecret.ics").status_code == 404
     client.eid = eid
+
+
+def test_ics_feed_converts_firm_timezone_to_utc(client):
+    """A timed event is stored as the wall-clock a staff member typed, in the firm's
+    configured timezone. The feed used to relabel those same digits with a trailing Z,
+    which a calendar app reads as UTC: a Chicago midnight event landed 5 hours, and
+    sometimes a whole calendar day, away from where it was set. Regression for that."""
+    tok = client.tok
+    from app.models import Firm
+    from app.extensions import db
+    from zoneinfo import ZoneInfo
+    with client.app.app_context():
+        firm = Firm.get()
+        original_tz = firm.timezone
+        firm.timezone = "Pacific/Auckland"
+        db.session.commit()
+    try:
+        r = client.post("/calendar/new", data={"_csrf": tok, "title": "QA G timezone check",
+                                               "starts_at": "2026-09-12T23:30", "ends_at": "2026-09-13T00:30",
+                                               "matter_id": client.mid})
+        assert r.status_code == 302, r.data[:300]
+        secret = hashlib.sha256((client.app.config["SECRET_KEY"] + "ics").encode()).hexdigest()[:24]
+        r = client.get(f"/calendar/feed/{secret}.ics")
+        ics = r.data.decode()
+        expected_start = datetime(2026, 9, 12, 23, 30, tzinfo=ZoneInfo("Pacific/Auckland")).astimezone(ZoneInfo("UTC"))
+        expected_end = datetime(2026, 9, 13, 0, 30, tzinfo=ZoneInfo("Pacific/Auckland")).astimezone(ZoneInfo("UTC"))
+        assert f"DTSTART:{expected_start:%Y%m%dT%H%M%SZ}" in ics
+        assert f"DTEND:{expected_end:%Y%m%dT%H%M%SZ}" in ics
+        # The bug relabeled the same local digits as UTC instead of converting them.
+        assert "DTSTART:20260912T233000Z" not in ics
+    finally:
+        with client.app.app_context():
+            firm = Firm.get()
+            firm.timezone = original_tz
+            db.session.commit()
 
 
 def test_document_upload_and_download(client):
