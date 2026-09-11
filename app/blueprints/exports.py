@@ -5,7 +5,7 @@ from datetime import date
 from flask import Blueprint, render_template, Response, request, flash
 from ..extensions import db
 from ..models import Invoice, Payment, Contact, Matter, TimeEntry, TrustTransaction, Firm, now
-from ..helpers import login_required, parse_date, current_user
+from ..helpers import login_required, parse_date, current_user, csv_safe
 from . import ledes
 
 bp = Blueprint("exports", __name__, url_prefix="/exports")
@@ -31,7 +31,7 @@ def _csv(filename, header, rows):
     w = csv.writer(buf)
     w.writerow(header)
     for r in rows:
-        w.writerow(r)
+        w.writerow([csv_safe(v) for v in r])
     resp = Response(buf.getvalue(), mimetype="text/csv")
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return resp

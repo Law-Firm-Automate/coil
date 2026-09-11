@@ -18,7 +18,7 @@ from sqlalchemy import event, func, select, insert, update, delete, or_, and_, i
 from ..extensions import db
 from ..models import (Account, LedgerEntry, BankImport, OperatingReconciliation, Payment, Expense, Invoice,
                       InvoiceLine, Matter, Contact, TrustTransaction, Firm, audit)
-from ..helpers import login_required, permission_required, current_user, parse_money, parse_date, cents_to_str
+from ..helpers import login_required, permission_required, current_user, parse_money, parse_date, cents_to_str, csv_safe
 
 bp = Blueprint("accounting", __name__, url_prefix="/accounting")
 
@@ -714,7 +714,7 @@ def _csv_response(name, header, rows):
     w = csv.writer(buf)
     w.writerow(header)
     for r in rows:
-        w.writerow(r)
+        w.writerow([csv_safe(v) for v in r])
     return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={name}"})
 
 

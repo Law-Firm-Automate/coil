@@ -95,6 +95,62 @@ def doc_tags(doc):
     return parse_tags(doc.tags)
 
 
+# What the first bytes of a file actually say it is, regardless of what the name claims.
+# Only formats with an unambiguous signature are listed: a .txt, .csv or .eml has none, and
+# guessing at those would reject legitimate files a firm really does receive.
+_MAGIC = (
+    (b"%PDF-", "pdf"),
+    (b"PK\x03\x04", "zip"),           # docx, xlsx, pptx and plain zips share this
+    (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "ole"),   # legacy doc, xls, ppt
+    (b"\xff\xd8\xff", "jpg"),
+    (b"\x89PNG\r\n\x1a\n", "png"),
+    (b"GIF8", "gif"),
+    (b"{\\rtf", "rtf"),
+)
+# The extension a firm typed, and the signature its contents must carry to match.
+_EXPECTED = {
+    "pdf": {"pdf"},
+    "docx": {"zip"}, "xlsx": {"zip"}, "pptx": {"zip"}, "zip": {"zip"},
+    "doc": {"ole", "rtf"},              # Word happily saves RTF under a .doc name
+    "xls": {"ole"}, "ppt": {"ole"},
+    "jpg": {"jpg"}, "jpeg": {"jpg"}, "png": {"png"}, "gif": {"gif"}, "rtf": {"rtf"},
+}
+_TYPE_NAMES = {"pdf": "a PDF", "zip": "a zip or Office file", "ole": "a legacy Office file",
+               "jpg": "a JPEG image", "png": "a PNG image", "gif": "a GIF image", "rtf": "an RTF document",
+               "html": "a web page"}
+
+
+def _sniff(data):
+    """The format the bytes actually are, or None when there is no reliable signature."""
+    head = data[:16]
+    for sig, kind in _MAGIC:
+        if head.startswith(sig):
+            return kind
+    lowered = data[:512].lstrip().lower()
+    if lowered.startswith(b"<!doctype html") or lowered.startswith(b"<html") or lowered.startswith(b"<script"):
+        return "html"
+    return None
+
+
+def _extension_lies(ext, data):
+    """An error when the contents contradict the extension, else None.
+
+    A document arriving as something other than what it claims is either a mistake worth
+    catching before it reaches a client, or an attempt to smuggle markup past a filter that
+    only ever looked at the name. Silence is not an option here: the file keeps the wrong
+    name for the rest of its life and is served to the portal under it.
+    """
+    want = _EXPECTED.get(ext)
+    if not want:
+        return None                      # nothing reliable to check this extension against
+    actual = _sniff(data)
+    if actual is None or actual in want:
+        return None                      # unrecognised contents are not proof of anything
+    return (f"This file is named .{ext} but its contents are {_TYPE_NAMES.get(actual, actual)}. "
+            f"Rename it to match what it really is, or upload the right file.")
+
+
+
 def store_bytes(matter_id, name, data, mime="", user_id=None, shared=False, by_client=False, folder="", tags="",
                 version=1, version_of_id=None, is_current=True):
     """Write raw bytes as a new Document row (used by uploads, new versions and email attachments).
@@ -110,6 +166,9 @@ def store_bytes(matter_id, name, data, mime="", user_id=None, shared=False, by_c
         return None, "That file is over 25 MB."
     if size == 0:
         return None, "That file is empty."
+    lying = _extension_lies(ext, data)
+    if lying:
+        return None, lying
     safe = secure_filename(name) or "file"
     rel_dir = str(matter_id)
     folder_abs = os.path.join(current_app.config["UPLOAD_DIR"], rel_dir)
@@ -344,7 +403,11 @@ def download(id):
     p = abs_path(doc)
     if not os.path.isfile(p):
         abort(404)
-    return send_file(p, as_attachment=True, download_name=doc.name, mimetype=doc.mime or None)
+    resp = send_file(p, as_attachment=True, download_name=doc.name, mimetype=doc.mime or None)
+    # The mime was supplied by whoever uploaded the file. Stop the browser sniffing its way
+    # to a different conclusion and rendering it instead of saving it.
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @bp.route("/<int:id>/share", methods=["POST"])

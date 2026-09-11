@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from flask import Blueprint, render_template, request, Response
 from ..extensions import db
 from ..models import Invoice, TimeEntry, Expense, Payment, TrustTransaction, User
-from ..helpers import login_required, parse_date
+from ..helpers import login_required, parse_date, csv_safe
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -20,7 +20,7 @@ def _csv(filename, header, rows):
     w = csv.writer(buf)
     w.writerow(header)
     for r in rows:
-        w.writerow(r)
+        w.writerow([csv_safe(v) for v in r])
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 

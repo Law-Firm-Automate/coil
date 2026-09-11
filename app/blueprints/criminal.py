@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 from ..extensions import db
 from ..models import Matter, CriminalCase, Charge, Task, Document, Firm, audit, now
 from ..helpers import login_required, current_user, parse_money, parse_date
-from ..services.pdf import DocPDF
+from ..services.pdf import DocPDF, enable_unicode, reset_unicode, unicode_on, mark_unsupported
 
 bp = Blueprint("criminal", __name__, url_prefix="/criminal")
 
@@ -160,9 +160,12 @@ def speedy_trial_task(m, c):
 
 # ---------------------------------------------------------------- PDF
 def _txt(s):
-    return (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-            .replace("–", "-").replace("—", "-").replace("•", "-")
-            .encode("latin-1", "replace").decode("latin-1"))
+    """Typographic cleanup, and a lossy flatten only while stuck on a core font."""
+    s = (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+         .replace("–", "-").replace("—", "-").replace("•", "-"))
+    if unicode_on():
+        return mark_unsupported(s)
+    return s.encode("latin-1", "replace").decode("latin-1")
 
 
 def _line(pdf, text, size=10.5, style=""):
@@ -189,6 +192,9 @@ def _save_pdf_document(matter, pdf, name, folder, user):
 def build_disposition_pdf(m, c, charges):
     firm = Firm.get()
     pdf = DocPDF(firm, f"Disposition summary {m.number}")
+    reset_unicode()
+    enable_unicode(pdf, firm.name, firm.address, m.name,
+                   m.client.display_name if m.client else "")
     pdf.alias_nb_pages()
     pdf.add_page()
     _line(pdf, "Disposition summary", 14, "B")

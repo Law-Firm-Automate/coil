@@ -23,7 +23,7 @@ from sqlalchemy import func
 from ..extensions import db
 from ..models import (Contact, Matter, TimeEntry, Expense, Invoice, InvoiceLine, Payment, TrustTransaction, Task,
                       CalendarEvent, Document, Note, User, Firm, ImportJob, ExternalRef, audit)
-from ..helpers import login_required, owner_required, current_user, cents_to_str
+from ..helpers import login_required, owner_required, current_user, cents_to_str, csv_safe
 from . import _importmap as M
 
 bp = Blueprint("importer", __name__, url_prefix="/import")
@@ -1323,7 +1323,7 @@ def failed_csv(job_id):
     w.writerow(headers + ["Import error"])
     for e in errs:
         d = e.get("data") or {}
-        w.writerow([d.get(h, "") for h in headers] + [e.get("message", "")])
+        w.writerow([csv_safe(d.get(h, "")) for h in headers] + [e.get("message", "")])
     return Response(out.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f"attachment; filename=import-{j.id}-failed-rows.csv"})
 

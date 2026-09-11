@@ -1,9 +1,68 @@
 """PDF generation with fpdf2. Simple, dependency-free, good enough for invoices and signed letters."""
 import os
 import re
+import threading
 from html import unescape
 from fpdf import FPDF
 from flask import current_app
+
+# Helvetica is one of the PDF core fonts and cannot represent anything outside cp1252, so
+# every builder used to force text through a lossy encode. A client called Nadia in Arabic,
+# or any name in Greek, Cyrillic or Chinese, came out of an invoice as a row of question
+# marks. DejaVu Sans is bundled (see LICENSE-DejaVu.txt) and covers Latin, Greek, Cyrillic
+# and most European punctuation.
+#
+# It is only switched on for a document that actually needs it, so an ordinary invoice keeps
+# the metrics it has always had and does not silently restyle. The flag is per thread because
+# a builder sets it once at the top of a render and every helper below reads it; requests are
+# handled one per thread under gunicorn's sync worker, so there is nothing to share.
+FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "fonts")
+UNICODE_FAMILY = "DejaVu"
+_UNICODE_FILES = {"": "DejaVuSans.ttf", "B": "DejaVuSans-Bold.ttf", "I": "DejaVuSans-Oblique.ttf"}
+_state = threading.local()
+
+
+def unicode_on():
+    return getattr(_state, "unicode", False)
+
+
+def needs_unicode(*parts):
+    """True when any of this text cannot survive the core-font encoding."""
+    for part in parts:
+        if not part:
+            continue
+        try:
+            str(part).encode("cp1252")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return True
+    return False
+
+
+def enable_unicode(pdf, *parts):
+    """Switch a document to the bundled Unicode font when its text needs one.
+
+    Returns True when it did. Safe to call with everything the document will print; the
+    scan is cheap next to rendering. Falls back silently to the core font if the bundled
+    files are missing, because a slightly mangled invoice beats a 500 on the download.
+    """
+    if not needs_unicode(*parts):
+        return False
+    try:
+        for style, fname in _UNICODE_FILES.items():
+            pdf.add_font(UNICODE_FAMILY, style, os.path.join(FONT_DIR, fname))
+    except Exception:  # noqa: BLE001 - missing or unreadable font files
+        return False
+    _state.unicode = True
+    return True
+
+
+def reset_unicode():
+    _state.unicode = False
+
+
+def font_family(requested="Helvetica"):
+    """The family to actually ask fpdf for."""
+    return UNICODE_FAMILY if unicode_on() else requested
 
 
 class DocPDF(FPDF):
@@ -13,6 +72,13 @@ class DocPDF(FPDF):
         self.doc_title = title
         self.set_auto_page_break(auto=True, margin=18)
         self.set_margins(18, 18, 18)
+
+    def set_font(self, family=None, style="", size=0):
+        # Every builder asks for Helvetica by name. When the document has been switched to
+        # the bundled Unicode font, honour that instead of silently dropping the glyphs.
+        if family and family.lower() in ("helvetica", "arial"):
+            family = font_family(family)
+        return super().set_font(family, style, size)
 
     def header(self):
         self.set_font("Helvetica", "B", 14)
@@ -37,8 +103,11 @@ class DocPDF(FPDF):
 
 
 def _clean(s):
-    return (s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"') \
-        .replace("–", "-").replace("—", "-").replace("•", "-").encode("latin-1", "replace").decode("latin-1")
+    s = (s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"') \
+        .replace("–", "-").replace("—", "-").replace("•", "-")
+    if unicode_on():
+        return mark_unsupported(s)
+    return s.encode("latin-1", "replace").decode("latin-1")
 
 
 def html_to_pdf_body(pdf, html):
@@ -79,3 +148,34 @@ def money(c):
     c = abs(c)
     s = f"${c // 100:,}.{c % 100:02d}"
     return f"({s})" if neg else s
+
+_coverage = None
+
+
+def _font_covers():
+    """The set of codepoints the bundled font can actually draw, read once from its cmap."""
+    global _coverage
+    if _coverage is None:
+        try:
+            from fontTools.ttLib import TTFont
+            f = TTFont(os.path.join(FONT_DIR, _UNICODE_FILES[""]), lazy=True)
+            _coverage = set(f.getBestCmap().keys())
+            f.close()
+        except Exception:  # noqa: BLE001
+            _coverage = set()
+    return _coverage
+
+
+def mark_unsupported(s, marker="?"):
+    """Replace characters the font cannot draw, so they cannot silently disappear.
+
+    DejaVu covers Latin, Greek, Cyrillic and most European punctuation, but not Arabic,
+    CJK or emoji. fpdf drops a glyph it has no outline for, which on an invoice means a
+    client's name is simply absent and nobody notices. A visible marker is not good
+    output, but it is output somebody will query rather than sign and post.
+    """
+    cov = _font_covers()
+    if not cov:
+        return s
+    return "".join(ch if (ord(ch) in cov or ch in "\n\r\t") else marker for ch in s)
+

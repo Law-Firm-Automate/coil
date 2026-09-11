@@ -15,7 +15,7 @@ from ..extensions import db
 from ..models import (PiCase, MedicalProvider, Lien, SettlementWorksheet, Matter, Document, Task,
                       TrustTransaction, Expense, Firm, audit)
 from ..helpers import login_required, current_user, parse_money, parse_date, cents_to_str
-from ..services.pdf import DocPDF, money as pdf_money
+from ..services.pdf import DocPDF, money as pdf_money, enable_unicode, reset_unicode, unicode_on, mark_unsupported
 
 bp = Blueprint("pi", __name__, url_prefix="/pi")
 
@@ -104,9 +104,12 @@ class PiPDF(DocPDF):
 
 
 def _txt(s):
-    return (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-            .replace("–", "-").replace("—", "-").replace("•", "-")
-            .encode("latin-1", "replace").decode("latin-1"))
+    """Typographic cleanup, and a lossy flatten only while stuck on a core font."""
+    s = (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+         .replace("–", "-").replace("—", "-").replace("•", "-"))
+    if unicode_on():
+        return mark_unsupported(s)
+    return s.encode("latin-1", "replace").decode("latin-1")
 
 
 def _para(pdf, text, size=10.5, style="", gap=2.5):
@@ -201,6 +204,9 @@ def build_request_letter(matter, case, provider, what):
     f = Firm.get()
     title = "Request for medical records" if what == "records" else "Request for itemized billing"
     pdf = PiPDF(f, title=title)
+    reset_unicode()
+    enable_unicode(pdf, f.name, f.address, title, matter.name,
+                   matter.client.display_name if matter.client else "")
     pdf.add_page()
     to_lines = [provider.name, "Attn: Records custodian" if what == "records" else "Attn: Billing department"]
     to_lines += _lines(provider.address)
@@ -241,6 +247,9 @@ def build_request_letter(matter, case, provider, what):
 def build_reduction_letter(matter, case, lien, pct, proposed_cents):
     f = Firm.get()
     pdf = PiPDF(f, title="Lien reduction request")
+    reset_unicode()
+    enable_unicode(pdf, f.name, f.address, "Lien reduction request", matter.name,
+                   matter.client.display_name if matter.client else "")
     pdf.add_page()
     to_lines = [lien.holder] + ([f"Attn: {lien.contact}"] if lien.contact else []) + ["Subrogation / lien department"]
     re_lines = _client_re_lines(matter, case)
@@ -334,6 +343,9 @@ def _exhibit_index(matter, pdfs, others):
     """A one-page index so the recipient can see what should be here."""
     f = Firm.get()
     pdf = PiPDF(f, title="Exhibit index")
+    reset_unicode()
+    enable_unicode(pdf, f.name, f.address, "Exhibit index", matter.name,
+                   matter.client.display_name if matter.client else "")
     pdf.add_page()
     _line(pdf, "Exhibits", size=12, style="B")
     n = 0
@@ -351,6 +363,9 @@ def _exhibit_index(matter, pdfs, others):
 def build_demand_package(matter, case, providers, demand_cents):
     f = Firm.get()
     pdf = PiPDF(f, title="Demand package")
+    reset_unicode()
+    enable_unicode(pdf, f.name, f.address, "Demand package", matter.name,
+                   matter.client.display_name if matter.client else "")
     pdf.add_page()
     to_lines = [case.insurer or "Claims department"]
     if case.adjuster_name:
@@ -491,6 +506,9 @@ def build_worksheet_pdf(matter, ws):
     f = Firm.get()
     d = _detail(ws)
     pdf = PiPDF(f, title="Settlement disbursement worksheet")
+    reset_unicode()
+    enable_unicode(pdf, f.name, f.address, "Settlement disbursement worksheet", matter.name,
+                   matter.client.display_name if matter.client else "")
     pdf.add_page()
     _line(pdf, "Settlement disbursement worksheet", size=14, style="B")
     pdf.ln(1)

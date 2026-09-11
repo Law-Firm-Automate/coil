@@ -18,7 +18,7 @@ from ..helpers import (login_required, current_user, parse_money, parse_date, cl
                         UNUSUAL_INVOICE_CENTS)
 from ..i18n import lang_for
 from ..services.mail import send_email
-from ..services.pdf import DocPDF, save_pdf
+from ..services.pdf import DocPDF, save_pdf, enable_unicode, reset_unicode, unicode_on, mark_unsupported
 
 try:  # Agent B's multi-currency formatter. Fall back to a local copy if helpers.py is older than this module.
     from ..helpers import fmt_money
@@ -48,10 +48,16 @@ def public_url(inv):
 
 
 def _pdf_txt(s):
-    """Make text safe for the core Helvetica font. cp1252 so GBP and EUR symbols survive."""
-    return (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-            .replace("–", "-").replace("—", "-").replace("•", "-")
-            .encode("cp1252", "replace").decode("cp1252"))
+    """Normalise typographic punctuation, and only flatten the rest when stuck on a core font.
+
+    cp1252 rather than latin-1 so the pound and euro signs survive. Once the document has
+    switched to the bundled Unicode font, nothing is dropped at all.
+    """
+    s = (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+         .replace("–", "-").replace("—", "-").replace("•", "-"))
+    if unicode_on():
+        return mark_unsupported(s)
+    return s.encode("cp1252", "replace").decode("cp1252")
 
 
 def _dollars(cents):
@@ -1042,6 +1048,11 @@ def render_invoice_pdf(inv, tpl=None, sample=False):
         return _pdf_txt(fmt_money(c, cur))
 
     pdf = TemplatePDF(_letterhead(firm, inv), f"Invoice {inv.number}", tpl)
+    # Decide the font before a single string is written: a client name or a line description
+    # in a non-Latin script needs a real font, not a question mark.
+    reset_unicode()
+    enable_unicode(pdf, firm.name, firm.address, inv.client.display_name, inv.client.address,
+                   inv.notes, tpl.title, *[ln.description for ln in (inv.lines or [])])
     pdf.alias_nb_pages()
     pdf.add_page()
     if sample:

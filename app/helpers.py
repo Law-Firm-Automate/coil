@@ -23,6 +23,29 @@ UNUSUAL_MINUTES = 24 * 60
 UNUSUAL_INVOICE_CENTS = 1_000_000_00
 
 
+def csv_safe(v):
+    """Neutralise a spreadsheet formula hiding in exported data.
+
+    Excel, LibreOffice and Sheets evaluate any cell whose text begins with = + @ - or a
+    lone tab or carriage return. A contact named =cmd|'/c calc'!A1 therefore runs on the
+    machine of whoever opens the export, and firms open every export they take. The cell
+    is prefixed with an apostrophe, which those readers strip on display.
+
+    A leading minus in front of a real number is left alone: trust disbursements and
+    discounts are negative, and quoting them turns money columns into text that will not
+    sum. Only a value that is not a number gets the treatment.
+    """
+    if not isinstance(v, str):
+        return v
+    if not v or v[0] not in "=+@-\t\r":
+        return v
+    try:
+        float(v)
+        return v
+    except ValueError:
+        return "'" + v
+
+
 def parse_money(s):
     """'1,250.50' -> 125050. Blank -> 0."""
     if s is None:

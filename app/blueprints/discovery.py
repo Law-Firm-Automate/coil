@@ -22,7 +22,7 @@ from ..extensions import db
 from ..models import (Matter, Document, Task, Note, PiCase, ChronologyEntry, DiscoverySet, DepositionSummary, Firm,
                       audit)
 from ..helpers import login_required, current_user, parse_date
-from ..services.pdf import DocPDF
+from ..services.pdf import DocPDF, enable_unicode, reset_unicode, unicode_on, mark_unsupported
 from .. import llm
 from ..llm import LLMUnavailable
 from .documents import store_bytes
@@ -721,9 +721,12 @@ class DraftPDF(DocPDF):
 
 
 def _txt(s):
-    return (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-            .replace("–", "-").replace("\u2014", "-").replace("•", "-")
-            .encode("latin-1", "replace").decode("latin-1"))
+    """Typographic cleanup, and a lossy flatten only while stuck on a core font."""
+    s = (str(s or "").replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+         .replace("–", "-").replace("—", "-").replace("•", "-"))
+    if unicode_on():
+        return mark_unsupported(s)
+    return s.encode("latin-1", "replace").decode("latin-1")
 
 
 def _para(pdf, text, size=10.5, style="", gap=2.5):
@@ -751,6 +754,9 @@ def build_set_pdf(ds):
     label = KIND_LABELS[ds.kind]
     head = f"{label} to {ds.party}" if ds.direction == "propound" else f"Responses to {label} from {ds.party}"
     pdf = DraftPDF(firm, title=head)
+    reset_unicode()
+    enable_unicode(pdf, firm.name, firm.address, head, ds.party, m.name,
+                   m.client.display_name if m.client else "")
     pdf.alias_nb_pages()
     pdf.add_page()
     _caption(pdf, m, [("Propounded to: " if ds.direction == "propound" else "Served by: ") + (ds.party or ""),
@@ -1091,6 +1097,9 @@ def build_deposition_pdf(dep):
     key, contras = _dep_lists(dep)
     title = f"Deposition summary: {dep.deponent or 'deponent'}"
     pdf = DraftPDF(firm, title=title)
+    reset_unicode()
+    enable_unicode(pdf, firm.name, firm.address, title, dep.deponent, m.name,
+                   m.client.display_name if m.client else "")
     pdf.alias_nb_pages()
     pdf.add_page()
     _caption(pdf, m, [f"Deponent: {dep.deponent or ''}",
