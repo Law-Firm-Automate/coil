@@ -103,7 +103,9 @@ if [ "$AUTO_UPDATE" = "1" ]; then
     BAK_LINE="40 2 * * * cd $DIR && docker compose exec -T coil python -m app.cli backup >> $DIR/data/backup.log 2>&1"
     if command -v crontab >/dev/null 2>&1; then
       # Replace our own lines only, so the firm's other cron jobs are untouched.
-      (crontab -l 2>/dev/null | grep -v 'coil.*self-update.sh' | grep -v 'app.cli backup' ; \
+      # Match on this install's own directory. Filtering on 'app.cli backup' alone would
+      # delete the nightly backup of any other Coil on the same machine.
+      (crontab -l 2>/dev/null | grep -v "cd $DIR && .*self-update.sh" | grep -v "cd $DIR && .*app.cli backup" ; \
        echo "$BAK_LINE" ; echo "$UPD_LINE") | crontab - 2>/dev/null \
         && echo "Nightly backup (2:40am) and updates (3:17am) are on. Change them with: crontab -e" \
         || echo "Could not install the cron jobs. Add these yourself:" \
@@ -123,9 +125,12 @@ echo "  Config:  $DIR/.env          (edit BASE_URL, email settings, and secrets)
 echo "  Data:    $DIR/data          (back this folder up regularly - contains everything)"
 if [ -d src ]; then
   echo "  Update:  cd $DIR && git -C src pull && docker compose up -d --build"
-else
+elif [ -x ops/self-update.sh ]; then
   echo "  Update:  runs nightly on its own. Force one now: cd $DIR && ./ops/self-update.sh"
   echo "  Undo:    cd $DIR && ./ops/self-update.sh --rollback"
+else
+  echo "  Update:  automatic updates are OFF. Turn them on by re-running this installer"
+  echo "           without COIL_AUTO_UPDATE=0, or update by hand with: docker compose pull && docker compose up -d"
 fi
 echo "  Channel: $CHANNEL   (stable is promoted weekly; COIL_CHANNEL=edge follows every build)"
 echo "  Backup:  nightly to $DIR/data/backups (newest 14 kept). Force one: cd $DIR && docker compose exec coil python -m app.cli backup"
