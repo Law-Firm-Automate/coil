@@ -177,6 +177,13 @@ def test_build_hourly_invoice_from_unbilled(app, client):
     # locked entry shows the lock and a link to the invoice
     r = client.get(f"/time/{S['entry_130']}/edit")
     assert r.status_code == 200 and b"read-only" in r.data and f"/invoices/{inv_id}".encode() in r.data
+    # every editable field on the edit screen has a screen-reader-visible name (#11)
+    r = client.get(f"/invoices/{inv_id}/edit")
+    assert r.status_code == 200
+    for needle in (b'<label for="issued_on">', b'<label for="due_on">', b'<label for="adj_description">',
+                   b'<label for="adj_amount">', b'<label for="notes">',
+                   b'aria-label="Description for', b'aria-label="Amount for', b'aria-label="Remove '):
+        assert needle in r.data, needle
     # editing while draft: change a description and add an adjustment
     tok = csrf(client)
     with app.app_context():

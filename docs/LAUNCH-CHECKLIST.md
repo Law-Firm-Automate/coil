@@ -251,7 +251,8 @@ The demo documents contain deliberate traps. These matter more than the happy pa
 
 ## API and MCP
 
-- [x] Token scopes: a `matters:read` token exposes 3 MCP tools; a full token exposes 17.
+- [x] Token scopes: a `matters:read` token exposes 3 MCP tools; a full token exposes 18
+      (#9: `invoices:write` had no endpoint or tool behind it at all; added both).
 - [x] Ask a read-only token to log time. It should say it cannot, not fail trying.
 - [x] **Withheld mode.** With a redacted token, "Marchetti" must not appear in any API or
       MCP response. Then repeat with a full token and confirm it does. Absence alone

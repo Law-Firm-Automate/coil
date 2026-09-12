@@ -176,6 +176,18 @@ if allowed("invoices:read"):
         """Invoices. status is draft, sent, partial, paid or void. Amounts are cents."""
         return call("GET", "/invoices", params={"status": status, "limit": limit})
 
+if allowed("invoices:write"):
+    @mcp.tool()
+    def draft_invoice(matter_id: int, issued_on: str = "", due_on: str = "") -> dict:
+        """Draft an invoice for every unbilled time entry, expense and due milestone on a
+        matter. Dates are YYYY-MM-DD; issued_on defaults to today, due_on to issued_on.
+
+        This only ever creates a draft. It never submits, approves or sends. Read the
+        totals back to the user before anyone opens the invoice in Coil.
+        """
+        return call("POST", "/invoices", json={"matter_id": matter_id, "issued_on": issued_on or None,
+                                                "due_on": due_on or None})
+
 if allowed("tasks:read"):
     @mcp.tool()
     def list_tasks(matter_id: int = 0, done: bool = False, limit: int = 50) -> dict:

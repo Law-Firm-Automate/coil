@@ -227,6 +227,11 @@ def test_settings_surcharge_and_users(app, staff):
     assert r.status_code == 302
     r = client.get("/settings/users")
     assert r.status_code == 200 and b"Sam Staff" in r.data
+    # the owner opening someone else's edit page must see that user, not themselves
+    r = client.get(f"/settings/users/{uid}/edit")
+    assert r.status_code == 200
+    assert b"Edit Sam Staff" in r.data, "base.html's own {% set u %} for the nav must not shadow the user being edited"
+    assert b'value="Sam Staff"' in r.data and b'value="sam@example.test"' in r.data
     r = client.get("/settings/integrations")
     assert r.status_code == 200 and b"/webhooks/stripe" in r.data and b"/webhooks/twilio" in r.data
     r = client.get("/dev/outbox")

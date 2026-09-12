@@ -10,7 +10,7 @@
 {% block head %}{% endblock %}
 </head>
 <body>
-{% set u = current_user() %}
+{% set _me = current_user() %}
 <div class="layout">
   <nav class="sidebar">
     <a class="brand" href="{{ url_for('dashboard.index') }}">{{ firm().name }}</a>
@@ -54,12 +54,12 @@
     <a class="nav {{ 'active' if _path.startswith('/exports') }}" href="/exports">Exports</a>
     <a class="nav {{ 'active' if _path.startswith('/setup-guide') }}" href="/setup-guide">Setup guide</a>
     <a class="nav {{ 'active' if _path.startswith('/features') }}" href="/features">Feature map</a>
-    {% if u and config.FEEDBACK_ENABLED not in ('0', 'false', 'no') %}
+    {% if _me and config.FEEDBACK_ENABLED not in ('0', 'false', 'no') %}
     <a class="nav feedback-link {{ 'active' if _path.startswith('/feedback') }}"
        href="{{ url_for('feedback.index') }}?from={{ _path|urlencode }}">Send feedback</a>
     {% endif %}
-    {% if u %}
-    <div class="user">{{ u.name }}<br>
+    {% if _me %}
+    <div class="user">{{ _me.name }}<br>
       <form method="post" action="{{ url_for('auth.logout') }}" class="inline">{{ csrf() }}<button class="btn small secondary" style="margin-top:6px">Log out</button></form>
     </div>
     {% endif %}

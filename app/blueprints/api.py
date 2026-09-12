@@ -546,12 +546,41 @@ def invoices():
     return jsonify({"invoices": [invoice_json(i) for i in rows]})
 
 
+@bp.route("/invoices", methods=["POST"])
+@scope_required("invoices:write")
+def invoice_create():
+    """Draft only, same as the bulk-invoice screen: every unbilled time entry, expense
+    and due milestone on the matter. Never sends; status is always 'draft'."""
+    from .invoices import build_for_matter
+    b = _body()
+    u = g.api_user
+    try:
+        mid = int(b.get("matter_id") or 0)
+    except (TypeError, ValueError):
+        mid = 0
+    m = db.session.get(Matter, mid) if mid else None
+    if not m:
+        return _error(400, "matter_id is required and must be an existing matter.")
+    issued_on = parse_date(b.get("issued_on"), date.today())
+    due_on = parse_date(b.get("due_on"), issued_on)
+    try:
+        created = build_for_matter(m, u, issued_on, due_on)
+    except ValueError as e:
+        return _error(400, str(e))
+    if not created:
+        return _error(400, "Nothing unbilled on this matter to invoice.")
+    db.session.commit()
+    return jsonify({"invoices": [invoice_json(i) for i in created]}), 201
+
+
 @bp.route("/tasks")
 @read_required("tasks")
 def tasks():
     due = (request.args.get("due") or "").strip().lower()
     today = date.today()
     query = Task.query.filter(Task.done == False)  # noqa: E712
+    if request.args.get("matter_id"):
+        query = query.filter(Task.matter_id == int(request.args["matter_id"]))
     if due == "today":
         query = query.filter(Task.due_on == today)
     elif due == "overdue":

@@ -338,8 +338,33 @@ def test_api_read_endpoints(app):
     assert any(i["number"] == "INV-G1" for i in r.json["invoices"])
     r = c.get("/api/v1/tasks?due=today", headers=_h(raw))
     assert r.status_code == 200 and "tasks" in r.json
+    # matter_id must actually filter, not just round-trip in the response
+    r = c.get(f"/api/v1/tasks?matter_id={mid}", headers=_h(raw))
+    titles = [t["title"] for t in r.json["tasks"]]
+    assert titles == ["Signing appointment"]
     r = c.get("/api/v1/time", headers=_h(raw))
     assert r.status_code == 200
+
+
+def test_api_invoice_draft_create(app):
+    """invoices:write is advertised as draft-only; there was no endpoint behind it at all."""
+    from app.models import Matter
+    with app.app_context():
+        m2id = Matter.query.filter_by(number="M-1002").first().id
+    ro = _make_token(app, "read")
+    rw = _make_token(app, "invoices:write,invoices:read")
+    c = app.test_client()
+    r = c.post("/api/v1/invoices", json={"matter_id": m2id}, headers=_h(ro))
+    assert r.status_code == 403 and "scope" in r.json["error"]
+    r = c.post("/api/v1/invoices", json={"matter_id": 999999}, headers=_h(rw))
+    assert r.status_code == 400
+    r = c.post("/api/v1/invoices", json={"matter_id": m2id}, headers=_h(rw))
+    assert r.status_code == 201
+    inv = r.json["invoices"][0]
+    assert inv["status"] == "draft" and inv["matter_id"] == m2id
+    # everything unbilled on M-1002 just got picked up; nothing left for a second draft
+    r = c.post("/api/v1/invoices", json={"matter_id": m2id}, headers=_h(rw))
+    assert r.status_code == 400
 
 
 def test_api_scope_and_time_entry(app):
