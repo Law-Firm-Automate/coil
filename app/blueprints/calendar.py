@@ -230,10 +230,26 @@ def _to_utc(dt, tz_name):
         return dt
 
 
-def build_ics(events, name="Calendar", tz_name="UTC"):
+TASK_PREFIX = {"deadline": "Deadline", "court_date": "Court", "task": "Task"}
+
+
+def build_ics(events, name="Calendar", tz_name="UTC", tasks=()):
     stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Solo Practice//Calendar//EN", "CALSCALE:GREGORIAN",
              "METHOD:PUBLISH", f"X-WR-CALNAME:{_ics_escape(name)}"]
+    # Tasks with a due date. The web calendar shows every one of these, and a limitation date
+    # that is on the screen but missing from the feed a lawyer actually subscribes to is the
+    # wrong way round. All-day, since a due date is a date, not a time.
+    for t in tasks:
+        if not t.due_on:
+            continue
+        lines += ["BEGIN:VEVENT", f"UID:task-{t.id}@solo-practice", f"DTSTAMP:{stamp}",
+                  f"DTSTART;VALUE=DATE:{t.due_on:%Y%m%d}",
+                  f"DTEND;VALUE=DATE:{t.due_on + timedelta(days=1):%Y%m%d}",
+                  f"SUMMARY:{_ics_escape(TASK_PREFIX.get(t.kind, 'Task') + ': ' + (t.title or ''))}"]
+        if t.matter:
+            lines.append(f"DESCRIPTION:{_ics_escape('Matter: ' + t.matter.label)}")
+        lines.append("END:VEVENT")
     for e in events:
         lines += ["BEGIN:VEVENT", f"UID:{e.uid or e.id}@solo-practice", f"DTSTAMP:{stamp}"]
         if e.all_day:
@@ -265,8 +281,8 @@ def build_ics(events, name="Calendar", tz_name="UTC"):
     return "\r\n".join(folded) + "\r\n"
 
 
-def _ics_response(events, name, tz_name="UTC"):
-    body = build_ics(events, name=name, tz_name=tz_name)
+def _ics_response(events, name, tz_name="UTC", tasks=()):
+    body = build_ics(events, name=name, tz_name=tz_name, tasks=tasks)
     return Response(body, mimetype="text/calendar",
                     headers={"Content-Disposition": "inline; filename=calendar.ics", "Cache-Control": "no-cache"})
 
@@ -278,7 +294,9 @@ def feed(secret):
         abort(404)
     from ..models import Firm
     firm = Firm.get()
-    return _ics_response(CalendarEvent.query.order_by(CalendarEvent.starts_at).all(), firm.name, firm.timezone)
+    tasks = Task.query.filter(Task.done == False, Task.due_on != None).order_by(Task.due_on).all()  # noqa: E712,E711
+    return _ics_response(CalendarEvent.query.order_by(CalendarEvent.starts_at).all(), firm.name, firm.timezone,
+                         tasks=tasks)
 
 
 @bp.route("/feed/u/<int:user_id>/<secret>.ics")
@@ -291,4 +309,7 @@ def user_feed(user_id, secret):
         CalendarEvent.starts_at).all()
     from ..models import Firm
     firm = Firm.get()
-    return _ics_response(events, f"{firm.name}: {u.name}", firm.timezone)
+    tasks = Task.query.filter(Task.done == False, Task.due_on != None,  # noqa: E712,E711
+                              or_(Task.assignee_id == user_id, Task.assignee_id == None)  # noqa: E711
+                              ).order_by(Task.due_on).all()
+    return _ics_response(events, f"{firm.name}: {u.name}", firm.timezone, tasks=tasks)

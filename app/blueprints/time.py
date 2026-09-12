@@ -6,12 +6,14 @@ from datetime import date
 from flask import (Blueprint, render_template, request, redirect, url_for, flash, abort,
                    current_app, send_file)
 from werkzeug.utils import secure_filename
+from sqlalchemy import func
 from ..extensions import db
 from ..models import Matter, TimeEntry, Timer, Expense, User, audit, now
 from ..helpers import login_required, current_user, parse_money, parse_date, UNUSUAL_MINUTES, parse_minutes
 from .ledes import choices as utbms_choices, valid_code
 
 bp = Blueprint("time", __name__, url_prefix="/time")
+PAGE_SIZE = 100  # rows per page on the list; totals always cover every matching row
 
 EXPENSE_CATEGORIES = ["Filing fee", "Postage", "Copies", "Travel", "Expert", "Other"]
 # UTBMS selects: [(code, label)] built from app/blueprints/ledes.py. Kept as module names so templates and
@@ -69,14 +71,28 @@ def index():
         q = q.filter(TimeEntry.date >= d_from)
     if d_to:
         q = q.filter(TimeEntry.date <= d_to)
-    entries = q.order_by(TimeEntry.date.desc(), TimeEntry.id.desc()).all()
-    total_minutes = sum(e.minutes for e in entries)
-    total_amount = sum(e.amount_cents for e in entries if e.billable)
-    unbilled_amount = sum(e.amount_cents for e in entries if e.billable and e.invoice_id is None)
+    # Totals over every matching row, in SQL, before the list is cut to a page. Summing the
+    # page instead is how the API came to understate a firm's hours by everything past row 200.
+    amount = TimeEntry.minutes * TimeEntry.rate_cents / 60
+    total_count = q.count()
+    total_minutes = int(q.with_entities(func.coalesce(func.sum(TimeEntry.minutes), 0)).scalar() or 0)
+    total_amount = int(q.filter(TimeEntry.billable == True)  # noqa: E712
+                        .with_entities(func.coalesce(func.sum(amount), 0)).scalar() or 0)
+    unbilled_amount = int(q.filter(TimeEntry.billable == True, TimeEntry.invoice_id == None)  # noqa: E712,E711
+                           .with_entities(func.coalesce(func.sum(amount), 0)).scalar() or 0)
+    page = max(1, request.args.get("page", 1, type=int))
+    pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(page, pages)
+    entries = q.order_by(TimeEntry.date.desc(), TimeEntry.id.desc()) \
+               .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).all()
+    args = {k: v for k, v in request.args.items() if k != "page"}
+    prev_url = url_for("time.index", page=page - 1, **args) if page > 1 else None
+    next_url = url_for("time.index", page=page + 1, **args) if page < pages else None
     timer = Timer.query.filter_by(user_id=current_user().id).first()
     return render_template("time/index.html", entries=entries, matters=Matter.query.order_by(Matter.number).all(),
                            users=User.query.order_by(User.name).all(), total_minutes=total_minutes,
                            total_amount=total_amount, unbilled_amount=unbilled_amount, timer=timer,
+                           total_count=total_count, page=page, pages=pages, prev_url=prev_url, next_url=next_url,
                            f={"matter_id": matter_id, "user_id": user_id,
                               "from": request.args.get("from", ""), "to": request.args.get("to", "")})
 

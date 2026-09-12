@@ -32,8 +32,9 @@
   <td class="nowrap"><a href="{{ url_for('time.edit', id=e.id) }}">{{ 'view' if e.invoice_id else 'edit' }}</a></td>
 </tr>
 {% endfor %}
-<tr><th colspan="4">Totals ({{ entries|length }} entries)</th><th class="num">{{ total_minutes|hours }}</th><th></th><th class="num">{{ total_amount|money }}</th><th colspan="2">Unbilled: {{ unbilled_amount|money }}</th></tr>
+<tr><th colspan="4">Totals ({{ total_count }} entries{% if pages > 1 %}, showing page {{ page }} of {{ pages }}{% endif %})</th><th class="num">{{ total_minutes|hours }}</th><th></th><th class="num">{{ total_amount|money }}</th><th colspan="2">Unbilled: {{ unbilled_amount|money }}</th></tr>
 </table>
+{% if pages > 1 %}<div class="actions" style="margin-top:8px">{% if prev_url %}<a class="btn small secondary" href="{{ prev_url }}">Newer</a>{% endif %}{% if next_url %}<a class="btn small secondary" href="{{ next_url }}">Older</a>{% endif %}</div>{% endif %}
 {% else %}<div class="empty">No time entries match. <a href="{{ url_for('time.new') }}">Log time</a>.</div>{% endif %}
 </div>
 {% endblock %}

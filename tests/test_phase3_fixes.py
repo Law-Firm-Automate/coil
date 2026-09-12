@@ -219,3 +219,90 @@ def test_summary_prompt_forbids_inferring_completion():
     src = inspect.getsource(ai.matter_summary)
     assert "requested is not received" in src
     assert "one provider is not all of them" in src
+
+
+# --- 5. deadlines belong in the feed a lawyer subscribes to -----------------------------------
+
+def test_a_deadline_on_the_screen_is_in_the_ical_feed(app, client):
+    """Phase 3 §G: a date-only deadline showed on the web calendar and was absent from the
+    firm feed, which only carried events. A limitation date is the thing a lawyer most needs
+    in the calendar they actually look at."""
+    db, M = _models()
+    cid, mid = _client_and_matter(app, "G")
+    with app.app_context():
+        db.session.add(M.Task(matter_id=mid, title="Limitations expire", kind="deadline",
+                              due_on=date(2028, 2, 11)))
+        db.session.add(M.Task(matter_id=mid, title="Already done", kind="deadline",
+                              due_on=date(2028, 3, 1), done=True))
+        db.session.commit()
+        from app.blueprints.calendar import feed_secret
+        secret = feed_secret()
+
+    r = client.get(f"/calendar/feed/{secret}.ics")
+    assert r.status_code == 200
+    body = r.data.decode()
+    assert "SUMMARY:Deadline: Limitations expire" in body
+    assert "DTSTART;VALUE=DATE:20280211" in body, "a due date is a date, so the feed entry is all-day"
+    assert "DTEND;VALUE=DATE:20280212" in body
+    assert "Already done" not in body, "a completed task is not a deadline any more"
+
+
+def test_personal_feed_carries_own_and_unassigned_deadlines_only(app, client):
+    db, M = _models()
+    cid, mid = _client_and_matter(app, "H")
+    with app.app_context():
+        users = M.User.query.order_by(M.User.id).limit(2).all()
+        me, other = users[0], (users[1] if len(users) > 1 else None)
+        db.session.add(M.Task(matter_id=mid, title="Mine", kind="court_date", due_on=date(2027, 5, 5),
+                              assignee_id=me.id))
+        db.session.add(M.Task(matter_id=mid, title="Nobody's yet", kind="deadline", due_on=date(2027, 5, 6)))
+        if other:
+            db.session.add(M.Task(matter_id=mid, title="Someone else's", kind="deadline",
+                                  due_on=date(2027, 5, 7), assignee_id=other.id))
+        db.session.commit()
+        from app.blueprints.calendar import feed_secret
+        secret, uid = feed_secret(me.id), me.id
+
+    body = client.get(f"/calendar/feed/u/{uid}/{secret}.ics").data.decode()
+    assert "SUMMARY:Court: Mine" in body
+    assert "SUMMARY:Deadline: Nobody's yet" in body
+    assert "Someone else's" not in body
+
+
+# --- 6. the time list at volume ----------------------------------------------------------------
+
+def test_time_list_paginates_and_totals_cover_every_row(app, client):
+    """Phase 3 §I: four hundred entries rendered as one page with no controls. Worse, the
+    totals row summed the Python list, so cutting it to a page would have understated the
+    firm's hours, which is the exact bug the API had at row 200."""
+    db, M = _models()
+    cid, mid = _client_and_matter(app, "I")
+    with app.app_context():
+        u = M.User.query.first()
+        for i in range(250):
+            db.session.add(M.TimeEntry(matter_id=mid, user_id=u.id, date=date.today(), minutes=6,
+                                       rate_cents=30000, billable=True, description=f"TEST vol {i}"))
+        db.session.commit()
+
+    r = client.get(f"/time?matter_id={mid}")
+    body = r.data.decode()
+    assert r.status_code == 200
+    assert "250 entries" in body, "the count must be every matching row, not the page"
+    assert "showing page 1 of 3" in body
+    assert body.count("TEST vol ") == 100, "one page of rows"
+    # 250 x 6 min = 25.00 hours; 250 x $30 = $7,500.00. Both must reflect all 250.
+    assert "25.00" in body
+    assert "$7,500.00" in body
+    assert "Older" in body and "Newer" not in body
+
+    r3 = client.get(f"/time?matter_id={mid}&page=3").data.decode()
+    assert r3.count("TEST vol ") == 50
+    assert "Newer" in r3 and "Older" not in r3
+    assert "25.00" in r3 and "$7,500.00" in r3, "totals do not change with the page"
+
+
+def test_time_list_page_links_keep_the_filters(app, client):
+    db, M = _models()
+    cid, mid = _client_and_matter(app, "J")
+    r = client.get(f"/time?matter_id={mid}&page=1")
+    assert r.status_code == 200
