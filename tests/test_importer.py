@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import textwrap
 import zipfile
 from datetime import date
 
@@ -13,6 +14,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 DB_PATH = os.path.join(ROOT, "data", "test_importer.db")
+DB_URI = f"sqlite:///{DB_PATH}"
 UPLOADS = os.path.join(ROOT, "data", "uploads-test-importer")
 
 
@@ -20,7 +22,7 @@ UPLOADS = os.path.join(ROOT, "data", "uploads-test-importer")
 def app():
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
-    env = {**os.environ, "DATABASE_URL": f"sqlite:///{DB_PATH}"}
+    env = {**os.environ, "DATABASE_URL": DB_URI}
     subprocess.run([sys.executable, os.path.join(ROOT, "seed.py")], check=True, cwd=ROOT, env=env)
     os.environ["DATABASE_URL"] = env["DATABASE_URL"]
     from app import create_app
@@ -317,6 +319,42 @@ def test_generic_csv_mapped_by_hand(app, client):
         assert c and c.first_name == "Ottoline" and c.last_name == "Farquhar" and c.phone == "512-555-0177"
     html = client.get("/import").data.decode()
     assert "weird.csv" in html and "Generic CSV" in html
+
+
+def test_import_survives_concurrent_writes(app, client):
+    """A firm keeps using the app while an import runs. A second process hammering ordinary time-entry writes
+    against the same SQLite file used to make a 500-row contacts import fail from the second row on: the
+    import's own transaction spanned the whole batch, so the first collision with the other process's commits
+    left it holding a snapshot SQLite considered stale, and every row after that failed the same way."""
+    writer = textwrap.dedent(f"""
+        import sys
+        sys.path.insert(0, {ROOT!r})
+        from app import create_app
+        app = create_app({{"SQLALCHEMY_DATABASE_URI": {DB_URI!r}, "TESTING": True, "SMTP_HOST": ""}})
+        with app.app_context():
+            from app.extensions import db
+            from app import models as M
+            from datetime import date
+            matter = M.Matter.query.first()
+            user = M.User.query.first()
+            for i in range(300):
+                try:
+                    db.session.add(M.TimeEntry(matter_id=matter.id, user_id=user.id, date=date.today(),
+                                               minutes=6, rate_cents=30000, description=f"concurrent {{i}}",
+                                               billable=True))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+    """)
+    proc = subprocess.Popen([sys.executable, "-c", writer])
+    try:
+        header = "Id,Name,Type,Company,Email Address (Work)\r\n"
+        body = header + "".join(f"v{i},Volume Contact {i},Person,,volume{i}@example.test\r\n" for i in range(300))
+        token = _upload(client, "contacts", body, "volume.csv")
+        job = _job(app, _commit(client, token))
+    finally:
+        proc.wait(timeout=30)
+    assert job["errors"] == [] and job["created"] == 300
 
 
 def test_bad_uploads_are_refused(client):

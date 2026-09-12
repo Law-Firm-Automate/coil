@@ -9,5 +9,7 @@ data/pdf/
 data/uploads-test*/
 data/pdf-test*/
 data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 data/test_*_uploads/
 data/test_*_pdf/

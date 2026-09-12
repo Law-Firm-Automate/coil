@@ -13,6 +13,7 @@ import io
 import json
 import os
 import re
+import time
 import uuid
 import zipfile
 from datetime import datetime, date, timedelta
@@ -32,6 +33,8 @@ MAX_CSV_BYTES = 20 * 1024 * 1024
 MAX_ZIP_BYTES = 200 * 1024 * 1024
 BATCH = 500
 SAMPLE = 20
+LOCK_RETRIES = 5
+_LOCK_SQLITE_CODES = {5, 6, 517}  # SQLITE_BUSY, SQLITE_LOCKED, SQLITE_BUSY_SNAPSHOT
 
 
 # ---------------------------------------------------------------- storage for the two-step flow
@@ -983,18 +986,34 @@ def _ordered_rows(entity, rows, mapping):
     return sorted(rows, key=key)
 
 
+def _is_lock_error(e):
+    """SQLite reporting that this connection's write collided with another process's, either plain contention
+    (SQLITE_BUSY) or a snapshot a concurrent commit made stale (SQLITE_BUSY_SNAPSHOT, WAL-specific). Both are
+    transient: the same row usually goes in cleanly on the very next attempt once it gets a fresh transaction."""
+    orig = getattr(e, "orig", None)
+    if getattr(orig, "sqlite_errorcode", None) in _LOCK_SQLITE_CODES:
+        return True
+    msg = str(e).lower()
+    return "database is locked" in msg or "database table is locked" in msg
+
+
 def run_import(data, mapping, options, user, dry):
     """Returns {"counts", "rows" (sample), "errors", "warnings", "id_map"}.
 
     Warnings are rows that imported but not exactly as the file asked, most often a matter or invoice number
-    that was already taken by an unrelated Coil record. They are not errors and do not stop anything."""
+    that was already taken by an unrelated Coil record. They are not errors and do not stop anything.
+
+    Commits after every row rather than batching: a firm's own users keep writing to the same SQLite file while
+    an import runs, and a batched commit held one open transaction across hundreds of rows, so any of their
+    writes that landed inside that window made every row after it fail with the same stale-snapshot error, not
+    just the row that collided. A short-lived transaction per row, retried a few times on that specific error,
+    is what actually survives concurrent use."""
     entity, source = data["entity"], data["source"]
     ctx = Ctx(source, entity, user, mapping, options, dry)
     counts = {"rows": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
     sample, errors, id_map = [], [], {}
     prep, apply = PREP[entity], APPLY[entity]
     rows = _ordered_rows(entity, data["rows"], mapping)
-    since_commit = 0
     for raw in rows:
         counts["rows"] += 1
         v = M.row_values(mapping, raw)
@@ -1003,15 +1022,22 @@ def run_import(data, mapping, options, user, dry):
         except Exception as e:  # noqa: BLE001 - a bad row must not kill the file
             action, msgs, rec = "error", [f"Could not read this row: {e}"], None
         if action in ("create", "update") and not dry:
-            try:
-                with db.session.begin_nested():
-                    coil_id, created = apply(ctx, rec)
-                if rec.get("external_id"):
-                    id_map[str(rec["external_id"])[:120]] = coil_id
-                action = "create" if created else "update"
-                since_commit += 1
-            except Exception as e:  # noqa: BLE001 - the savepoint rolled back, the rest of the file goes on
-                action, msgs = "error", msgs + [f"Failed to save: {e}"]
+            for attempt in range(LOCK_RETRIES):
+                try:
+                    with db.session.begin_nested():
+                        coil_id, created = apply(ctx, rec)
+                    db.session.commit()
+                    if rec.get("external_id"):
+                        id_map[str(rec["external_id"])[:120]] = coil_id
+                    action = "create" if created else "update"
+                    break
+                except Exception as e:  # noqa: BLE001 - roll back and either retry or move on
+                    db.session.rollback()
+                    if _is_lock_error(e) and attempt < LOCK_RETRIES - 1:
+                        time.sleep(0.05 * (attempt + 1))
+                        continue
+                    action, msgs = "error", msgs + [f"Failed to save: {e}"]
+                    break
         if action == "error":
             counts["errors"] += 1
             errors.append({"row": raw.get("_row"), "message": " ".join(msgs), "data": {k: val for k, val in raw.items() if k != "_row"}})
@@ -1019,11 +1045,6 @@ def run_import(data, mapping, options, user, dry):
             counts["created" if action == "create" else "updated" if action == "update" else "skipped"] += 1
         if len(sample) < SAMPLE:
             sample.append({"row": raw.get("_row"), "action": action, "messages": msgs, "values": v})
-        if not dry and since_commit >= BATCH:
-            db.session.commit()
-            since_commit = 0
-    if not dry:
-        db.session.commit()
     return {"counts": counts, "rows": sample, "errors": errors, "warnings": ctx.warnings, "id_map": id_map}
 
 
