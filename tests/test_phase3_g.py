@@ -364,6 +364,29 @@ def test_api_scope_and_time_entry(app):
     assert r.json["total_minutes"] >= 102
 
 
+def test_api_time_total_minutes_not_truncated_by_row_cap(app):
+    """/api/v1/time caps the entries list at 200 rows; total_minutes must still reflect
+    every matching row, not just the ones returned on this page. Regression for a bug
+    where a firm billing thousands of minutes a month would see an understated total."""
+    from app.extensions import db
+    from app.models import TimeEntry
+    mid, _, uid = _ids(app)
+    rw = _make_token(app, "read,write")
+    c = app.test_client()
+    with app.app_context():
+        for i in range(210):
+            db.session.add(TimeEntry(matter_id=mid, user_id=uid, date=date.today(), minutes=10,
+                                      description=f"bulk {i}", billable=True))
+        db.session.commit()
+    r = c.get(f"/api/v1/time?matter_id={mid}", headers=_h(rw))
+    assert r.status_code == 200
+    assert len(r.json["time_entries"]) == 200  # row cap unchanged
+    with app.app_context():
+        true_total = db.session.query(db.func.sum(TimeEntry.minutes)).filter(TimeEntry.matter_id == mid).scalar()
+    assert r.json["total_minutes"] == true_total
+    assert r.json["total_minutes"] >= 210 * 10  # the bulk entries alone, would be capped at 200*10=2000 pre-fix
+
+
 def test_api_timer_start_stop_rounds_up(app):
     from app.models import Timer, TimeEntry
     from app.extensions import db

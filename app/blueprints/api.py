@@ -15,7 +15,7 @@ from datetime import date, datetime
 from functools import wraps
 
 from flask import Blueprint, request, jsonify, g, current_app
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from werkzeug.exceptions import HTTPException
 
 from ..extensions import db
@@ -441,8 +441,10 @@ def time_list():
         query = query.filter(TimeEntry.date >= d_from)
     if d_to:
         query = query.filter(TimeEntry.date <= d_to)
-    rows = query.order_by(TimeEntry.date.desc(), TimeEntry.id.desc()).limit(200).all()
-    return jsonify({"time_entries": [time_json(t) for t in rows], "total_minutes": sum(t.minutes for t in rows)})
+    total_minutes = query.with_entities(func.sum(TimeEntry.minutes)).scalar() or 0
+    limit = min(int(request.args.get("limit", 200)), 200)
+    rows = query.order_by(TimeEntry.date.desc(), TimeEntry.id.desc()).limit(limit).all()
+    return jsonify({"time_entries": [time_json(t) for t in rows], "total_minutes": total_minutes})
 
 
 @bp.route("/time", methods=["POST"])
