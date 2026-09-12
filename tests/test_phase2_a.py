@@ -512,6 +512,10 @@ def test_gbp_matter_invoice_renders_pound_sign(app, client):
         S["gbp_matter"] = m.id
         t_id = M.TimeEntry.query.filter_by(matter_id=m.id).first().id
     tok = csrf(client)
+    r = client.get(f"/matters/{S['gbp_matter']}")
+    assert r.status_code == 200
+    assert "£400.00/hr".encode("utf-8") in r.data, "the matter's billing card must use the matter currency, not $"
+    assert b"$400.00/hr" not in r.data
     r = client.get(f"/invoices/new?matter_id={S['gbp_matter']}")
     assert b"Currency <strong>GBP</strong>" in r.data
     r = client.post("/invoices/new", data={"_csrf": tok, "matter_id": S["gbp_matter"],

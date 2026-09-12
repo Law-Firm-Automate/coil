@@ -239,8 +239,8 @@ def test_exports_headers(staff):
         "/exports/quickbooks/invoices.csv": "InvoiceNo,Customer,InvoiceDate,DueDate,Item(Product/Service),ItemDescription,ItemQuantity,ItemRate,ItemAmount",
         "/exports/quickbooks/payments.csv": "PaymentDate,Customer,InvoiceNo,Amount,Method,Reference",
         "/exports/quickbooks/customers.csv": "Name,Company,Email,Phone,Billing Address",
-        "/exports/time.csv": "Id,Date,MatterNumber,Matter,Client,User,Hours,Minutes,Rate,Amount,Billable,InvoiceNo,ActivityCode,Description",
-        "/exports/trust.csv": "Id,Date,Type,Client,MatterNumber,Matter,Amount,Description,Payee,Reference,InvoiceNo,Cleared,ClearedOn,CreatedBy,CreatedAt",
+        "/exports/time.csv": "Id,Date,MatterNumber,Matter,Client,User,Hours,Minutes,Rate,Amount,Currency,Billable,InvoiceNo,ActivityCode,Description",
+        "/exports/trust.csv": "Id,Date,Type,Client,MatterNumber,Matter,Amount,Currency,Description,Payee,Reference,InvoiceNo,Cleared,ClearedOn,CreatedBy,CreatedAt",
         "/exports/contacts.csv": "Id,Kind,FirstName,LastName,Company,Email,Phone,Address,Tags,IsClient,Aliases,CreatedAt",
     }
     r = client.get("/exports")

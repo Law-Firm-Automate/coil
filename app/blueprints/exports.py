@@ -15,10 +15,10 @@ QBO_INVOICE_COLUMNS = ["InvoiceNo", "Customer", "InvoiceDate", "DueDate", "Item(
 QBO_PAYMENT_COLUMNS = ["PaymentDate", "Customer", "InvoiceNo", "Amount", "Method", "Reference"]
 QBO_CUSTOMER_COLUMNS = ["Name", "Company", "Email", "Phone", "Billing Address"]
 TIME_COLUMNS = ["Id", "Date", "MatterNumber", "Matter", "Client", "User", "Hours", "Minutes", "Rate", "Amount",
-                "Billable", "InvoiceNo", "ActivityCode", "Description"]
-TRUST_COLUMNS = ["Id", "Date", "Type", "Client", "MatterNumber", "Matter", "Amount", "Description", "Payee",
-                 "Reference", "InvoiceNo", "Cleared", "ClearedOn", "CreatedBy", "CreatedAt"]
-MATTER_COLUMNS = ["Id", "Number", "Name", "Client", "Status", "PracticeArea", "BillingType", "Rate",
+                "Currency", "Billable", "InvoiceNo", "ActivityCode", "Description"]
+TRUST_COLUMNS = ["Id", "Date", "Type", "Client", "MatterNumber", "Matter", "Amount", "Currency", "Description",
+                 "Payee", "Reference", "InvoiceNo", "Cleared", "ClearedOn", "CreatedBy", "CreatedAt"]
+MATTER_COLUMNS = ["Id", "Number", "Name", "Client", "Status", "PracticeArea", "BillingType", "Rate", "Currency",
                   "Responsible", "OpenedOn", "ClosedOn", "LimitationDate", "Court", "CaseNumber", "TrustBalance",
                   "Outstanding",
                   "UnbilledTime", "Description"]
@@ -167,6 +167,7 @@ def time_csv():
         rows.append([t.id, t.date.isoformat() if t.date else "", m.number if m else "", m.name if m else "",
                      m.client.display_name if m and m.client else "", t.user.name if t.user else "",
                      f"{t.hours:.2f}", t.minutes, _dollars(t.rate_cents), _dollars(t.amount_cents),
+                     m.currency_code if m else Firm.get().currency,
                      "yes" if t.billable else "no", t.invoice.number if t.invoice else "", t.activity_code or "",
                      (t.description or "").replace("\n", " ")])
     return _csv("time-entries.csv", TIME_COLUMNS, rows)
@@ -179,7 +180,8 @@ def trust_csv():
     for tx in TrustTransaction.query.order_by(TrustTransaction.date, TrustTransaction.id).all():
         m = tx.matter
         rows.append([tx.id, tx.date.isoformat() if tx.date else "", tx.type, tx.client.display_name if tx.client else "",
-                     m.number if m else "", m.name if m else "", _dollars(tx.amount_cents), tx.description or "",
+                     m.number if m else "", m.name if m else "", _dollars(tx.amount_cents),
+                     m.currency_code if m else Firm.get().currency, tx.description or "",
                      tx.payee or "", tx.reference or "", tx.invoice.number if tx.invoice else "",
                      "yes" if tx.cleared else "no", tx.cleared_on.isoformat() if tx.cleared_on else "",
                      tx.created_by.name if tx.created_by else "", tx.created_at.isoformat() if tx.created_at else ""])
@@ -194,7 +196,7 @@ def matters_csv():
         rows.append([m.id, m.number or "", m.name or "",
                      m.client.display_name if m.client else "",
                      m.status or "", m.practice_area or "", m.billing_type or "",
-                     _dollars(m.hourly_rate_cents or 0),
+                     _dollars(m.hourly_rate_cents or 0), m.currency_code,
                      m.responsible.name if m.responsible else "",
                      _d(m.opened_on), _d(m.closed_on), _d(m.sol_date), m.court or "", m.case_number or "",
                      _dollars(m.trust_balance_cents()), _dollars(m.outstanding_cents()),
