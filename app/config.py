@@ -54,6 +54,13 @@ class Config:
     COIL_HOSTING = os.environ.get("COIL_HOSTING", "self-hosted")
     COIL_FEEDBACK_URL = os.environ.get("COIL_FEEDBACK_URL", "https://coil.legal/api/coil-feedback")
     FEEDBACK_ENABLED = os.environ.get("FEEDBACK_ENABLED", "1")
+    # Repeat every flashed message in an X-Coil-Flash response header. For automated QA
+    # only: a browser-driving tester repeatedly reported "no message shown" on refusals
+    # that were on the page, because it read the DOM before or after the flash region
+    # rendered. The header is on the response that flashed, redirect or not, so nothing
+    # has to be scraped. Off by default because flashes name clients and amounts and
+    # headers get logged by proxies.
+    COIL_QA_HEADERS = os.environ.get("COIL_QA_HEADERS", "0") == "1"
 
     # Email filing
     IMAP_HOST = os.environ.get("IMAP_HOST", "")

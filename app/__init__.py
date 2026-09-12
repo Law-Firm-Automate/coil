@@ -30,6 +30,9 @@ def create_app(config=None):
             response.headers[header] = value
         return response
 
+    if app.config.get("COIL_QA_HEADERS"):
+        _expose_flashes(app)
+
     from .blueprints import auth, dashboard
     app.register_blueprint(auth.bp)
     app.register_blueprint(dashboard.bp)
@@ -86,3 +89,26 @@ def create_app(config=None):
         }, 200
 
     return app
+
+def _expose_flashes(app):
+    """Repeat flashed messages in an X-Coil-Flash header. QA only; see config."""
+    from flask import g, message_flashed
+
+    def _collect(sender, message, category, **extra):
+        g.setdefault("_qa_flashes", []).append(f"{category}: {message}")
+
+    # weak=False: blinker holds receivers weakly by default, and a local closure is collected the
+    # moment this function returns, leaving the signal connected to nothing.
+    message_flashed.connect(_collect, app, weak=False)
+
+    @app.after_request
+    def _emit(response):
+        msgs = getattr(g, "_qa_flashes", None)
+        if msgs:
+            # Headers are latin-1 on the wire; a client name outside that must survive.
+            joined = " | ".join(msgs).replace("\r", " ").replace("\n", " ")
+            response.headers["X-Coil-Flash"] = joined.encode("utf-8").decode("latin-1", "replace") \
+                if joined.isascii() else joined.encode("utf-8").hex()
+            response.headers["X-Coil-Flash-Encoding"] = "text" if joined.isascii() else "utf8-hex"
+        return response
+

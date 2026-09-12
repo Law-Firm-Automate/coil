@@ -1,0 +1,70 @@
+name: QA finding
+description: A defect or observation from a QA pass. Every field is there because its absence cost a round trip.
+title: "[QA] "
+labels: ["qa:reported"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: URL
+      description: The exact page or endpoint, on which instance.
+      placeholder: https://testfirm.coil.legal/matters/4
+    validations:
+      required: true
+  - type: textarea
+    id: precondition
+    attributes:
+      label: Precondition, and how you verified it
+      description: >
+        State what the record looked like BEFORE you acted, and how you checked. Not what you assumed.
+        Most refuted findings failed here: a field reported as populated was empty, a summary
+        reported as wiped was already blank, a "bad" import row was a valid contact.
+      placeholder: "M-1010 held $1,100.00 in trust. Verified on /trust/ledger/5 before clicking Close."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: Numbered. Describe any payload rather than pasting it; markup in an issue is fine, but say what it is.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: >
+        Quote any message exactly. If you are reporting that NO message appeared, first check the
+        X-Coil-Flash response header on the request that acted, which carries every flashed message
+        whether or not the page rendered it.
+    validations:
+      required: true
+  - type: dropdown
+    id: reproducible
+    attributes:
+      label: Reproducible
+      options:
+        - "Yes, every time"
+        - "Intermittent (say how many of how many)"
+        - "Once, could not repeat"
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: The commit from /health on the instance you tested.
+      placeholder: f108ab1
+    validations:
+      required: true
+  - type: textarea
+    id: mutations
+    attributes:
+      label: Mutations left behind
+      description: Records you created or changed and did not revert, so the next pass knows what it is looking at.
