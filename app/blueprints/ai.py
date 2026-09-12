@@ -11,7 +11,7 @@ from html import escape
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 from ..extensions import db
 from ..models import (Matter, Contact, Invoice, TimeEntry, Expense, Task, CalendarEvent, Document, Note, Message,
-                      User, TrustTransaction, Firm, AiRun, audit, now)
+                      User, TrustTransaction, Firm, AiRun, audit, now, MedicalProvider)
 from ..helpers import login_required, current_user, parse_date
 from ..services.mail import send_email
 from ..i18n import lang_for
@@ -203,6 +203,17 @@ def _matter_context(m):
     if invoices:
         parts.append("Invoices: " + "; ".join(f"{i.number} {i.status} {_fmt_money(i.total_cents)} "
                                               f"balance {_fmt_money(i.balance_cents)}" for i in invoices))
+    providers = MedicalProvider.query.filter_by(matter_id=m.id).order_by(MedicalProvider.name).all()
+    if providers:
+        # Spelled out per provider, with "not requested" said explicitly. The summary once claimed
+        # records from every provider were complete when one had been requested and none received.
+        def _st(p):
+            if p.records_received_on:
+                return f"records received {p.records_received_on}"
+            if p.records_requested_on:
+                return f"records requested {p.records_requested_on}, NOT yet received"
+            return "records NOT requested"
+        parts.append("Medical providers and record status:\n" + "\n".join(f"- {p.name}: {_st(p)}" for p in providers))
     return "\n\n".join(parts)
 
 
@@ -216,8 +227,11 @@ def matter_summary(id):
               "anything that cuts against the client's position, concedes a point, or contradicts an earlier "
               "note, include it: a summary that quietly leaves out an unfavorable fact is worse than no summary. "
               "Then list the open items (deadlines, unanswered questions, unbilled work, unpaid invoices) as "
-              "short strings. Use only the material below. Return JSON {\"summary\": \"...\", "
-              "\"open_items\": [\"...\"]}.\n\n" + ctx)
+              "short strings. Use only the material below. Every date, name and figure you use must appear "
+              "there, attached to the same person or event it is attached to there: two entries on different "
+              "days about different people are not one event. Do not say a step is done unless the material "
+              "says it is done; requested is not received, and one provider is not all of them. Return JSON "
+              "{\"summary\": \"...\", \"open_items\": [\"...\"]}.\n\n" + ctx)
     try:
         data = llm.complete_json(prompt, SUMMARY_SCHEMA, system=SYSTEM, max_tokens=1200, kind="matter_summary",
                                  entity="matter", entity_id=m.id, user_id=_uid())

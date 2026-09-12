@@ -539,7 +539,14 @@ def sign(token):
     e.pdf_path = build_signed_pdf(e)
     audit("sign", "engagement", e.id, f"{name} from {ip}")
     db.session.commit()
-    _email_signed_copies(e)
+    # The signature is complete and committed at this point. The copies are a courtesy, and a
+    # mail relay refusing the recipient (Gmail rejects example.com at RCPT TO, synchronously)
+    # must not hand the signer a 500 for a letter they have just validly signed. Log it; the
+    # firm still has the signed PDF and the audit row.
+    try:
+        _email_signed_copies(e)
+    except Exception as exc:  # noqa: BLE001 - any relay failure
+        current_app.logger.warning("signed copies for engagement %s not sent: %s", e.id, exc)
     return render_template("engagements/sign_done.html", e=e)
 
 
@@ -577,10 +584,13 @@ def decline(token):
         audit("decline", "engagement", e.id, request.form.get("reason", "")[:200])
         db.session.commit()
         f = Firm.get()
-        send_email(f.email or current_app.config["MAIL_FROM"], f"Declined: {e.subject or 'Engagement letter'}",
-                   _email_html("Engagement letter declined",
-                               [f"{e.contact.display_name} declined the engagement letter for {e.matter.name}."],
-                               "Open in the app", f"{current_app.config['BASE_URL']}/engagements/{e.id}"))
+        try:
+            send_email(f.email or current_app.config["MAIL_FROM"], f"Declined: {e.subject or 'Engagement letter'}",
+                       _email_html("Engagement letter declined",
+                                   [f"{e.contact.display_name} declined the engagement letter for {e.matter.name}."],
+                                   "Open in the app", f"{current_app.config['BASE_URL']}/engagements/{e.id}"))
+        except Exception as exc:  # noqa: BLE001
+            current_app.logger.warning("decline notice for engagement %s not sent: %s", e.id, exc)
     return render_template("engagements/sign_status.html", e=e)
 
 

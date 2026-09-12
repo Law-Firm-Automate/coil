@@ -206,7 +206,9 @@ def new():
         if not errors:
             delta = amount if ttype in POSITIVE_TYPES else -amount
             if delta < 0:
-                total, per, allocated, unallocated = allocation(client)
+                # As of the entry's own date: a post-dated deposit is not money on hand, and a
+                # disbursement dated before it must not be allowed to spend it.
+                total, per, allocated, unallocated = allocation(client, as_of=when)
                 label = TYPE_LABELS[ttype].lower()
                 if total + delta < 0:
                     errors.append(f"Rejected: {client.display_name} holds {cents_to_str(total)} in trust. "
@@ -273,7 +275,8 @@ def apply():
     # An invoice may only be paid from its own matter's earmarked funds plus the client's
     # unallocated balance. Another matter's money is never available, whatever the pooled client
     # balance says.
-    own, unallocated, available = available_for_matter(inv.client, inv.matter)
+    # Only money on hand today. A deposit dated in the future counted as spendable until now.
+    own, unallocated, available = available_for_matter(inv.client, inv.matter, as_of=date.today())
     if amount > available:
         mlabel = inv.matter.label if inv.matter else inv.client.display_name
         flash(f"Only {cents_to_str(available)} can be applied to this invoice: {cents_to_str(own)} held in "
@@ -292,7 +295,10 @@ def apply():
     today = date.today()
     uid = current_user().id
     pay = Payment(invoice_id=inv.id, matter_id=inv.matter_id, client_id=inv.client_id, amount_cents=amount,
-                  method="trust", account="operating", received_on=today,
+                  # method is where the money came from; account is where it landed. An application
+                 # out of trust pays the firm, so it lands in operating. A card deposit into trust
+                 # (payments.py) is the case that says "trust" here, and that is the difference.
+                 method="trust", account="operating", received_on=today,
                   note=f"Applied from trust ({source})")
     inv.payments.append(pay)
     db.session.flush()
