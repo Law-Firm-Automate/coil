@@ -351,7 +351,7 @@ def test_public_view_and_tracking_pixel(app):
     assert b"Download PDF" in r.data
     # line-items table scrolls within its own box on a narrow screen instead of the whole page overflowing
     # and clipping the rightmost columns (found on a 390px viewport).
-    assert b'style="overflow-x:auto"><table>' in r.data
+    assert re.search(rb'style="overflow-x:auto">\s*<table>', r.data)
     with app.app_context():
         inv = M.Invoice.query.filter_by(public_token=token).first()
         assert inv.view_count == 1
