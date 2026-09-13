@@ -1,3 +1,4 @@
+import re
 import time
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 from ..extensions import db
@@ -5,6 +6,7 @@ from ..models import User, Firm, audit
 from ..helpers import login_required, current_user
 
 bp = Blueprint("auth", __name__)
+KEY_SHAPE = re.compile(r"^COIL-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
 
 
 @bp.route("/login", methods=["GET", "POST"])
@@ -46,6 +48,13 @@ def verify_install_key(key, email, firm_name):
     key = (key or "").strip().upper()
     if not key:
         return False, "Enter your install key. It is free: get one at https://coil.legal/download."
+    # Shape first, locally. A key is COIL- and three groups of four. Anything else is a typo or
+    # a paste gone wrong, and telling the person "that key does not match this email" sends them
+    # to check their email address when the problem is in front of them. This also means a
+    # malformed key never makes the network call.
+    if not KEY_SHAPE.match(key):
+        return False, ("That is not the shape of an install key. Keys look like COIL-XXXX-XXXX-XXXX. "
+                       "Check for a missing group or a stray character, or get one at https://coil.legal/download.")
     try:
         r = requests.post(current_app.config["COIL_KEY_VERIFY_URL"], json={
             "key": key, "email": email, "firm": firm_name, "base_url": current_app.config["BASE_URL"],
@@ -53,7 +62,9 @@ def verify_install_key(key, email, firm_name):
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         if r.status_code == 200 and data.get("ok"):
             return True, ""
-        return False, data.get("error") or "That key could not be verified. Check the key and the email it was issued to."
+        return False, data.get("error") or ("That key was not issued for this email address. Either the key is not "
+                                            "one we issued, or it was issued to a different address. Keys are free "
+                                            "and tied to the email you request them with at https://coil.legal/download.")
     except Exception as e:  # noqa: BLE001
         current_app.logger.warning("install key check failed: %s", e)
         return False, "Could not reach coil.legal to check the key. Check your internet connection and try again."

@@ -3,8 +3,10 @@ import csv
 import io
 from datetime import date
 from flask import Blueprint, render_template, Response, request, flash
+from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models import Invoice, Payment, Contact, Matter, TimeEntry, TrustTransaction, Firm, now
+from ..aggregates import money_for
 from ..helpers import login_required, parse_date, current_user, csv_safe
 from . import ledes
 
@@ -162,12 +164,17 @@ def qb_customers():
 @login_required
 def time_csv():
     rows = []
-    for t in TimeEntry.query.order_by(TimeEntry.date, TimeEntry.id).all():
+    firm_currency = Firm.get().currency
+    q = (TimeEntry.query
+         .options(joinedload(TimeEntry.matter).joinedload(Matter.client),
+                  joinedload(TimeEntry.user), joinedload(TimeEntry.invoice))
+         .order_by(TimeEntry.date, TimeEntry.id))
+    for t in q.all():
         m = t.matter
         rows.append([t.id, t.date.isoformat() if t.date else "", m.number if m else "", m.name if m else "",
                      m.client.display_name if m and m.client else "", t.user.name if t.user else "",
                      f"{t.hours:.2f}", t.minutes, _dollars(t.rate_cents), _dollars(t.amount_cents),
-                     m.currency_code if m else Firm.get().currency,
+                     (m.currency or firm_currency) if m else firm_currency,
                      "yes" if t.billable else "no", t.invoice.number if t.invoice else "", t.activity_code or "",
                      (t.description or "").replace("\n", " ")])
     return _csv("time-entries.csv", TIME_COLUMNS, rows)
@@ -177,11 +184,16 @@ def time_csv():
 @login_required
 def trust_csv():
     rows = []
-    for tx in TrustTransaction.query.order_by(TrustTransaction.date, TrustTransaction.id).all():
+    firm_currency = Firm.get().currency
+    q = (TrustTransaction.query
+         .options(joinedload(TrustTransaction.client), joinedload(TrustTransaction.matter),
+                  joinedload(TrustTransaction.invoice), joinedload(TrustTransaction.created_by))
+         .order_by(TrustTransaction.date, TrustTransaction.id))
+    for tx in q.all():
         m = tx.matter
         rows.append([tx.id, tx.date.isoformat() if tx.date else "", tx.type, tx.client.display_name if tx.client else "",
                      m.number if m else "", m.name if m else "", _dollars(tx.amount_cents),
-                     m.currency_code if m else Firm.get().currency, tx.description or "",
+                     (m.currency or firm_currency) if m else firm_currency, tx.description or "",
                      tx.payee or "", tx.reference or "", tx.invoice.number if tx.invoice else "",
                      "yes" if tx.cleared else "no", tx.cleared_on.isoformat() if tx.cleared_on else "",
                      tx.created_by.name if tx.created_by else "", tx.created_at.isoformat() if tx.created_at else ""])
@@ -192,15 +204,20 @@ def trust_csv():
 @login_required
 def matters_csv():
     rows = []
-    for m in Matter.query.order_by(Matter.number).all():
+    matters = (Matter.query.options(joinedload(Matter.client), joinedload(Matter.responsible))
+               .order_by(Matter.number).all())
+    money = money_for(matters)       # four queries for every matter, not four per matter
+    firm_currency = Firm.get().currency or "USD"
+    for m in matters:
+        mm = money[m.id]
         rows.append([m.id, m.number or "", m.name or "",
                      m.client.display_name if m.client else "",
                      m.status or "", m.practice_area or "", m.billing_type or "",
-                     _dollars(m.hourly_rate_cents or 0), m.currency_code,
+                     _dollars(m.hourly_rate_cents or 0), m.currency or firm_currency,
                      m.responsible.name if m.responsible else "",
                      _d(m.opened_on), _d(m.closed_on), _d(m.sol_date), m.court or "", m.case_number or "",
-                     _dollars(m.trust_balance_cents()), _dollars(m.outstanding_cents()),
-                     _dollars(m.unbilled_time_cents()), (m.description or "")])
+                     _dollars(mm.trust), _dollars(mm.outstanding),
+                     _dollars(mm.unbilled_time), (m.description or "")])
     return _csv("matters.csv", MATTER_COLUMNS, rows)
 
 

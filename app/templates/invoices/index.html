@@ -26,6 +26,7 @@
 {% set tab = (tabs|selectattr('key','equalto',status)|list)[0] %}
 <tr><th colspan="7">{{ tab.count }} invoice{{ '' if tab.count == 1 else 's' }}</th><th class="num">{{ tab.total|money }}</th><th></th><th class="num">{{ tab.balance|money }}</th></tr>
 </table>
+{% if pages > 1 %}<div class="actions" style="margin-top:8px"><span class="small muted">{{ total_count }} invoices, page {{ page }} of {{ pages }}</span> {% if prev_url %}<a class="btn small secondary" href="{{ prev_url }}">Previous</a>{% endif %}{% if next_url %}<a class="btn small secondary" href="{{ next_url }}">Next</a>{% endif %}</div>{% endif %}
 {% if mixed_currencies %}<p class="small muted" style="margin-top:8px">Invoices are in more than one currency. Each row shows its own currency; the totals row adds the raw amounts without conversion.</p>{% endif %}
 {% else %}<div class="empty">No {{ '' if status == 'all' else status }} invoices. <a href="{{ url_for('invoices.new') }}">Build one</a>.</div>{% endif %}
 </div>

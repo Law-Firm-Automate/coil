@@ -306,3 +306,36 @@ def test_time_list_page_links_keep_the_filters(app, client):
     cid, mid = _client_and_matter(app, "J")
     r = client.get(f"/time?matter_id={mid}&page=1")
     assert r.status_code == 200
+
+
+# --- 7. install keys: say which problem it is, without saying which keys exist -------------
+
+def test_malformed_install_key_is_refused_locally_without_a_network_call(app):
+    """Issue #13: NOT-A-KEY got 'that key does not match this email', which sends the person
+    off to check an address when the problem is the key in front of them. A key that is not
+    even the right shape is refused here, and never reaches the verify service."""
+    from unittest import mock
+    from app.blueprints.auth import verify_install_key
+    with app.app_context(), mock.patch("requests.post") as post:
+        for bad in ("NOT-A-KEY", "COIL-AAAA-BBBB", "COIL-AAAA-BBBB-CCCC-DDDD", "COIL_AAAA_BBBB_CCCC"):
+            ok, msg = verify_install_key(bad, "someone@example.test", "Firm")
+            assert not ok
+            assert "not the shape of an install key" in msg, bad
+            assert not post.called, f"{bad!r} should never reach the network"
+
+
+def test_well_formed_key_that_is_not_this_emails_gets_one_honest_message(app):
+    """A key that was never issued and a key issued to someone else are the same thing to the
+    server, deliberately: a key is derived from the email and there is no list of issued keys
+    to check against. Telling them apart would reveal which keys exist. So the message covers
+    both, and says so, rather than pretending to know which."""
+    from unittest import mock
+    from app.blueprints.auth import verify_install_key
+    with app.app_context(), mock.patch("requests.post") as post:
+        post.return_value = mock.Mock(status_code=403, headers={"content-type": "application/json"},
+                                      json=lambda: {"ok": False})
+        ok, msg = verify_install_key("COIL-AAAA-BBBB-CCCC", "someone@example.test", "Firm")
+        assert not ok
+        assert post.called
+        assert "not issued for this email address" in msg
+        assert "not one we issued" in msg and "issued to a different address" in msg

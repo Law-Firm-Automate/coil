@@ -136,11 +136,23 @@ class Firm(db.Model):
 
     @staticmethod
     def get():
+        # Held on g for the request. session.get(Firm, 1) is an identity-map hit only while
+        # something holds the instance; the map keeps weak references, and a caller that reads
+        # one attribute and drops the object lets it be collected, so the next call hits SQLite
+        # again. Matter.currency_code does exactly that, and a 31,000-row export ran 2,503
+        # firm queries. Outside a request (CLI, tests on a bare app context) this is unchanged.
+        from flask import g, has_request_context
+        if has_request_context():
+            cached = getattr(g, "_coil_firm", None)
+            if cached is not None:
+                return cached
         f = db.session.get(Firm, 1)
         if not f:
             f = Firm(id=1)
             db.session.add(f)
             db.session.commit()
+        if has_request_context():
+            g._coil_firm = f
         return f
 
 

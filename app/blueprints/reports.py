@@ -5,6 +5,7 @@ import io
 from collections import OrderedDict, defaultdict
 from datetime import date, timedelta
 from flask import Blueprint, render_template, request, Response
+from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models import Invoice, TimeEntry, Expense, Payment, TrustTransaction, User
 from ..helpers import login_required, parse_date, csv_safe
@@ -92,8 +93,12 @@ def ar_aging():
 @bp.route("/wip")
 @login_required
 def wip():
-    time_rows = TimeEntry.query.filter(TimeEntry.billable == True, TimeEntry.invoice_id == None).all()  # noqa: E712
-    exp_rows = Expense.query.filter(Expense.billable == True, Expense.invoice_id == None).all()  # noqa: E712
+    # t.matter and e.matter per row, and matter.client in the CSV branch, were four thousand
+    # queries on a firm with thirty thousand unbilled entries. Load them with the rows.
+    time_rows = (TimeEntry.query.options(joinedload(TimeEntry.matter).joinedload(Matter.client))
+                 .filter(TimeEntry.billable == True, TimeEntry.invoice_id == None).all())  # noqa: E712,E711
+    exp_rows = (Expense.query.options(joinedload(Expense.matter).joinedload(Matter.client))
+                .filter(Expense.billable == True, Expense.invoice_id == None).all())  # noqa: E712,E711
     by_matter = {}
     for t in time_rows:
         r = by_matter.setdefault(t.matter_id, {"matter": t.matter, "minutes": 0, "time_cents": 0,

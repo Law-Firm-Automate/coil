@@ -221,3 +221,31 @@ def test_an_ordinary_invoice_does_not_switch_fonts(app):
         assert not unicode_on(), "a plain ASCII invoice should stay on the core font"
         out = bytes(pdf.output())
         assert out.startswith(b"%PDF")
+
+
+def test_a_plain_zip_wearing_a_docx_name_is_refused(app):
+    """Every Office file is a zip, so the magic bytes alone let any zip through under an
+    Office name. One level deeper is enough: a .docx has word/ inside, an .xlsx has xl/."""
+    import io as _io
+    import zipfile
+    from app.blueprints.documents import store_bytes
+
+    def z(names):
+        b = _io.BytesIO()
+        with zipfile.ZipFile(b, "w") as zf:
+            for n in names:
+                zf.writestr(n, "x")
+        return b.getvalue()
+
+    mid = _matter(app, "E")
+    with app.app_context():
+        doc, err = store_bytes(mid, "notes.docx", z(["readme.txt", "photo.jpg"]))
+        assert doc is None and "plain zip archive" in err
+        doc, err = store_bytes(mid, "sheet.xlsx", z(["[Content_Types].xml", "word/document.xml"]))
+        assert doc is None, "a Word file under an Excel name"
+        doc, err = store_bytes(mid, "real.docx", z(["[Content_Types].xml", "word/document.xml"]))
+        assert err is None, err
+        doc, err = store_bytes(mid, "archive.zip", z(["readme.txt"]))
+        assert err is None, "a zip called .zip is fine"
+        doc, err = store_bytes(mid, "broken.docx", b"PK\x03\x04not really a zip")
+        assert doc is None and "not a readable Office file" in err

@@ -3,6 +3,8 @@
 Phase 3 additions: versions (new-version upload, history), folders and tags with filters and a bulk move/tag form,
 and full-text search over name, tags, folder and the text extracted at upload.
 """
+import io
+import zipfile
 import mimetypes
 import os
 import re
@@ -132,6 +134,31 @@ def _sniff(data):
     return None
 
 
+# Inside the zip, the path that makes it the Office format its name claims.
+_OFFICE_MARKER = {"docx": "word/", "xlsx": "xl/", "pptx": "ppt/"}
+
+
+def _office_mismatch(ext, data):
+    """A .docx, .xlsx or .pptx is a zip with a known directory inside; a random zip is not.
+
+    The magic-byte check alone lets any zip through under an Office name, since every one
+    of them starts PK. Look one level deeper, cheaply: the central directory is at the end of
+    the file and zipfile reads only that.
+    """
+    marker = _OFFICE_MARKER.get(ext)
+    if not marker:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            names = z.namelist()
+    except zipfile.BadZipFile:
+        return f"This file is named .{ext} but it is not a readable Office file. Re-save it and upload again."
+    if "[Content_Types].xml" not in names or not any(n.startswith(marker) for n in names):
+        return (f"This file is named .{ext} but its contents are a plain zip archive, not a "
+                f"{ext.upper()} document. Rename it to .zip, or upload the right file.")
+    return None
+
+
 def _extension_lies(ext, data):
     """An error when the contents contradict the extension, else None.
 
@@ -145,7 +172,7 @@ def _extension_lies(ext, data):
         return None                      # nothing reliable to check this extension against
     actual = _sniff(data)
     if actual is None or actual in want:
-        return None                      # unrecognised contents are not proof of anything
+        return _office_mismatch(ext, data) if actual == "zip" else None
     return (f"This file is named .{ext} but its contents are {_TYPE_NAMES.get(actual, actual)}. "
             f"Rename it to match what it really is, or upload the right file.")
 

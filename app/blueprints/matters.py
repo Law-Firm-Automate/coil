@@ -1,12 +1,15 @@
 """Matters: the hub of the app. Every other module links back here."""
 from datetime import date, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
+from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models import (Matter, MatterParty, MatterPayer, FlatFeeMilestone, Contact, User, Firm, Note, TimeEntry, Expense,
                       Invoice, TrustTransaction, Task, Document, Engagement, AuditLog, Office, MatterTemplate, audit)
+from ..aggregates import money_for
 from ..helpers import login_required, current_user, parse_money, parse_date
 
 bp = Blueprint("matters", __name__, url_prefix="/matters")
+PAGE_SIZE = 100
 
 PRACTICE_AREAS = ["Estate Planning", "Litigation", "Business", "Real Estate", "Family", "Criminal Defense",
                   "Personal Injury", "Immigration", "Employment", "Bankruptcy", "Other"]
@@ -241,10 +244,24 @@ def index():
         q = q.filter_by(practice_area=area)
     if bt:
         q = q.filter_by(billing_type=bt)
-    matters = q.order_by(Matter.status, Matter.created_at.desc()).all()
+    # A hundred a page, client eager-loaded, and the per-row money figures fetched in four
+    # queries for the whole page rather than four per row. Three thousand matters took
+    # twenty-one seconds to list before this; a lawyer opens this page ten times a day.
+    total_count = q.count()
+    page = max(1, request.args.get("page", 1, type=int))
+    pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(page, pages)
+    matters = (q.options(joinedload(Matter.client))
+                .order_by(Matter.status, Matter.created_at.desc())
+                .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).all())
+    money = money_for(matters)
+    args = {k: v for k, v in request.args.items() if k != "page"}
+    prev_url = url_for("matters.index", page=page - 1, **args) if page > 1 else None
+    next_url = url_for("matters.index", page=page + 1, **args) if page < pages else None
     areas = sorted({a for (a,) in db.session.query(Matter.practice_area).distinct() if a})
-    return render_template("matters/index.html", matters=matters, status=status, area=area, bt=bt, areas=areas,
-                           billing_types=BILLING_TYPES, statuses=STATUSES)
+    return render_template("matters/index.html", matters=matters, money=money, status=status, area=area, bt=bt,
+                           areas=areas, billing_types=BILLING_TYPES, statuses=STATUSES,
+                           total_count=total_count, page=page, pages=pages, prev_url=prev_url, next_url=next_url)
 
 
 @bp.route("/new", methods=["GET", "POST"])

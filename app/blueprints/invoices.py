@@ -11,6 +11,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for, flash
                    send_file, Response)
 from fpdf.fonts import FontFace
 from werkzeug.datastructures import MultiDict
+from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models import (Firm, Matter, Invoice, InvoiceLine, InvoiceEvent, TimeEntry, Expense, FlatFeeMilestone,
                       User, audit, now)
@@ -30,6 +31,7 @@ except ImportError:  # pragma: no cover
         return cents_to_str(cents, _SYMBOLS.get(code, code + " "))
 
 bp = Blueprint("invoices", __name__)
+LIST_PAGE = 100   # invoices per page on the list
 
 STATUSES = ["all", "draft", "pending", "sent", "viewed", "partial", "paid", "overdue", "void"]
 OPEN_STATUSES = ("sent", "viewed", "partial")
@@ -349,7 +351,10 @@ def index():
     if status not in STATUSES:
         status = "all"
     today = date.today()
-    all_invoices = Invoice.query.order_by(Invoice.issued_on.desc(), Invoice.id.desc()).all()
+    # matter and client eager-loaded: the template reads both per row, which was two queries
+    # per invoice, nineteen hundred on a firm with three thousand.
+    all_invoices = (Invoice.query.options(joinedload(Invoice.matter), joinedload(Invoice.client))
+                    .order_by(Invoice.issued_on.desc(), Invoice.id.desc()).all())
 
     def in_tab(inv, tab):
         if tab == "all":
@@ -365,11 +370,20 @@ def index():
         rows = [i for i in all_invoices if in_tab(i, t)]
         tabs.append({"key": t, "count": len(rows), "total": sum(i.total_cents or 0 for i in rows),
                      "balance": sum(i.balance_cents for i in rows if i.status != "void")})
-    invoices = [i for i in all_invoices if in_tab(i, status)]
+    in_view = [i for i in all_invoices if in_tab(i, status)]
+    total_count = len(in_view)
+    page = max(1, request.args.get("page", 1, type=int))
+    pages = max(1, (total_count + LIST_PAGE - 1) // LIST_PAGE)
+    page = min(page, pages)
+    invoices = in_view[(page - 1) * LIST_PAGE:page * LIST_PAGE]
+    args = {k: v for k, v in request.args.items() if k != "page"}
+    prev_url = url_for("invoices.index", page=page - 1, **args) if page > 1 else None
+    next_url = url_for("invoices.index", page=page + 1, **args) if page < pages else None
     matters = Matter.query.filter(Matter.status != "closed").order_by(Matter.number).all()
     mixed = len({(i.currency or "USD") for i in all_invoices}) > 1
     return render_template("invoices/index.html", invoices=invoices, tabs=tabs, status=status, today=today,
-                           matters=matters, mixed_currencies=mixed, can_approve=can_approve(current_user()))
+                           matters=matters, mixed_currencies=mixed, can_approve=can_approve(current_user()),
+                           total_count=total_count, page=page, pages=pages, prev_url=prev_url, next_url=next_url)
 
 
 # ---------------------------------------------------------------- builder
