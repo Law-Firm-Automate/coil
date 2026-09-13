@@ -6,6 +6,7 @@ Run: .venv/bin/python -m pytest tests/test_phase4_k.py -q
 The fixture adds its own client and matter (so the trust ledger starts at zero) with one $1,245.00 expense (124500 cents).
 The seed's own Certified mail expense on M-1002 is 1245 cents, $12.45, so the brief's $1,245 figure is recreated here.
 """
+import io
 import os
 import re
 import shutil
@@ -26,6 +27,11 @@ from tests.helpers import login  # noqa: E402
 
 DOL = date.today() - timedelta(days=100)
 MATTER_NUMBER = "M-PI01"
+
+# Smallest PDF that pypdf will open (see tests/test_phase3_f.py for the same constant).
+TINY_PDF = (b"%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+            b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\nxref\n0 4\n0000000000 65535 f \n"
+            b"0000000009 00000 n \n0000000052 00000 n \n0000000101 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n160\n%%EOF\n")
 
 
 @pytest.fixture(scope="module")
@@ -210,6 +216,27 @@ def test_demand_package(app, owner):
                                           "demand_amount": "75000", "offer": "40,000.00"})
     assert r.status_code == 302
     assert _case(app, mid).offer_cents == 4000000
+
+
+def test_demand_package_binds_exhibit_tagged_documents_regardless_of_folder(app, owner):
+    """QA #23: exhibits filed under a made-up folder name (not one of the recognised
+    EXHIBIT_FOLDERS) were silently left out of the package. Tagging the document "exhibit"
+    is the escape hatch and must work no matter what folder it lives in."""
+    c, tok = owner
+    mid = _mid(app)
+    r = c.post("/documents/upload", data={"_csrf": tok, "matter_id": str(mid), "folder": "Exhibits",
+                                          "tags": "Exhibit", "file": (io.BytesIO(TINY_PDF), "photo-of-scene.pdf")},
+              content_type="multipart/form-data")
+    assert r.status_code == 302, r.data[:300]
+    r = c.post(f"/pi/{mid}/demand/package", data={"_csrf": tok, "demand_amount": "75,000.00"})
+    assert r.status_code == 302 and "/documents/" in r.headers["Location"]
+    from app.models import Document
+    from pypdf import PdfReader
+    with app.app_context():
+        doc = Document.query.filter_by(matter_id=mid, folder="Demand").order_by(Document.id.desc()).first()
+        full = os.path.join(UPLOAD_DIR, doc.path)
+    # cover letter (1+ pages) + a 1-page exhibit index + the bound exhibit itself
+    assert len(PdfReader(full).pages) >= 3
 
 
 # ---------------------------------------------------------------- worksheet

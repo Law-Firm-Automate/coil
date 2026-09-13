@@ -282,12 +282,18 @@ def build_reduction_letter(matter, case, lien, pct, proposed_cents):
 # Folders whose documents belong in a demand package, in the order an adjuster expects
 # to read them. A "package" that packages nothing is just a letter with a grand name.
 EXHIBIT_FOLDERS = ("Records", "Billing", "Liens", "Discovery", "Correspondence")
+# Folder is free text, so a document filed under a folder name we don't recognise (e.g. an
+# "Exhibits" folder someone made up) would otherwise never be bound in. Tagging a document
+# "exhibit" is the escape hatch: it's picked up no matter what folder it lives in.
+EXHIBIT_TAG = "exhibit"
 
 
 def _exhibit_documents(matter):
     from ..models import Document
+    from .documents import parse_tags
     rows = (Document.query.filter_by(matter_id=matter.id, is_current=True)
-            .filter(Document.folder.in_(EXHIBIT_FOLDERS)).all())
+            .filter(db.or_(Document.folder.in_(EXHIBIT_FOLDERS), Document.tags.ilike(f"%{EXHIBIT_TAG}%"))).all())
+    rows = [d for d in rows if d.folder in EXHIBIT_FOLDERS or EXHIBIT_TAG in parse_tags(d.tags)]
     order = {f: i for i, f in enumerate(EXHIBIT_FOLDERS)}
     return sorted(rows, key=lambda d: (order.get(d.folder, 99), d.name.lower()))
 

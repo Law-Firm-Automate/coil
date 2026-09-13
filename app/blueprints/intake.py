@@ -631,9 +631,14 @@ def _split_name(name):
 @login_required
 def detail(id):
     lead = db.session.get(IntakeLead, id) or abort(404)
-    hits = fuzzy_hits([lead.name, lead.adverse_party])
     first, last = _split_name(lead.name)
     email_match = Contact.query.filter(db.func.lower(Contact.email) == lead.email.lower()).first() if lead.email else None
+    # The convert form defaults to linking email_match when one exists (template below), and its
+    # POST handler folds that contact's own name into the conflict search. If this preview left it
+    # out, a lead whose own name never fuzzy-matched anything could hit a conflict on convert yet
+    # redisplay with no hits at all, so the ack checkbox never renders and the lead is stuck.
+    names = [lead.name, lead.adverse_party] + ([email_match.display_name] if email_match else [])
+    hits = fuzzy_hits(names, exclude_contact_id=email_match.id if email_match else None)
     users = User.query.filter_by(is_active=True).order_by(User.name).all()
     templates = LetterTemplate.query.filter_by(kind="engagement").order_by(LetterTemplate.is_default.desc(),
                                                                           LetterTemplate.name).all()

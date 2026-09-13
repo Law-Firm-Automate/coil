@@ -110,11 +110,33 @@ def _clean(s):
     return s.encode("latin-1", "replace").decode("latin-1")
 
 
-def html_to_pdf_body(pdf, html):
-    """Very small HTML subset: p, br, h1-h3, strong/b, em/i, ul/li, ol/li. Anything else is stripped."""
-    html = html or ""
-    html = re.sub(r"<\s*br\s*/?>", "\n", html, flags=re.I)
-    blocks = re.split(r"</?(?:p|div|h1|h2|h3|li|ul|ol|table|tr)[^>]*>", html, flags=re.I)
+def _parse_table_rows(table_html):
+    """Cell text for each <tr> in a <table> block, tags stripped, in document order."""
+    rows = []
+    for row_html in re.findall(r"<tr[^>]*>(.*?)</tr>", table_html, flags=re.I | re.S):
+        cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row_html, flags=re.I | re.S)
+        rows.append([unescape(re.sub(r"<[^>]+>", "", c)).strip() for c in cells])
+    return [r for r in rows if r]
+
+
+def _render_table(pdf, rows):
+    """A real bordered grid via fpdf2's table(), not a text block, so cells stay visually separated."""
+    if not rows:
+        return
+    ncols = max(len(r) for r in rows)
+    rows = [r + [""] * (ncols - len(r)) for r in rows]
+    pdf.set_font("Helvetica", "", 9.5)
+    with pdf.table(text_align="LEFT", line_height=5.5, borders_layout="ALL") as table:
+        for r in rows:
+            row = table.row()
+            for cell in r:
+                row.cell(_clean(cell))
+    pdf.set_font("Helvetica", "", 10.5)
+    pdf.ln(2.5)
+
+
+def _render_text_blocks(pdf, html):
+    blocks = re.split(r"</?(?:p|div|h1|h2|h3|li|ul|ol)[^>]*>", html, flags=re.I)
     heads = re.findall(r"<(h1|h2|h3)[^>]*>(.*?)</\1>", html, flags=re.I | re.S)
     head_text = {unescape(re.sub(r"<[^>]+>", "", h[1])).strip(): h[0] for h in heads}
     for b in blocks:
@@ -132,6 +154,21 @@ def html_to_pdf_body(pdf, html):
             pdf.set_font("Helvetica", "", 10.5)
         pdf.multi_cell(0, 5.2, _clean(text))
         pdf.ln(2.5)
+
+
+def html_to_pdf_body(pdf, html):
+    """Very small HTML subset: p, br, h1-h3, strong/b, em/i, ul/li, ol/li, table/tr/td/th.
+
+    Tables are pulled out and rendered as a real bordered grid; everything else is stripped
+    to plain paragraphs.
+    """
+    html = html or ""
+    html = re.sub(r"<\s*br\s*/?>", "\n", html, flags=re.I)
+    for part in re.split(r"(<table[^>]*>.*?</table>)", html, flags=re.I | re.S):
+        if re.match(r"\s*<table", part, flags=re.I):
+            _render_table(pdf, _parse_table_rows(part))
+        else:
+            _render_text_blocks(pdf, part)
 
 
 def save_pdf(pdf, filename):

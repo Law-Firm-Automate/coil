@@ -223,6 +223,45 @@ def test_an_ordinary_invoice_does_not_switch_fonts(app):
         assert out.startswith(b"%PDF")
 
 
+# --- 4. table borders/cell separation in engagement letters (QA #21) -----------------------
+
+def test_a_table_in_an_engagement_letter_keeps_cell_borders_and_separation(app):
+    """QA reported a table in a signed engagement letter losing its borders, with adjacent
+    cells' text running together (e.g. a fee amount butted straight up against the next
+    column's label). The block splitter used to only break on <table>/<tr>, so <td> content
+    inside a row was stripped of tags and concatenated with no separator or border drawn."""
+    from app.services.pdf import DocPDF, html_to_pdf_body
+    with app.app_context():
+        firm = type("F", (), {"name": "Test Firm", "address": "", "phone": "", "email": "",
+                               "website": ""})()
+        pdf = DocPDF(firm, title="Engagement letter")
+        pdf.add_page()
+        html_to_pdf_body(pdf, (
+            "<p>Fee schedule:</p>"
+            "<table><tr><td>Retainer</td><td>USD 5000.00</td></tr>"
+            "<tr><td>Hourly rate</td><td>USD 350.00</td></tr></table>"
+            "<p>Thank you.</p>"
+        ))
+        out = bytes(pdf.output())
+        assert out.startswith(b"%PDF")
+
+        import io as _io
+        import pypdf
+        text = pypdf.PdfReader(_io.BytesIO(out)).pages[0].extract_text()
+        assert "Retainer" in text and "USD 5000.00" in text
+        assert "Hourly rate" in text and "USD 350.00" in text
+        # The old bug glued adjacent cells together with no separator.
+        assert "RetainerUSD 5000.00" not in text
+        assert "Hourly rateUSD 350.00" not in text
+
+        # A real fpdf2 table draws its grid as stroked rect/line operators in the page's
+        # content stream; the old plain-paragraph fallback never emitted any.
+        page = pypdf.PdfReader(_io.BytesIO(out)).pages[0]
+        content = page._get_contents_as_bytes()
+        assert b" S\n" in content or b" S " in content, \
+            "no stroked lines found in the PDF: the table grid was not drawn"
+
+
 def test_a_plain_zip_wearing_a_docx_name_is_refused(app):
     """Every Office file is a zip, so the magic bytes alone let any zip through under an
     Office name. One level deeper is enough: a .docx has word/ inside, an .xlsx has xl/."""

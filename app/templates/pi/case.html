@@ -137,7 +137,7 @@
   </form>
   <form method="post" action="/pi/{{ m.id }}/demand/package">{{ csrf() }}
     <label>Build demand package</label>
-    <p class="small muted" style="margin-top:0">Assembles one PDF: cover letter to the insurer with the facts, liability notes and injuries; a treatment chronology from the providers; a specials table totalling {{ total_billed|money }}; and the demand figure. Saved to Documents in the Demand folder.</p>
+    <p class="small muted" style="margin-top:0">Assembles one PDF: cover letter to the insurer with the facts, liability notes and injuries; a treatment chronology from the providers; a specials table totalling {{ total_billed|money }}; and the demand figure, followed by an exhibit index and every exhibit PDF filed under Records, Billing, Liens, Discovery or Correspondence, or tagged "exhibit" directly. Saved to Documents in the Demand folder.</p>
     <div class="row">
       <div><label>Demand amount</label><input type="text" name="demand_amount" value="{{ dollars(c.demand_amount_cents) }}" placeholder="75,000.00"></div>
       <div><label style="display:inline-flex;gap:6px;align-items:center;margin-top:26px"><input type="checkbox" name="mark_sent" value="1"> Mark as sent today</label></div>

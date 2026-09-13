@@ -142,6 +142,55 @@ def test_convert_lead_sign_flow(app, staff):
     assert r.status_code == 200 and b"Priya Natarajan" in r.data
 
 
+def test_convert_conflict_box_survives_redirect_for_email_matched_contact(app, staff):
+    """QA #22: linking a lead to an existing contact whose own name is the thing that
+    trips the conflict check (not the lead's own name) must still show the ack
+    checkbox/reason field after the conflict redirect, not just on the raw POST."""
+    client, tok = staff
+    from app.models import IntakeLead, Contact
+    from app.extensions import db
+    with app.app_context():
+        existing_client = Contact(kind="person", first_name="Marcus", last_name="Webb",
+                                  email="marcus.webb@example.test", is_client=True)
+        unrelated_conflict = Contact(kind="person", first_name="Marcus", last_name="Webb",
+                                     is_client=False, notes="Unrelated Marcus Webb from a prior matter")
+        db.session.add_all([existing_client, unrelated_conflict])
+        lead = IntakeLead(name="Riley Okafor Holdings", email="marcus.webb@example.test",
+                          phone="512-555-0177", matter_type="Business formation",
+                          description="New matter for an existing client.", status="new", source="test")
+        db.session.add(lead)
+        db.session.commit()
+        lead_id, contact_id = lead.id, existing_client.id
+
+    r = client.post(f"/intake/{lead_id}/convert", data={
+        "_csrf": tok, "contact_mode": "existing", "contact_id": str(contact_id), "adverse_party": "",
+        "matter_name": "Webb - Business formation", "practice_area": "Business formation",
+        "billing_type": "flat", "flat_fee": "2,000.00",
+    })
+    assert r.status_code == 302 and r.headers["Location"].endswith(f"/intake/{lead_id}#conflict")
+
+    # Redisplay after the redirect must show the same conflict, with the checkbox to clear it.
+    r = client.get(f"/intake/{lead_id}")
+    assert r.status_code == 200
+    assert b'name="conflict_ack"' in r.data and b'name="conflict_reason"' in r.data
+
+    with app.app_context():
+        lead = db.session.get(IntakeLead, lead_id)
+        assert lead.status == "new" and lead.contact_id is None  # nothing created by the refused attempt
+
+    # Ticking the box with a reason lets the same convert go through.
+    r = client.post(f"/intake/{lead_id}/convert", data={
+        "_csrf": tok, "contact_mode": "existing", "contact_id": str(contact_id), "adverse_party": "",
+        "matter_name": "Webb - Business formation", "practice_area": "Business formation",
+        "billing_type": "flat", "flat_fee": "2,000.00",
+        "conflict_ack": "1", "conflict_reason": "Different Marcus Webb, unrelated prior matter closed 2019.",
+    })
+    assert r.status_code == 302, r.data[:500]
+    with app.app_context():
+        lead = db.session.get(IntakeLead, lead_id)
+        assert lead.status == "converted" and lead.contact_id == contact_id and lead.conflict_check_id
+
+
 def test_engagement_new_draft_pdf_and_templates(app, staff):
     client, tok = staff
     from app.models import Matter, Engagement, LetterTemplate
