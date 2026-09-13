@@ -148,6 +148,23 @@ def test_conflict_check_hits_seeded_adverse_party(client):
     assert r.status_code == 200 and b"waived" in r.data
 
 
+def test_conflict_check_matches_accented_name_to_plain_spelling(client):
+    tok = client.tok
+    r = client.post("/contacts/new", data={
+        "_csrf": tok, "kind": "person", "first_name": "Nguyễn", "last_name": "Trần",
+    })
+    assert r.status_code == 302, r.data[:300]
+    r = client.post("/conflicts/run", data={"_csrf": tok, "names": "Nguyen Tran"})
+    assert r.status_code == 302
+    chk_id = _id_from(r.headers["Location"])
+    from app.models import ConflictCheck
+    from app.extensions import db
+    with client.app.app_context():
+        hits = db.session.get(ConflictCheck, chk_id).results
+        assert any(h["source"] == "contact" and "Trần" in h["label"] and h["score"] == 100 for h in hits), \
+            "plain-spelling query should hit the accented contact"
+
+
 def test_task_create_and_complete(client):
     tok = client.tok
     r = client.post("/tasks/new", data={"_csrf": tok, "title": "Smoke test task", "kind": "deadline",

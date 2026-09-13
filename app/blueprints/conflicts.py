@@ -1,6 +1,7 @@
 """Conflict checks: fuzzy name search across everything the firm has touched."""
 import json
 import re
+import unicodedata
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from rapidfuzz import fuzz
 from ..extensions import db
@@ -14,7 +15,12 @@ FUZZY_MIN = 80
 
 
 def normalise(s):
-    s = re.sub(r"[^a-z0-9]+", " ", (s or "").lower())
+    """Fold accented Latin letters (Nguyễn, François, Müller) to their plain form before
+    matching, so a client's name typed with or without diacritics hits the same record.
+    Non-Latin scripts (Greek, Cyrillic, CJK) have no ASCII decomposition and are unaffected."""
+    s = unicodedata.normalize("NFKD", (s or "").lower())
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r"[^a-z0-9]+", " ", s)
     return " ".join(s.split())
 
 
