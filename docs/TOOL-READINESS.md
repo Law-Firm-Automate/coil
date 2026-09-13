@@ -202,7 +202,7 @@ Further checks:
 
 **Portal accessibility.** Keyboard and screen-reader pass on the invoice done; the portal half was blocked for lack of a session. *Needs a second client account with a magic link Grok can read.*
 
-**Volume.** Everything tested at a dozen matters. The API and time list both broke at a few hundred rows. Claude seeds thousands, then Grok re-runs exports, reports, the trust ledger and the conflict check.
+**Volume: measured and fixed (`b2d7f5a`).** testfirm now carries `ops/volume_fixture.py`: 3,013 matters, 31,288 time entries, 3,019 invoices, 3,940 trust rows. Before the fix the matters list took 21s, `matters.csv` 26s on 13,067 queries and `time.csv` 23s on 38,313, against a 30s gunicorn timeout. After: 0.22s, 0.86s on 8 queries, 3.6s on 4. Cause in every case was a query per row, including `Firm.get()` once per row through `Matter.currency_code` (the identity map holds weak references, so an instance read once and dropped is fetched again). `tests/test_volume.py` seeds the fixture and fails if any count grows. Grok re-runs the export exactness checks and §P at this size; the conflict check itself was never slow (0.19s), see below.
 
 ---
 
