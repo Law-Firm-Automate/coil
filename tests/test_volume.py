@@ -84,6 +84,8 @@ def count_queries(app):
     ("/exports/trust.csv", 25),
     ("/reports/wip", 25),
     ("/invoices", 25),
+    ("/", 40),              # the dashboard: many cards, each a query or two, none per row
+    ("/trust/", 25),
 ])
 def test_page_uses_a_fixed_number_of_queries(client, count_queries, path, ceiling):
     r = client.get(path)

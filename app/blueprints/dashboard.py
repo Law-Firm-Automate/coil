@@ -6,6 +6,8 @@ from datetime import date, timedelta
 from collections import OrderedDict
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
+from ..aggregates import money_for
 from ..extensions import db
 from ..models import (Matter, Invoice, Task, TimeEntry, IntakeLead, Engagement, TrustTransaction, Timer,
                       DocumentSignature, Message)
@@ -61,9 +63,24 @@ def user_cards(u):
 
 
 # ---- loaders: one per card so only the cards on screen are queried ----
+OVERDUE_SHOWN = 12
+
+
 def _overdue(today):
-    return Invoice.query.filter(Invoice.status.in_(OPEN_INVOICE), Invoice.due_on < today).order_by(
-        Invoice.due_on).all()
+    """The oldest few overdue invoices, client and matter loaded with them.
+
+    This returned every overdue invoice, and the card rendered each one with a lookup of
+    its client. On a firm with 860 overdue invoices that was 864 queries and a quarter of a
+    megabyte on the first page anyone sees after logging in. A card shows a few and says
+    how many more there are; the invoices list is where the rest live.
+    """
+    q = Invoice.query.filter(Invoice.status.in_(OPEN_INVOICE), Invoice.due_on < today)
+    return (q.options(joinedload(Invoice.client), joinedload(Invoice.matter))
+             .order_by(Invoice.due_on).limit(OVERDUE_SHOWN).all())
+
+
+def _overdue_count(today):
+    return Invoice.query.filter(Invoice.status.in_(OPEN_INVOICE), Invoice.due_on < today).count()
 
 
 def _evergreen():
@@ -117,6 +134,7 @@ def load_card_data(keys, u, today):
                 Engagement.sent_at.desc()).limit(8).all()
         elif k == "overdue":
             ctx["overdue"] = _overdue(today)
+            ctx["overdue_count"] = _overdue_count(today)
         elif k == "evergreen":
             ctx["evergreen"] = _evergreen()
         elif k == "unsigned_documents":
@@ -129,7 +147,12 @@ def load_card_data(keys, u, today):
             ctx["portal_messages_count"] = Message.query.filter(Message.channel == "portal", Message.direction == "in",
                                                                 Message.read_at == None).count()  # noqa: E711
         elif k == "recent_matters":
-            ctx["recent_matters"] = Matter.query.order_by(Matter.created_at.desc()).limit(8).all()
+            # Client loaded with the rows, and the three money figures for all eight in four
+            # queries rather than three queries per row.
+            recent = (Matter.query.options(joinedload(Matter.client))
+                      .order_by(Matter.created_at.desc()).limit(8).all())
+            ctx["recent_matters"] = recent
+            ctx["recent_money"] = money_for(recent)
         elif k == "case_audit":
             from ..models import CaseAuditFinding
             ctx["case_audit_high"] = CaseAuditFinding.query.filter_by(status="open", severity="high").count()

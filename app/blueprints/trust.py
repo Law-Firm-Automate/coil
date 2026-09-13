@@ -5,6 +5,7 @@ import json
 from datetime import date
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, abort
 from sqlalchemy import func, or_, and_
+from sqlalchemy.orm import selectinload
 from ..extensions import db
 from ..models import (Contact, Matter, Invoice, InvoiceEvent, Payment, TrustTransaction,
                       TrustReconciliation, Firm, audit)
@@ -85,7 +86,10 @@ def index():
     cbal = client_balances()
     mbal = matter_balances()
     ids = [cid for cid, v in cbal.items() if v != 0]
-    clients = Contact.query.filter(Contact.id.in_(ids)).all() if ids else []
+    # c.matters is read for every client below; without this that is one query per client
+    # holding trust money, 943 of them on a firm with three thousand matters.
+    clients = (Contact.query.filter(Contact.id.in_(ids)).options(selectinload(Contact.matters)).all()
+               if ids else [])
     clients.sort(key=lambda c: c.sort_name.lower())
     rows = []
     negatives = []
