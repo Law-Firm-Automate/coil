@@ -5,7 +5,7 @@ Every client-facing string comes from app.i18n, chosen by lang_for(contact) (con
 """
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from flask import (Blueprint, render_template, request, redirect, url_for, flash, session, current_app, abort,
                    send_file)
 from sqlalchemy import func
@@ -49,14 +49,14 @@ def login():
             contact = Contact.query.filter(func.lower(Contact.email) == email).order_by(
                 Contact.is_client.desc(), Contact.id).first()
             if contact:
-                since = datetime.utcnow() - timedelta(minutes=RATE_LIMIT_MIN)
+                since = now() - timedelta(minutes=RATE_LIMIT_MIN)
                 recent = PortalToken.query.filter(PortalToken.contact_id == contact.id,
                                                   PortalToken.created_at >= since).count()
                 if recent >= RATE_LIMIT_COUNT:
                     current_app.logger.warning("portal login rate limit hit for contact %s", contact.id)
                 else:
                     tok = PortalToken(contact_id=contact.id,
-                                      expires_at=datetime.utcnow() + timedelta(minutes=TOKEN_TTL_MIN))
+                                      expires_at=now() + timedelta(minutes=TOKEN_TTL_MIN))
                     db.session.add(tok)
                     db.session.flush()
                     firm = Firm.get()
@@ -77,9 +77,9 @@ def login():
 @bp.route("/auth/<token>")
 def auth(token):
     tok = PortalToken.query.filter_by(token=token).first()
-    if not tok or tok.used_at or tok.expires_at < datetime.utcnow():
+    if not tok or tok.used_at or tok.expires_at < now():
         return render_template("portal/expired.html", lang=lang_for(tok.contact if tok else None), t=t), 410
-    tok.used_at = datetime.utcnow()
+    tok.used_at = now()
     session["portal_contact_id"] = tok.contact_id
     session.permanent = True
     audit("portal_login", "contact", tok.contact_id)

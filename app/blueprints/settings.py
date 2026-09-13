@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, session, Response
 from sqlalchemy import func
 from ..extensions import db
-from ..models import Firm, User, Office, Matter, MatterTemplate, AuditLog, audit
+from ..models import Firm, User, Office, Matter, MatterTemplate, AuditLog, audit, now
 from ..helpers import (login_required, owner_required, permission_required, current_user, parse_money,
                       parse_date, CURRENCIES)
 from ..permissions import ROLES, ROLE_DESCRIPTIONS, canonical_role
@@ -825,7 +825,7 @@ def api_token_revoke(id):
     if t.user_id != u.id and u.role != "owner":
         abort(403)
     if not t.revoked_at:
-        t.revoked_at = datetime.utcnow()
+        t.revoked_at = now()
         audit("api_token_revoke", "api_token", t.id, t.name, u.id)
         db.session.commit()
     flash(f"Token {t.name} revoked.", "ok")
@@ -903,7 +903,7 @@ def webhook_test(id):
     import json as _json
     h = db.session.get(Webhook, id) or abort(404)
     d = WebhookDelivery(webhook_id=h.id, event="ping", status="pending", attempts=0,
-                        payload_json=_json.dumps({"event": "ping", "created_at": datetime.utcnow().isoformat(),
+                        payload_json=_json.dumps({"event": "ping", "created_at": now().isoformat(),
                                                   "data": {"message": "Test delivery from Coil", "webhook_id": h.id}}))
     db.session.add(d)
     db.session.flush()

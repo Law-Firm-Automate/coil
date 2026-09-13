@@ -23,7 +23,7 @@ from sqlalchemy import func
 
 from ..extensions import db
 from ..models import (Contact, Matter, TimeEntry, Expense, Invoice, InvoiceLine, Payment, TrustTransaction, Task,
-                      CalendarEvent, Document, Note, User, Firm, ImportJob, ExternalRef, audit)
+                      CalendarEvent, Document, Note, User, Firm, ImportJob, ExternalRef, audit, now)
 from ..helpers import login_required, owner_required, current_user, cents_to_str, csv_safe
 from . import _importmap as M
 
@@ -705,7 +705,7 @@ def apply_bills(ctx, rec):
     inv.due_on = date.fromisoformat(rec["due_on"]) if rec["due_on"] else inv.issued_on + timedelta(days=firm.invoice_terms_days or 30)
     inv.notes = f"Imported from {M.SOURCE_LABELS.get(ctx.source, ctx.source)}."
     if created:
-        inv.sent_at = datetime.utcnow() if rec["status"] not in ("draft", "void") else None
+        inv.sent_at = now() if rec["status"] not in ("draft", "void") else None
     db.session.flush()
     desc = f"Imported balance from {M.SOURCE_LABELS.get(ctx.source, ctx.source)} bill {rec['source_number']}"
     line = next((l for l in inv.lines if (l.description or "").startswith("Imported balance from")), None)
@@ -871,7 +871,7 @@ def apply_tasks(ctx, rec):
     t.due_on = date.fromisoformat(rec["due_on"]) if rec["due_on"] else None
     t.assignee_id = rec["assignee_id"]
     if rec["done"] and not t.done:
-        t.done, t.done_at = True, datetime.utcnow()
+        t.done, t.done_at = True, now()
     elif not rec["done"]:
         t.done, t.done_at = False, None
     db.session.flush()

@@ -9,7 +9,7 @@ cents throughout and every Stripe amount is the integer cents.
 """
 import math
 from calendar import monthrange
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, abort
 from markupsafe import escape
 from ..extensions import db
@@ -265,7 +265,7 @@ def surcharge_cents(amount_cents, firm=None):
 
 
 def new_card_token(contact):
-    tok = PortalToken(contact_id=contact.id, expires_at=datetime.utcnow() + timedelta(days=CARD_TOKEN_DAYS))
+    tok = PortalToken(contact_id=contact.id, expires_at=now() + timedelta(days=CARD_TOKEN_DAYS))
     db.session.add(tok)
     db.session.flush()
     return tok
@@ -273,7 +273,7 @@ def new_card_token(contact):
 
 def _card_token(token):
     tok = PortalToken.query.filter_by(token=token).first() or abort(404)
-    if tok.used_at or tok.expires_at < datetime.utcnow():
+    if tok.used_at or tok.expires_at < now():
         return tok, False
     return tok, True
 

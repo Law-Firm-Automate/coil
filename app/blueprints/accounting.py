@@ -17,7 +17,7 @@ from sqlalchemy import event, func, select, insert, update, delete, or_, and_, i
 
 from ..extensions import db
 from ..models import (Account, LedgerEntry, BankImport, OperatingReconciliation, Payment, Expense, Invoice,
-                      InvoiceLine, Matter, Contact, TrustTransaction, Firm, audit)
+                      InvoiceLine, Matter, Contact, TrustTransaction, Firm, audit, now)
 from ..helpers import login_required, permission_required, current_user, parse_money, parse_date, cents_to_str, csv_safe
 
 bp = Blueprint("accounting", __name__, url_prefix="/accounting")
@@ -136,7 +136,7 @@ def post_payment(payment, conn):
     when = payment.received_on or date.today()
     rows = [dict(date=when, account_id=ids[code], amount_cents=amt, description=desc[:300], payee=payee[:200],
                  reference=ref[:120], matter_id=payment.matter_id, payment_id=payment.id, source="payment",
-                 cleared=False, created_at=datetime.utcnow())
+                 cleared=False, created_at=now())
             for code, amt, desc in payment_postings(payment, conn)]
     if rows:
         conn.execute(insert(_led), rows)
@@ -156,7 +156,7 @@ def post_expense(expense, conn):
     if not int(expense.amount_cents or 0):
         return
     ids = ensure_chart(conn)
-    conn.execute(insert(_led).values(cleared=False, created_at=datetime.utcnow(), **expense_values(expense, ids)))
+    conn.execute(insert(_led).values(cleared=False, created_at=now(), **expense_values(expense, ids)))
 
 
 @event.listens_for(Payment, "after_insert")
@@ -188,7 +188,7 @@ def _expense_updated(mapper, connection, e):
     if existing:
         connection.execute(update(_led).where(_led.c.expense_id == e.id).values(**vals))
     elif int(e.amount_cents or 0):
-        connection.execute(insert(_led).values(cleared=False, created_at=datetime.utcnow(), **vals))
+        connection.execute(insert(_led).values(cleared=False, created_at=now(), **vals))
 
 
 @event.listens_for(Expense, "after_delete")

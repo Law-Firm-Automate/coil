@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, Response
 from sqlalchemy import or_, and_
 from ..extensions import db
-from ..models import CalendarEvent, Task, Matter, User, audit
+from ..models import CalendarEvent, Task, Matter, User, audit, now
 from ..helpers import login_required, current_user, parse_date
 
 bp = Blueprint("calendar", __name__, url_prefix="/calendar")
@@ -121,7 +121,7 @@ def index():
         items[d].sort(key=lambda i: (i["sort"], i["at"]))
     prev_month = (first - timedelta(days=1)).replace(day=1)
     next_month = (first + timedelta(days=32)).replace(day=1)
-    upcoming = q.filter(CalendarEvent.starts_at >= datetime.utcnow() - timedelta(hours=1)).order_by(
+    upcoming = q.filter(CalendarEvent.starts_at >= now() - timedelta(hours=1)).order_by(
         CalendarEvent.starts_at).limit(10).all()
     feed_url = f"{current_app.config['BASE_URL']}/calendar/feed/{feed_secret()}.ics"
     u = current_user()
@@ -234,7 +234,7 @@ TASK_PREFIX = {"deadline": "Deadline", "court_date": "Court", "task": "Task"}
 
 
 def build_ics(events, name="Calendar", tz_name="UTC", tasks=()):
-    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    stamp = now().strftime("%Y%m%dT%H%M%SZ")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Solo Practice//Calendar//EN", "CALSCALE:GREGORIAN",
              "METHOD:PUBLISH", f"X-WR-CALNAME:{_ics_escape(name)}"]
     # Tasks with a due date. The web calendar shows every one of these, and a limitation date

@@ -4,7 +4,7 @@ from datetime import date, datetime
 import secrets
 from flask import session, redirect, url_for, request, abort, g, flash
 from .extensions import db
-from .models import User, Contact, Firm
+from .models import User, Contact, Firm, now as utcnow
 
 
 # ---- money ----
@@ -202,7 +202,7 @@ def client_ip():
 def register_template_globals(app):
     app.jinja_env.globals.update(
         money=cents_to_str, csrf=csrf_field, current_user=current_user, portal_contact=portal_contact,
-        firm=lambda: Firm.get(), today=date.today, now=datetime.utcnow,
+        firm=lambda: Firm.get(), today=date.today, now=utcnow,
     )
     app.jinja_env.filters["money"] = cents_to_str
     app.jinja_env.filters["cur"] = fmt_money

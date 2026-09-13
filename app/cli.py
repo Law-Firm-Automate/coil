@@ -17,7 +17,7 @@ from markupsafe import escape
 from flask import current_app
 from .config import DATA_DIR
 from .extensions import db
-from .models import (Firm, User, Task, Matter, Invoice, InvoiceEvent, Engagement, IntakeLead, AuditLog, audit)
+from .models import (Firm, User, Task, Matter, Invoice, InvoiceEvent, Engagement, IntakeLead, AuditLog, audit, now)
 from .helpers import cents_to_str
 from .services.mail import send_email
 from .blueprints.webhooks_out import run_webhooks
@@ -58,7 +58,7 @@ def build_agenda(user):
     overdue = Invoice.query.filter(Invoice.status.in_(["sent", "viewed", "partial"]), Invoice.due_on != None,
                                    Invoice.due_on < today).order_by(Invoice.due_on).all()
     stale = Engagement.query.filter(Engagement.status.in_(["sent", "viewed"]), Engagement.sent_at != None,
-                                    Engagement.sent_at <= datetime.utcnow() - timedelta(days=2)).order_by(
+                                    Engagement.sent_at <= now() - timedelta(days=2)).order_by(
         Engagement.sent_at).all()
     leads = IntakeLead.query.filter_by(status="new").order_by(IntakeLead.created_at.desc()).all()
     # Agent R: time capture suggestions waiting for this user (browser extension). Additive, never blocks the agenda.
@@ -172,7 +172,7 @@ def run_reminders():
 
     # Engagement.sent_at is naive UTC, so the day window must be built from the UTC date,
     # not the local one, or reminders silently skip near midnight.
-    utc_today = datetime.utcnow().date()
+    utc_today = now().date()
     for days in (3, 7):
         day = utc_today - timedelta(days=days)
         start = datetime.combine(day, datetime.min.time())
@@ -198,7 +198,7 @@ def run_evergreen():
     """Email a trust top-up request for every open matter under its evergreen minimum, at most once per
     matter every 14 days (AuditLog action="evergreen_sent"). Returns the number of requests sent."""
     from .blueprints.trust import evergreen_shortfalls, send_deposit_request
-    since = datetime.utcnow() - timedelta(days=EVERGREEN_DAYS)
+    since = now() - timedelta(days=EVERGREEN_DAYS)
     sent = 0
     for matter, balance, shortfall in evergreen_shortfalls():
         recent = AuditLog.query.filter(AuditLog.action == "evergreen_sent", AuditLog.entity == "matter",
@@ -421,7 +421,7 @@ def backup():
     backup_dir = data_dir / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    stamp = now().strftime("%Y%m%d-%H%M%S")
     backup_file = backup_dir / f"coil-backup-{stamp}.tar.gz"
     # Two backups in the same second would otherwise silently overwrite each other, and
     # the nightly cron and an update can land together.

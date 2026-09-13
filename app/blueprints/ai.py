@@ -189,7 +189,7 @@ def _matter_context(m):
     if tasks:
         parts.append("Open tasks and deadlines:\n" + "\n".join(
             f"- {t.kind} {t.title} due {t.due_on or 'no date'}" + (" (overdue)" if t.is_overdue else "") for t in tasks))
-    events = CalendarEvent.query.filter(CalendarEvent.matter_id == m.id, CalendarEvent.starts_at >= datetime.utcnow()
+    events = CalendarEvent.query.filter(CalendarEvent.matter_id == m.id, CalendarEvent.starts_at >= now()
                                         ).order_by(CalendarEvent.starts_at).limit(8).all()
     if events:
         parts.append("Upcoming events:\n" + "\n".join(f"- {e.starts_at:%Y-%m-%d %H:%M} {e.title}" for e in events))

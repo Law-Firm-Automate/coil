@@ -1,5 +1,5 @@
 """All persistence models. Money is stored as integer cents. Dates are naive UTC."""
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import json
 import secrets
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -8,7 +8,13 @@ from .extensions import db
 
 
 def now():
-    return datetime.utcnow()
+    """Current UTC time as a naive datetime.
+
+    Every DateTime column here is naive UTC (see the module docstring), so the offset is
+    stripped after reading the clock. An aware value cannot be compared against what is
+    already stored. datetime.utcnow() did the same thing but is deprecated since 3.12.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def new_token(n=32):
