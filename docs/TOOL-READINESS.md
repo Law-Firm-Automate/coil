@@ -190,7 +190,7 @@ Further checks:
 
 ## Phase 2: proven, with a caveat to close
 
-**Conflict check speed.** Correct, but 11 to 14 seconds at 760 contacts. Unusable at five thousand. This is a fix, not a test: the scan is doing fuzzy matching in Python across every row. Claude owns it. *Needs the volume fixture first.*
+**Conflict check speed: withdrawn.** Grok measured 11 to 14 seconds at 760 contacts and this register repeated it without reproducing it. Measured on the live database: the index builds in 0.15s, the scan runs in 0.03s, the full request including the results page is 0.19s, and the round trip from a browser through Cloudflare is 0.2 to 0.9s. Grok's figure was its own automation overhead, which is why it cost the same with 500 hits as with none. Re-measure at five thousand contacts once the volume fixture exists, timing the request rather than the tester.
 
 **Non-USD currency.** Fixed in `72bc741` (matter page and raw exports). Grok re-tests: a CAD matter through invoice, PDF, payment, exports, reports and the public pay page, looking for a stray dollar sign.
 
